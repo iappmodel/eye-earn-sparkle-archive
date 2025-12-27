@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      content_interactions: {
+        Row: {
+          attention_score: number | null
+          category: string | null
+          content_id: string
+          content_type: string
+          created_at: string
+          id: string
+          liked: boolean | null
+          shared: boolean | null
+          skipped: boolean | null
+          tags: string[] | null
+          total_duration: number | null
+          user_id: string
+          watch_completion_rate: number | null
+          watch_duration: number | null
+        }
+        Insert: {
+          attention_score?: number | null
+          category?: string | null
+          content_id: string
+          content_type?: string
+          created_at?: string
+          id?: string
+          liked?: boolean | null
+          shared?: boolean | null
+          skipped?: boolean | null
+          tags?: string[] | null
+          total_duration?: number | null
+          user_id: string
+          watch_completion_rate?: number | null
+          watch_duration?: number | null
+        }
+        Update: {
+          attention_score?: number | null
+          category?: string | null
+          content_id?: string
+          content_type?: string
+          created_at?: string
+          id?: string
+          liked?: boolean | null
+          shared?: boolean | null
+          skipped?: boolean | null
+          tags?: string[] | null
+          total_duration?: number | null
+          user_id?: string
+          watch_completion_rate?: number | null
+          watch_duration?: number | null
+        }
+        Relationships: []
+      }
       daily_reward_caps: {
         Row: {
           created_at: string
@@ -324,6 +375,51 @@ export type Database = {
           id?: string
           reference_id?: string | null
           type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_preferences: {
+        Row: {
+          avg_watch_time: number | null
+          created_at: string
+          disliked_tags: string[] | null
+          engagement_score: number | null
+          focus_score: number | null
+          id: string
+          last_seen_content: string[] | null
+          liked_tags: string[] | null
+          preferred_categories: string[] | null
+          total_content_views: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_watch_time?: number | null
+          created_at?: string
+          disliked_tags?: string[] | null
+          engagement_score?: number | null
+          focus_score?: number | null
+          id?: string
+          last_seen_content?: string[] | null
+          liked_tags?: string[] | null
+          preferred_categories?: string[] | null
+          total_content_views?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avg_watch_time?: number | null
+          created_at?: string
+          disliked_tags?: string[] | null
+          engagement_score?: number | null
+          focus_score?: number | null
+          id?: string
+          last_seen_content?: string[] | null
+          liked_tags?: string[] | null
+          preferred_categories?: string[] | null
+          total_content_views?: number | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

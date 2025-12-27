@@ -5,6 +5,7 @@ import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { DiscoveryMap } from '@/components/DiscoveryMap';
+import { PersonalizedFeed } from '@/components/PersonalizedFeed';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { OnboardingFlow } from '@/components/onboarding';
@@ -66,10 +67,10 @@ const Index = () => {
   const [showWallet, setShowWallet] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [showFeed, setShowFeed] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
-
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
 
@@ -191,12 +192,17 @@ const Index = () => {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
+    // Close all modals first
+    setShowProfile(false);
+    setShowMap(false);
+    setShowFeed(false);
+    
     switch (tab) {
       case 'profile':
         setShowProfile(true);
         break;
       case 'messages':
-        toast('Messages', { description: 'Messages coming soon...' });
+        setShowFeed(true); // Show personalized feed on messages tab
         break;
       case 'map':
         setShowMap(true);
@@ -276,6 +282,26 @@ const Index = () => {
           isOpen={showMap}
           onClose={() => { setShowMap(false); setActiveTab('home'); }}
         />
+
+        {/* Personalized AI Feed */}
+        {showFeed && (
+          <div className="fixed inset-0 z-40 bg-background">
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h1 className="text-xl font-bold">For You</h1>
+                <button 
+                  onClick={() => { setShowFeed(false); setActiveTab('home'); }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden pb-20">
+                <PersonalizedFeed />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bottom Navigation - centered at bottom */}
         <BottomNavigation 

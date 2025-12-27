@@ -37,3 +37,9 @@ verify_jwt = false
 
 [functions.get-mapbox-token]
 verify_jwt = false
+
+[functions.get-personalized-feed]
+verify_jwt = false
+
+[functions.track-interaction]
+verify_jwt = false

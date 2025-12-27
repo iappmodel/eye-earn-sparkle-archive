@@ -10,7 +10,7 @@ import { OnboardingFlow } from '@/components/onboarding';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { rewardsService } from '@/services/rewards.service';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -73,48 +73,50 @@ const Index = () => {
 
   const currentMedia = mockMedia[currentIndex];
 
-  // Mock transactions for wallet - will be replaced with real data later
-  const mockTransactions = [
-    { id: '1', type: 'earned' as const, amount: 50, coinType: 'vicoin' as const, description: 'Watched Holiday Special promo', timestamp: new Date() },
-    { id: '2', type: 'received' as const, amount: 100, coinType: 'vicoin' as const, description: 'Gift from @maria', timestamp: new Date(Date.now() - 86400000) },
-    { id: '3', type: 'earned' as const, amount: 1, coinType: 'icoin' as const, description: 'Coffee Shop promotion', timestamp: new Date(Date.now() - 172800000) },
-    { id: '4', type: 'spent' as const, amount: 500, coinType: 'vicoin' as const, description: 'Promoted your video', timestamp: new Date(Date.now() - 259200000) },
-  ];
-
-  // Handle promo completion - trigger coin slide animation and update DB
-  const handleMediaComplete = useCallback(async (attentionValidated: boolean = true) => {
+  // Wallet will load its own transactions now, remove mock data
+  // Handle promo completion - use rewards service for secure backend validation
+  const handleMediaComplete = useCallback(async (attentionValidated: boolean = true, attentionScore?: number) => {
     // Only give rewards if attention was validated for promo content
     if (currentMedia.reward && profile && attentionValidated) {
-      setCoinSlideType(currentMedia.reward.type);
-      setShowCoinSlide(true);
+      // Use rewards service for secure backend validation
+      const result = await rewardsService.issueReward(
+        'promo_view',
+        currentMedia.id,
+        {
+          attentionScore: attentionScore || 85,
+          coinType: currentMedia.reward.type,
+        }
+      );
 
-      // Update balance in database
-      const field = currentMedia.reward.type === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
-      const currentBalance = currentMedia.reward.type === 'vicoin' ? vicoins : icoins;
-      
-      const { error } = await supabase
-        .from('profiles')
-        .update({ [field]: currentBalance + currentMedia.reward.amount })
-        .eq('user_id', profile.user_id);
-
-      if (error) {
-        console.error('Error updating balance:', error);
-        toast.error('Failed to update balance');
-      } else {
+      if (result.success && result.amount) {
+        setCoinSlideType(result.coinType || currentMedia.reward.type);
+        setShowCoinSlide(true);
+        
         // Refresh profile to get updated balance
         await refreshProfile();
-        toast.success(`+${currentMedia.reward.amount} ${currentMedia.reward.type === 'vicoin' ? 'Vicoins' : 'Icoins'}!`);
-      }
+        toast.success(`+${result.amount} ${result.coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}!`);
 
-      // Haptic feedback
-      if (navigator.vibrate) {
-        navigator.vibrate([50, 30, 50]);
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate([50, 30, 50]);
+        }
+      } else if (result.error) {
+        // Check for specific errors
+        if (result.error.includes('already claimed') || result.error.includes('Reward already')) {
+          console.log('[Index] Content already rewarded');
+        } else if (result.error.includes('limit')) {
+          toast.info('Daily limit reached', {
+            description: 'Come back tomorrow for more rewards!',
+          });
+        } else {
+          console.error('[Index] Reward error:', result.error);
+        }
       }
     } else if (currentMedia.reward && !attentionValidated) {
       // Attention not validated - no reward
       console.log('[Index] Reward not given - attention validation failed');
     }
-  }, [currentMedia, profile, vicoins, icoins, refreshProfile]);
+  }, [currentMedia, profile, refreshProfile]);
 
   const handleCoinSlideComplete = useCallback(() => {
     setShowCoinSlide(false);
@@ -259,7 +261,6 @@ const Index = () => {
           onClose={() => setShowWallet(false)}
           vicoins={vicoins}
           icoins={icoins}
-          transactions={mockTransactions}
         />
 
         {/* Profile Screen */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { Wallet, User, Heart, MessageCircle, Share2, Settings } from 'lucide-react';
+import { Wallet, User, Heart, MessageCircle, Share2, Settings, UserPlus } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 
@@ -66,9 +66,12 @@ interface FloatingControlsProps {
   onCommentClick: () => void;
   onShareClick: () => void;
   onSettingsClick: () => void;
+  onFollowClick?: () => void;
   isLiked?: boolean;
+  isFollowing?: boolean;
   likeCount?: number;
   commentCount?: number;
+  creatorName?: string;
 }
 
 export const FloatingControls: React.FC<FloatingControlsProps> = ({
@@ -78,56 +81,114 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onCommentClick,
   onShareClick,
   onSettingsClick,
+  onFollowClick,
   isLiked = false,
+  isFollowing = false,
   likeCount = 0,
   commentCount = 0,
+  creatorName,
 }) => {
   const { isVisible } = useControlsVisibility();
 
+  // Format large numbers
+  const formatCount = (count: number): string => {
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return count.toString();
+  };
+
   return (
     <>
-      {/* Right side controls - Likes, Comments, Share + Wallet, Profile, Settings below */}
+      {/* Right side 3D button stack - thumb zone optimized */}
       <div className={cn(
-        'fixed right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-3 transition-all duration-300',
-        isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8 pointer-events-none'
+        'fixed right-4 top-1/2 -translate-y-1/2 z-40',
+        'flex flex-col items-center gap-4',
+        'transition-all duration-500 ease-out',
+        isVisible 
+          ? 'opacity-100 translate-x-0' 
+          : 'opacity-0 translate-x-12 pointer-events-none'
       )}>
-        {/* Media interaction buttons */}
+        {/* Like button with count */}
         <div className="flex flex-col items-center gap-1">
           <NeuButton 
             onClick={onLikeClick} 
             variant={isLiked ? 'accent' : 'default'}
             isPressed={isLiked}
+            tooltip={isLiked ? 'Unlike' : 'Like this content'}
+            size="md"
           >
-            <Heart className={cn('w-6 h-6', isLiked && 'fill-current')} />
+            <Heart className={cn(
+              'transition-all duration-200',
+              isLiked && 'fill-current text-primary animate-scale-in'
+            )} />
           </NeuButton>
-          <span className="text-xs text-muted-foreground">{likeCount}</span>
+          <span className="text-xs font-medium text-foreground/70">{formatCount(likeCount)}</span>
         </div>
 
+        {/* Comment button with count */}
         <div className="flex flex-col items-center gap-1">
-          <NeuButton onClick={onCommentClick}>
-            <MessageCircle className="w-6 h-6" />
+          <NeuButton 
+            onClick={onCommentClick}
+            tooltip="View comments"
+            size="md"
+          >
+            <MessageCircle />
           </NeuButton>
-          <span className="text-xs text-muted-foreground">{commentCount}</span>
+          <span className="text-xs font-medium text-foreground/70">{formatCount(commentCount)}</span>
         </div>
 
-        <NeuButton onClick={onShareClick}>
-          <Share2 className="w-6 h-6" />
+        {/* Share button */}
+        <NeuButton 
+          onClick={onShareClick}
+          tooltip="Share"
+          size="md"
+        >
+          <Share2 />
         </NeuButton>
 
-        {/* Separator */}
-        <div className="w-8 h-px bg-border/50 my-1 self-center" />
+        {/* Follow button - only if creator exists */}
+        {onFollowClick && (
+          <NeuButton 
+            onClick={onFollowClick}
+            variant={isFollowing ? 'accent' : 'default'}
+            isPressed={isFollowing}
+            tooltip={isFollowing ? 'Following' : `Follow ${creatorName || 'creator'}`}
+            size="md"
+          >
+            <UserPlus className={cn(
+              'transition-all duration-200',
+              isFollowing && 'text-primary'
+            )} />
+          </NeuButton>
+        )}
 
-        {/* Wallet, Profile, Settings - underneath */}
-        <NeuButton onClick={onWalletClick} variant="accent">
-          <Wallet className="w-6 h-6" />
+        {/* Separator line */}
+        <div className="w-10 h-px bg-gradient-to-r from-transparent via-border to-transparent my-1" />
+
+        {/* Secondary actions - Wallet, Profile, Settings */}
+        <NeuButton 
+          onClick={onWalletClick} 
+          variant="accent"
+          tooltip="Your wallet"
+          size="md"
+        >
+          <Wallet />
         </NeuButton>
 
-        <NeuButton onClick={onProfileClick}>
-          <User className="w-6 h-6" />
+        <NeuButton 
+          onClick={onProfileClick}
+          tooltip="Your profile"
+          size="md"
+        >
+          <User />
         </NeuButton>
 
-        <NeuButton onClick={onSettingsClick}>
-          <Settings className="w-6 h-6" />
+        <NeuButton 
+          onClick={onSettingsClick}
+          tooltip="Settings"
+          size="md"
+        >
+          <Settings />
         </NeuButton>
       </div>
     </>

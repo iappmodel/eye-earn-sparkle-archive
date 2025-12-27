@@ -8,6 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { OnboardingFlow } from './onboarding';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useNotifications } from '@/hooks/useNotifications';
+import { NotificationCenter } from './NotificationCenter';
+import { NotificationPreferences } from './NotificationPreferences';
 import { 
   EditProfileButton,
   KYCVerificationButton,
@@ -33,7 +36,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { profile, user, signOut } = useAuth();
   const navigate = useNavigate();
   const [showKycFlow, setShowKycFlow] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
   const { role, isCreator, isAdmin, isModerator } = useUserRole();
+  const { unreadCount } = useNotifications();
 
   if (!isOpen) return null;
 
@@ -166,7 +172,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Preferences</p>
           
           <SettingsButton onClick={() => {}} />
-          <NotificationsButton unreadCount={3} onClick={() => {}} />
+          <NotificationsButton unreadCount={unreadCount} onClick={() => setShowNotifications(true)} />
           
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Support</p>
           
@@ -184,6 +190,22 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         isOpen={showKycFlow}
         onClose={() => setShowKycFlow(false)}
         onComplete={() => setShowKycFlow(false)}
+      />
+
+      {/* Notification Center */}
+      <NotificationCenter
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        onOpenPreferences={() => {
+          setShowNotifications(false);
+          setShowNotificationPrefs(true);
+        }}
+      />
+
+      {/* Notification Preferences */}
+      <NotificationPreferences
+        isOpen={showNotificationPrefs}
+        onClose={() => setShowNotificationPrefs(false)}
       />
     </div>
   );

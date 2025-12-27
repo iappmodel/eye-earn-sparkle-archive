@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -194,71 +194,73 @@ const Index = () => {
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-background overflow-hidden touch-none"
-      {...handlers}
-    >
-      {/* Main Media Display with swipe animation */}
-      <div className={cn(
-        'absolute inset-0 transition-transform duration-300 ease-out',
-        swipeDirection === 'up' && 'animate-swipe-exit-up',
-        swipeDirection === 'down' && 'animate-swipe-exit-down'
-      )}>
-        <MediaCard
-          key={currentMedia.id}
-          type={currentMedia.type}
-          src={currentMedia.src}
-          duration={currentMedia.duration}
-          reward={currentMedia.reward}
-          onComplete={handleMediaComplete}
-          isActive={!isTransitioning}
+    <ControlsVisibilityProvider autoHideDelay={3000}>
+      <div 
+        className="fixed inset-0 bg-background overflow-hidden touch-none"
+        {...handlers}
+      >
+        {/* Main Media Display with swipe animation */}
+        <div className={cn(
+          'absolute inset-0 transition-transform duration-300 ease-out',
+          swipeDirection === 'up' && 'animate-swipe-exit-up',
+          swipeDirection === 'down' && 'animate-swipe-exit-down'
+        )}>
+          <MediaCard
+            key={currentMedia.id}
+            type={currentMedia.type}
+            src={currentMedia.src}
+            duration={currentMedia.duration}
+            reward={currentMedia.reward}
+            onComplete={handleMediaComplete}
+            isActive={!isTransitioning}
+          />
+        </div>
+
+        {/* Cross Navigation hints */}
+        <CrossNavigation onNavigate={handleNavigate} />
+
+        {/* Floating Controls */}
+        <FloatingControls
+          onWalletClick={() => setShowWallet(true)}
+          onProfileClick={() => setShowProfile(true)}
+          onLikeClick={handleLike}
+          onCommentClick={handleComment}
+          onShareClick={handleShare}
+          onSettingsClick={handleSettings}
+          isLiked={isLiked}
+          likeCount={1234}
+          commentCount={89}
+        />
+
+        {/* Coin slide animation on reward */}
+        <CoinSlideAnimation
+          type={coinSlideType}
+          isAnimating={showCoinSlide}
+          onComplete={handleCoinSlideComplete}
+        />
+
+        {/* Wallet Screen */}
+        <WalletScreen
+          isOpen={showWallet}
+          onClose={() => setShowWallet(false)}
+          vicoins={vicoins}
+          icoins={icoins}
+          transactions={mockTransactions}
+        />
+
+        {/* Profile Screen */}
+        <ProfileScreen
+          isOpen={showProfile}
+          onClose={() => { setShowProfile(false); setActiveTab('home'); }}
+        />
+
+        {/* Bottom Navigation - centered at bottom */}
+        <BottomNavigation 
+          activeTab={activeTab} 
+          onTabChange={handleTabChange} 
         />
       </div>
-
-      {/* Cross Navigation hints */}
-      <CrossNavigation onNavigate={handleNavigate} />
-
-      {/* Floating Controls */}
-      <FloatingControls
-        onWalletClick={() => setShowWallet(true)}
-        onProfileClick={() => setShowProfile(true)}
-        onLikeClick={handleLike}
-        onCommentClick={handleComment}
-        onShareClick={handleShare}
-        onSettingsClick={handleSettings}
-        isLiked={isLiked}
-        likeCount={1234}
-        commentCount={89}
-      />
-
-      {/* Coin slide animation on reward */}
-      <CoinSlideAnimation
-        type={coinSlideType}
-        isAnimating={showCoinSlide}
-        onComplete={handleCoinSlideComplete}
-      />
-
-      {/* Wallet Screen */}
-      <WalletScreen
-        isOpen={showWallet}
-        onClose={() => setShowWallet(false)}
-        vicoins={vicoins}
-        icoins={icoins}
-        transactions={mockTransactions}
-      />
-
-      {/* Profile Screen */}
-      <ProfileScreen
-        isOpen={showProfile}
-        onClose={() => { setShowProfile(false); setActiveTab('home'); }}
-      />
-
-      {/* Bottom Navigation */}
-      <BottomNavigation 
-        activeTab={activeTab} 
-        onTabChange={handleTabChange} 
-      />
-    </div>
+    </ControlsVisibilityProvider>
   );
 };
 

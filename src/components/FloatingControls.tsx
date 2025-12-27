@@ -1,7 +1,63 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Wallet, User, Heart, MessageCircle, Share2, Settings } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
+
+// Context for sharing visibility state across components
+interface ControlsVisibilityContextType {
+  isVisible: boolean;
+  showControls: () => void;
+}
+
+const ControlsVisibilityContext = createContext<ControlsVisibilityContextType | null>(null);
+
+export const useControlsVisibility = () => {
+  const context = useContext(ControlsVisibilityContext);
+  if (!context) {
+    return { isVisible: true, showControls: () => {} };
+  }
+  return context;
+};
+
+interface ControlsVisibilityProviderProps {
+  children: React.ReactNode;
+  autoHideDelay?: number;
+}
+
+export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProps> = ({
+  children,
+  autoHideDelay = 3000,
+}) => {
+  const [isVisible, setIsVisible] = useState(true);
+  const [hideTimer, setHideTimer] = useState<NodeJS.Timeout | null>(null);
+
+  const showControls = useCallback(() => {
+    setIsVisible(true);
+    if (hideTimer) clearTimeout(hideTimer);
+    const timer = setTimeout(() => {
+      setIsVisible(false);
+    }, autoHideDelay);
+    setHideTimer(timer);
+  }, [hideTimer, autoHideDelay]);
+
+  useEffect(() => {
+    showControls();
+    return () => {
+      if (hideTimer) clearTimeout(hideTimer);
+    };
+  }, []);
+
+  return (
+    <ControlsVisibilityContext.Provider value={{ isVisible, showControls }}>
+      {/* Invisible tap area to show controls */}
+      <div 
+        className="fixed inset-0 z-30"
+        onClick={showControls}
+      />
+      {children}
+    </ControlsVisibilityContext.Provider>
+  );
+};
 
 interface FloatingControlsProps {
   onWalletClick: () => void;
@@ -26,44 +82,16 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   likeCount = 0,
   commentCount = 0,
 }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [hideTimer, setHideTimer] = useState<NodeJS.Timeout | null>(null);
-
-  const showControls = () => {
-    setIsVisible(true);
-    if (hideTimer) clearTimeout(hideTimer);
-    const timer = setTimeout(() => {
-      setIsVisible(false);
-    }, 3000);
-    setHideTimer(timer);
-  };
-
-  useEffect(() => {
-    // Show controls on initial load
-    showControls();
-    
-    return () => {
-      if (hideTimer) clearTimeout(hideTimer);
-    };
-  }, []);
-
-  const handleScreenTap = () => {
-    showControls();
-  };
+  const { isVisible } = useControlsVisibility();
 
   return (
     <>
-      {/* Invisible tap area to show controls */}
-      <div 
-        className="fixed inset-0 z-30"
-        onClick={handleScreenTap}
-      />
-
-      {/* Right side controls */}
+      {/* Right side controls - Likes, Comments, Share + Wallet, Profile, Settings below */}
       <div className={cn(
-        'fixed right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-4 transition-all duration-300',
+        'fixed right-4 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-3 transition-all duration-300',
         isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-8 pointer-events-none'
       )}>
+        {/* Media interaction buttons */}
         <div className="flex flex-col items-center gap-1">
           <NeuButton 
             onClick={onLikeClick} 
@@ -85,23 +113,21 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         <NeuButton onClick={onShareClick}>
           <Share2 className="w-6 h-6" />
         </NeuButton>
-      </div>
 
-      {/* Bottom controls */}
-      <div className={cn(
-        'fixed bottom-8 left-1/2 -translate-x-1/2 z-40 flex gap-6 transition-all duration-300',
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
-      )}>
-        <NeuButton onClick={onWalletClick} variant="accent" size="lg">
-          <Wallet className="w-7 h-7" />
+        {/* Separator */}
+        <div className="w-8 h-px bg-border/50 my-1 self-center" />
+
+        {/* Wallet, Profile, Settings - underneath */}
+        <NeuButton onClick={onWalletClick} variant="accent">
+          <Wallet className="w-6 h-6" />
         </NeuButton>
-        
-        <NeuButton onClick={onProfileClick} size="lg">
-          <User className="w-7 h-7" />
+
+        <NeuButton onClick={onProfileClick}>
+          <User className="w-6 h-6" />
         </NeuButton>
-        
-        <NeuButton onClick={onSettingsClick} size="lg">
-          <Settings className="w-7 h-7" />
+
+        <NeuButton onClick={onSettingsClick}>
+          <Settings className="w-6 h-6" />
         </NeuButton>
       </div>
     </>

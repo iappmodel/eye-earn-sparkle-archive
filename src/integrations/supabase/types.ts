@@ -161,6 +161,107 @@ export type Database = {
         }
         Relationships: []
       }
+      promotion_claims: {
+        Row: {
+          claimed_at: string
+          id: string
+          promotion_id: string
+          reward_amount: number | null
+          status: string
+          user_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          claimed_at?: string
+          id?: string
+          promotion_id: string
+          reward_amount?: number | null
+          status: string
+          user_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          claimed_at?: string
+          id?: string
+          promotion_id?: string
+          reward_amount?: number | null
+          status?: string
+          user_id?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promotion_claims_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promotions: {
+        Row: {
+          address: string | null
+          business_id: string | null
+          business_name: string
+          category: string | null
+          created_at: string
+          current_claims: number
+          description: string | null
+          expires_at: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          latitude: number
+          longitude: number
+          max_claims: number | null
+          required_action: string
+          reward_amount: number
+          reward_type: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          business_id?: string | null
+          business_name: string
+          category?: string | null
+          created_at?: string
+          current_claims?: number
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          latitude: number
+          longitude: number
+          max_claims?: number | null
+          required_action: string
+          reward_amount: number
+          reward_type: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          business_id?: string | null
+          business_name?: string
+          category?: string | null
+          created_at?: string
+          current_claims?: number
+          description?: string | null
+          expires_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          latitude?: number
+          longitude?: number
+          max_claims?: number | null
+          required_action?: string
+          reward_amount?: number
+          reward_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       reward_logs: {
         Row: {
           amount: number

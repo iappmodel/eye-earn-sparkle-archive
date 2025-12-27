@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { MediaCard } from '@/components/MediaCard';
 import { FloatingControls } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
+import { BottomNavigation } from '@/components/BottomNavigation';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -62,6 +63,7 @@ const Index = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
 
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
@@ -171,6 +173,26 @@ const Index = () => {
     toast('Settings', { description: 'Settings panel coming soon...' });
   };
 
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    switch (tab) {
+      case 'profile':
+        setShowProfile(true);
+        break;
+      case 'messages':
+        toast('Messages', { description: 'Messages coming soon...' });
+        break;
+      case 'map':
+        toast('Discovery Map', { description: 'Explore nearby offers coming soon...' });
+        break;
+      case 'create':
+        toast('Create', { description: 'Create content coming soon...' });
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <div 
       className="fixed inset-0 bg-background overflow-hidden touch-none"
@@ -228,7 +250,13 @@ const Index = () => {
       {/* Profile Screen */}
       <ProfileScreen
         isOpen={showProfile}
-        onClose={() => setShowProfile(false)}
+        onClose={() => { setShowProfile(false); setActiveTab('home'); }}
+      />
+
+      {/* Bottom Navigation */}
+      <BottomNavigation 
+        activeTab={activeTab} 
+        onTabChange={handleTabChange} 
       />
     </div>
   );

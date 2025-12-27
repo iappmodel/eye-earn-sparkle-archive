@@ -77,19 +77,21 @@
 }
 
 @layer components {
-  /* Neumorphic button styles */
+  /* Neumorphic button styles - enhanced 3D effect */
   .neu-button {
     background: linear-gradient(145deg, hsl(220 15% 17%), hsl(220 15% 12%));
     box-shadow: 
       8px 8px 16px hsl(220 20% 8%),
-      -8px -8px 16px hsl(220 15% 20%);
+      -8px -8px 16px hsl(220 15% 20%),
+      inset 0 1px 1px hsl(220 15% 22%);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   .neu-button:hover {
     box-shadow: 
       12px 12px 24px hsl(220 20% 6%),
-      -12px -12px 24px hsl(220 15% 22%);
+      -12px -12px 24px hsl(220 15% 22%),
+      inset 0 1px 1px hsl(220 15% 24%);
   }
   
   .neu-button:active, .neu-button-pressed {
@@ -102,8 +104,8 @@
   .neu-inset {
     background: linear-gradient(145deg, hsl(220 15% 11%), hsl(220 15% 16%));
     box-shadow: 
-      inset 4px 4px 8px hsl(220 20% 8%),
-      inset -4px -4px 8px hsl(220 15% 20%);
+      inset 6px 6px 12px hsl(220 20% 8%),
+      inset -6px -6px 12px hsl(220 15% 20%);
   }
   
   .neu-card {

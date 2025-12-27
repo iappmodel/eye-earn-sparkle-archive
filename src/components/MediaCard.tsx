@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Play, Pause, Volume2, VolumeX, SkipForward } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
+import { EyeTrackingIndicator } from './EyeTrackingIndicator';
+import { useEyeTracking } from '@/hooks/useEyeTracking';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface MediaCardProps {
   type: 'video' | 'image' | 'promo';
@@ -9,10 +13,11 @@ interface MediaCardProps {
   videoSrc?: string;
   duration?: number;
   reward?: { amount: number; type: 'vicoin' | 'icoin' };
-  onComplete?: () => void;
+  onComplete?: (attentionValidated: boolean) => void;
   onProgress?: (progress: number) => void;
   onSkip?: () => void;
   isActive?: boolean;
+  contentId?: string;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({
@@ -25,26 +30,54 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   onProgress,
   onSkip,
   isActive = true,
+  contentId,
 }) => {
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showEyeTracking, setShowEyeTracking] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [showRewardBadge, setShowRewardBadge] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [attentionWarning, setAttentionWarning] = useState(false);
   const hasCompleted = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  const startTimeRef = useRef<number>(0);
+
+  // Eye tracking for promo content
+  const isPromoContent = type === 'promo' && !!reward;
+  const {
+    isTracking,
+    isFaceDetected,
+    attentionScore,
+    resetAttention,
+    getAttentionResult,
+  } = useEyeTracking({
+    enabled: isPromoContent && isActive && isPlaying,
+    onAttentionLost: () => {
+      if (isPromoContent) {
+        setAttentionWarning(true);
+        toast.warning('Look at the screen to earn reward!', {
+          duration: 2000,
+        });
+      }
+    },
+    onAttentionRestored: () => {
+      setAttentionWarning(false);
+    },
+    requiredAttentionThreshold: 85,
+  });
 
   // Reset state when media changes
   useEffect(() => {
     setProgress(0);
     setIsPlaying(false);
-    setShowEyeTracking(false);
     setShowRewardBadge(false);
     setShowControls(false);
+    setAttentionWarning(false);
     hasCompleted.current = false;
-  }, [src]);
+    startTimeRef.current = 0;
+    resetAttention();
+  }, [src, resetAttention]);
 
   // Show reward badge when promo starts
   useEffect(() => {
@@ -53,6 +86,55 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [type, isActive, reward]);
 
+  // Validate attention and complete
+  const handlePromoComplete = useCallback(async () => {
+    if (hasCompleted.current) return;
+    hasCompleted.current = true;
+
+    const watchDuration = (Date.now() - startTimeRef.current) / 1000;
+    const attentionResult = getAttentionResult();
+    
+    console.log('[MediaCard] Promo complete, validating attention...', attentionResult);
+
+    try {
+      // Validate with backend
+      const { data, error } = await supabase.functions.invoke('validate-attention', {
+        body: {
+          userId: 'anonymous', // Will be replaced with actual user ID
+          contentId: contentId || src,
+          attentionScore: attentionResult.score,
+          watchDuration,
+          totalDuration: duration,
+          framesDetected: attentionResult.framesDetected,
+          totalFrames: attentionResult.totalFrames,
+        },
+      });
+
+      if (error) {
+        console.error('[MediaCard] Validation error:', error);
+        onComplete?.(false);
+        return;
+      }
+
+      console.log('[MediaCard] Validation result:', data);
+
+      if (data?.validated) {
+        toast.success('Reward earned!', {
+          description: `Attention score: ${attentionResult.score}%`,
+        });
+        onComplete?.(true);
+      } else {
+        toast.error('Reward not earned', {
+          description: data?.reasons?.join(', ') || 'Attention requirements not met',
+        });
+        onComplete?.(false);
+      }
+    } catch (err) {
+      console.error('[MediaCard] Validation failed:', err);
+      onComplete?.(false);
+    }
+  }, [contentId, src, duration, getAttentionResult, onComplete]);
+
   // Progress tracking for images/promos without video
   useEffect(() => {
     if (!isActive || !isPlaying || videoSrc) return;
@@ -60,10 +142,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     const interval = setInterval(() => {
       setProgress(prev => {
         const newProgress = prev + (100 / (duration * 10));
-        if (newProgress >= 100 && !hasCompleted.current) {
-          hasCompleted.current = true;
+        if (newProgress >= 100) {
           clearInterval(interval);
-          onComplete?.();
+          if (isPromoContent) {
+            handlePromoComplete();
+          } else {
+            onComplete?.(true);
+          }
           return 100;
         }
         onProgress?.(Math.min(newProgress, 100));
@@ -72,7 +157,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isActive, isPlaying, duration, onComplete, onProgress, videoSrc]);
+  }, [isActive, isPlaying, duration, videoSrc, isPromoContent, handlePromoComplete, onComplete, onProgress]);
 
   // Video element progress tracking
   useEffect(() => {
@@ -86,9 +171,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     };
 
     const handleEnded = () => {
-      if (!hasCompleted.current) {
-        hasCompleted.current = true;
-        onComplete?.();
+      if (isPromoContent) {
+        handlePromoComplete();
+      } else {
+        onComplete?.(true);
       }
     };
 
@@ -99,14 +185,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('ended', handleEnded);
     };
-  }, [isActive, onComplete, onProgress]);
+  }, [isActive, isPromoContent, handlePromoComplete, onComplete, onProgress]);
 
   // Auto-start promo/video content
   useEffect(() => {
     if ((type === 'promo' || type === 'video') && isActive) {
-      setShowEyeTracking(true);
       const timer = setTimeout(() => {
         setIsPlaying(true);
+        startTimeRef.current = Date.now();
         if (videoRef.current) {
           videoRef.current.play().catch(console.error);
         }
@@ -141,6 +227,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   const handlePlay = useCallback(() => {
     setIsPlaying(true);
+    if (startTimeRef.current === 0) {
+      startTimeRef.current = Date.now();
+    }
     if (videoRef.current) {
       videoRef.current.play().catch(console.error);
     }
@@ -170,7 +259,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     resetControlsTimeout();
   }, [resetControlsTimeout]);
 
-  const handleSkip = useCallback((e: React.MouseEvent) => {
+  const handleSkipClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     onSkip?.();
   }, [onSkip]);
@@ -186,7 +275,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   return (
     <div 
-      className="relative w-full h-full bg-background overflow-hidden select-none"
+      className={cn(
+        "relative w-full h-full bg-background overflow-hidden select-none",
+        attentionWarning && "ring-2 ring-destructive ring-inset"
+      )}
       onClick={handleTap}
     >
       {/* Fullscreen media background - image or video */}
@@ -213,15 +305,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Bottom gradient for controls visibility */}
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
-      {/* Eye tracking green dot - center top */}
-      {showEyeTracking && (type === 'promo' || type === 'video') && (
+      {/* Eye tracking indicator - center top */}
+      {isPromoContent && isPlaying && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20">
-          <div className="relative">
-            <div className="w-4 h-4 rounded-full bg-green-500 animate-pulse" />
-            <div className="absolute inset-0 w-4 h-4 rounded-full bg-green-400 animate-ping opacity-75" />
-            <div className="absolute -inset-1 rounded-full bg-green-500/30 blur-sm" />
-          </div>
+          <EyeTrackingIndicator
+            isTracking={isTracking}
+            isFaceDetected={isFaceDetected}
+            attentionScore={attentionScore}
+          />
         </div>
+      )}
+
+      {/* Attention warning overlay */}
+      {attentionWarning && (
+        <div className="absolute inset-0 bg-destructive/10 pointer-events-none z-10 animate-pulse" />
       )}
 
       {/* Reward badge - appears for 3 seconds */}
@@ -274,7 +371,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
           {/* Skip/Next */}
           <button
-            onClick={handleSkip}
+            onClick={handleSkipClick}
             className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
           >
             <SkipForward className="w-5 h-5 text-foreground" />

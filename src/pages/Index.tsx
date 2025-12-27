@@ -82,8 +82,9 @@ const Index = () => {
   ];
 
   // Handle promo completion - trigger coin slide animation and update DB
-  const handleMediaComplete = useCallback(async () => {
-    if (currentMedia.reward && profile) {
+  const handleMediaComplete = useCallback(async (attentionValidated: boolean = true) => {
+    // Only give rewards if attention was validated for promo content
+    if (currentMedia.reward && profile && attentionValidated) {
       setCoinSlideType(currentMedia.reward.type);
       setShowCoinSlide(true);
 
@@ -109,6 +110,9 @@ const Index = () => {
       if (navigator.vibrate) {
         navigator.vibrate([50, 30, 50]);
       }
+    } else if (currentMedia.reward && !attentionValidated) {
+      // Attention not validated - no reward
+      console.log('[Index] Reward not given - attention validation failed');
     }
   }, [currentMedia, profile, vicoins, icoins, refreshProfile]);
 
@@ -219,6 +223,7 @@ const Index = () => {
             src={currentMedia.src}
             duration={currentMedia.duration}
             reward={currentMedia.reward}
+            contentId={currentMedia.id}
             onComplete={handleMediaComplete}
             onSkip={handleSkip}
             isActive={!isTransitioning}

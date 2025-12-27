@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Play, Eye, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipForward } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
 
 interface MediaCardProps {
@@ -11,6 +11,7 @@ interface MediaCardProps {
   reward?: { amount: number; type: 'vicoin' | 'icoin' };
   onComplete?: () => void;
   onProgress?: (progress: number) => void;
+  onSkip?: () => void;
   isActive?: boolean;
 }
 
@@ -22,6 +23,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   reward,
   onComplete,
   onProgress,
+  onSkip,
   isActive = true,
 }) => {
   const [progress, setProgress] = useState(0);
@@ -29,7 +31,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [showEyeTracking, setShowEyeTracking] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [showRewardBadge, setShowRewardBadge] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const hasCompleted = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Reset state when media changes
   useEffect(() => {
@@ -37,6 +42,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     setIsPlaying(false);
     setShowEyeTracking(false);
     setShowRewardBadge(false);
+    setShowControls(false);
     hasCompleted.current = false;
   }, [src]);
 
@@ -47,9 +53,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [type, isActive, reward]);
 
-  // Progress tracking
+  // Progress tracking for images/promos without video
   useEffect(() => {
-    if (!isActive || !isPlaying) return;
+    if (!isActive || !isPlaying || videoSrc) return;
 
     const interval = setInterval(() => {
       setProgress(prev => {
@@ -66,33 +72,140 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isActive, isPlaying, duration, onComplete, onProgress]);
+  }, [isActive, isPlaying, duration, onComplete, onProgress, videoSrc]);
 
-  // Auto-start promo content
+  // Video element progress tracking
   useEffect(() => {
-    if (type === 'promo' && isActive) {
+    const video = videoRef.current;
+    if (!video || !isActive) return;
+
+    const handleTimeUpdate = () => {
+      const newProgress = (video.currentTime / video.duration) * 100;
+      setProgress(newProgress);
+      onProgress?.(newProgress);
+    };
+
+    const handleEnded = () => {
+      if (!hasCompleted.current) {
+        hasCompleted.current = true;
+        onComplete?.();
+      }
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('ended', handleEnded);
+
+    return () => {
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('ended', handleEnded);
+    };
+  }, [isActive, onComplete, onProgress]);
+
+  // Auto-start promo/video content
+  useEffect(() => {
+    if ((type === 'promo' || type === 'video') && isActive) {
       setShowEyeTracking(true);
-      const timer = setTimeout(() => setIsPlaying(true), 500);
+      const timer = setTimeout(() => {
+        setIsPlaying(true);
+        if (videoRef.current) {
+          videoRef.current.play().catch(console.error);
+        }
+      }, 500);
       return () => clearTimeout(timer);
     }
   }, [type, isActive]);
 
+  // Sync video mute state
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+
+  // Auto-hide controls after 3s
+  const resetControlsTimeout = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
+  }, []);
+
+  const handleTap = useCallback(() => {
+    setShowControls(prev => !prev);
+    if (!showControls) {
+      resetControlsTimeout();
+    }
+  }, [showControls, resetControlsTimeout]);
+
   const handlePlay = useCallback(() => {
     setIsPlaying(true);
-  }, []);
+    if (videoRef.current) {
+      videoRef.current.play().catch(console.error);
+    }
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
+
+  const handlePause = useCallback(() => {
+    setIsPlaying(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
+
+  const togglePlayPause = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isPlaying) {
+      handlePause();
+    } else {
+      handlePlay();
+    }
+  }, [isPlaying, handlePlay, handlePause]);
 
   const toggleMute = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsMuted(prev => !prev);
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
+
+  const handleSkip = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSkip?.();
+  }, [onSkip]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
   }, []);
 
   return (
-    <div className="relative w-full h-full bg-background overflow-hidden select-none">
-      {/* Fullscreen media background */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center transition-transform duration-300"
-        style={{ backgroundImage: `url(${src})` }}
-      />
+    <div 
+      className="relative w-full h-full bg-background overflow-hidden select-none"
+      onClick={handleTap}
+    >
+      {/* Fullscreen media background - image or video */}
+      {videoSrc ? (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          src={videoSrc}
+          poster={src}
+          muted={isMuted}
+          playsInline
+          loop={type !== 'promo'}
+        />
+      ) : (
+        <div 
+          className="absolute inset-0 bg-cover bg-center transition-transform duration-300"
+          style={{ backgroundImage: `url(${src})` }}
+        />
+      )}
       
       {/* Subtle vignette overlay for depth */}
       <div className="absolute inset-0 bg-gradient-radial from-transparent via-transparent to-background/60" />
@@ -100,11 +213,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Bottom gradient for controls visibility */}
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
-      {/* Eye tracking indicator for promos */}
-      {showEyeTracking && type === 'promo' && (
-        <div className="absolute top-16 left-4 flex items-center gap-2 px-3 py-2 rounded-full bg-destructive/80 backdrop-blur-sm animate-scale-in z-20">
-          <Eye className="w-4 h-4 text-destructive-foreground animate-pulse" />
-          <span className="text-xs font-medium text-destructive-foreground">Tracking</span>
+      {/* Eye tracking green dot - center top */}
+      {showEyeTracking && (type === 'promo' || type === 'video') && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20">
+          <div className="relative">
+            <div className="w-4 h-4 rounded-full bg-green-500 animate-pulse" />
+            <div className="absolute inset-0 w-4 h-4 rounded-full bg-green-400 animate-ping opacity-75" />
+            <div className="absolute -inset-1 rounded-full bg-green-500/30 blur-sm" />
+          </div>
         </div>
       )}
 
@@ -117,8 +233,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         />
       )}
 
-      {/* Play button overlay */}
-      {!isPlaying && type !== 'image' && (
+      {/* Initial play button overlay - shown before playing starts */}
+      {!isPlaying && type !== 'image' && !showControls && (
         <button
           onClick={handlePlay}
           className="absolute inset-0 flex items-center justify-center z-10"
@@ -129,18 +245,41 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </button>
       )}
 
-      {/* Mute toggle for video/promo content */}
-      {isPlaying && type !== 'image' && (
-        <button
-          onClick={toggleMute}
-          className="absolute bottom-24 right-4 z-20 w-10 h-10 rounded-full bg-background/50 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-background/70"
-        >
-          {isMuted ? (
-            <VolumeX className="w-5 h-5 text-foreground" />
-          ) : (
-            <Volume2 className="w-5 h-5 text-foreground" />
-          )}
-        </button>
+      {/* Tap-to-reveal playback controls - bottom right */}
+      {showControls && type !== 'image' && (
+        <div className="absolute bottom-24 right-4 z-20 flex flex-col gap-3 animate-fade-in">
+          {/* Play/Pause */}
+          <button
+            onClick={togglePlayPause}
+            className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
+          >
+            {isPlaying ? (
+              <Pause className="w-5 h-5 text-foreground" />
+            ) : (
+              <Play className="w-5 h-5 text-foreground ml-0.5" />
+            )}
+          </button>
+
+          {/* Volume */}
+          <button
+            onClick={toggleMute}
+            className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
+          >
+            {isMuted ? (
+              <VolumeX className="w-5 h-5 text-foreground" />
+            ) : (
+              <Volume2 className="w-5 h-5 text-foreground" />
+            )}
+          </button>
+
+          {/* Skip/Next */}
+          <button
+            onClick={handleSkip}
+            className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
+          >
+            <SkipForward className="w-5 h-5 text-foreground" />
+          </button>
+        </div>
       )}
 
       {/* Progress bar for promos - thin line at very bottom */}

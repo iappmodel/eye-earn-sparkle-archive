@@ -30,44 +30,42 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 }) => {
   return (
     <nav className={cn(
-      'fixed top-0 left-0 right-0 z-50 px-4 pt-4 pb-2',
+      'fixed left-0 top-1/2 -translate-y-1/2 z-50 pl-3 py-4',
       className
     )}>
-      <div className="max-w-md mx-auto">
-        <div className="neu-card rounded-2xl px-2 py-2 flex items-center justify-around">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={cn(
-                'flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all duration-200',
-                item.isCreate 
-                  ? 'neu-button w-10 h-10 rounded-full flex items-center justify-center'
-                  : activeTab === item.id 
-                    ? 'neu-inset' 
-                    : 'hover:bg-secondary/50'
-              )}
-            >
+      <div className="neu-card rounded-2xl px-2 py-3 flex flex-col items-center gap-1">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onTabChange(item.id)}
+            className={cn(
+              'flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl transition-all duration-200',
+              item.isCreate 
+                ? 'neu-button w-10 h-10 rounded-full flex items-center justify-center my-1'
+                : activeTab === item.id 
+                  ? 'neu-inset' 
+                  : 'hover:bg-secondary/50'
+            )}
+          >
+            <span className={cn(
+              item.isCreate 
+                ? 'text-primary'
+                : activeTab === item.id 
+                  ? 'text-primary' 
+                  : 'text-muted-foreground'
+            )}>
+              {item.icon}
+            </span>
+            {!item.isCreate && (
               <span className={cn(
-                item.isCreate 
-                  ? 'text-primary'
-                  : activeTab === item.id 
-                    ? 'text-primary' 
-                    : 'text-muted-foreground'
+                'text-[9px] font-medium',
+                activeTab === item.id ? 'text-primary' : 'text-muted-foreground'
               )}>
-                {item.icon}
+                {item.label}
               </span>
-              {!item.isCreate && (
-                <span className={cn(
-                  'text-[9px] font-medium',
-                  activeTab === item.id ? 'text-primary' : 'text-muted-foreground'
-                )}>
-                  {item.label}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+            )}
+          </button>
+        ))}
       </div>
     </nav>
   );

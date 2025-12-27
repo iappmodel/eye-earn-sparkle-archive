@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from '@/hooks/use-toast';
+import type { Json } from '@/integrations/supabase/types';
 
 export interface ContentFlag {
   id: string;
@@ -192,7 +193,7 @@ export const useAdmin = () => {
       action_type: actionType,
       target_type: targetType,
       target_id: targetId,
-      details,
+      details: details as Json,
     }]);
 
     if (error) {

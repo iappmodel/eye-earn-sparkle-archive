@@ -1,0 +1,161 @@
+{
+  "common": {
+    "loading": "लोड हो रहा है...",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "close": "बंद करें",
+    "confirm": "पुष्टि करें",
+    "delete": "हटाएं",
+    "edit": "संपादित करें",
+    "back": "वापस",
+    "next": "अगला",
+    "done": "हो गया",
+    "error": "त्रुटि",
+    "success": "सफलता",
+    "retry": "पुनः प्रयास करें",
+    "search": "खोजें",
+    "share": "साझा करें",
+    "like": "पसंद",
+    "follow": "फ़ॉलो करें",
+    "unfollow": "अनफ़ॉलो करें",
+    "offline": "ऑफ़लाइन",
+    "online": "ऑनलाइन",
+    "pending": "लंबित",
+    "syncing": "सिंक हो रहा है..."
+  },
+  "auth": {
+    "signIn": "साइन इन करें",
+    "signUp": "साइन अप करें",
+    "signOut": "साइन आउट करें",
+    "email": "ईमेल",
+    "password": "पासवर्ड",
+    "forgotPassword": "पासवर्ड भूल गए?",
+    "createAccount": "खाता बनाएं",
+    "alreadyHaveAccount": "पहले से खाता है?",
+    "dontHaveAccount": "खाता नहीं है?",
+    "welcomeBack": "वापसी पर स्वागत है!",
+    "getStarted": "अपने खाते से शुरू करें"
+  },
+  "navigation": {
+    "home": "होम",
+    "discover": "खोजें",
+    "messages": "संदेश",
+    "wallet": "वॉलेट",
+    "profile": "प्रोफ़ाइल",
+    "settings": "सेटिंग्स",
+    "notifications": "सूचनाएं"
+  },
+  "profile": {
+    "title": "प्रोफ़ाइल",
+    "editProfile": "प्रोफ़ाइल संपादित करें",
+    "followers": "फ़ॉलोअर्स",
+    "following": "फ़ॉलोइंग",
+    "likes": "पसंद",
+    "account": "खाता",
+    "kycVerification": "KYC सत्यापन",
+    "seeEarnings": "कमाई देखें",
+    "inviteFriends": "दोस्तों को आमंत्रित करें",
+    "preferences": "प्राथमिकताएं",
+    "syncStatus": "सिंक स्थिति",
+    "support": "सहायता",
+    "helpCenter": "सहायता केंद्र",
+    "legal": "कानूनी",
+    "creatorTools": "क्रिएटर टूल्स",
+    "uploadContent": "सामग्री अपलोड करें",
+    "analytics": "एनालिटिक्स",
+    "moderation": "मॉडरेशन",
+    "adminDashboard": "एडमिन डैशबोर्ड",
+    "contentReview": "सामग्री समीक्षा"
+  },
+  "wallet": {
+    "title": "वॉलेट",
+    "balance": "शेष राशि",
+    "vicoins": "विकॉइन",
+    "icoins": "आईकॉइन",
+    "transactions": "लेनदेन",
+    "subscription": "सदस्यता",
+    "payout": "भुगतान",
+    "overview": "अवलोकन",
+    "convert": "बदलें",
+    "transfer": "स्थानांतरण",
+    "withdraw": "निकालें",
+    "earnedToday": "आज की कमाई",
+    "dailyLimit": "दैनिक सीमा"
+  },
+  "rewards": {
+    "watchPromo": "पुरस्कार पाने के लिए यह प्रोमो देखें",
+    "earnedReward": "आपने पुरस्कार जीता!",
+    "claimReward": "पुरस्कार प्राप्त करें",
+    "rewardClaimed": "पुरस्कार प्राप्त हुआ",
+    "dailyTasksCompleted": "दैनिक कार्य पूर्ण"
+  },
+  "feed": {
+    "forYou": "आपके लिए",
+    "following": "फ़ॉलोइंग",
+    "trending": "ट्रेंडिंग",
+    "sponsored": "प्रायोजित",
+    "noContent": "कोई सामग्री उपलब्ध नहीं",
+    "pullToRefresh": "रिफ्रेश करने के लिए खींचें"
+  },
+  "messages": {
+    "title": "संदेश",
+    "newMessage": "नया संदेश",
+    "typeMessage": "संदेश टाइप करें...",
+    "noMessages": "कोई संदेश नहीं",
+    "startConversation": "बातचीत शुरू करें"
+  },
+  "notifications": {
+    "title": "सूचनाएं",
+    "markAllRead": "सभी को पढ़ा हुआ चिह्नित करें",
+    "noNotifications": "कोई सूचना नहीं",
+    "preferences": "सूचना प्राथमिकताएं",
+    "push": "पुश सूचनाएं",
+    "email": "ईमेल सूचनाएं",
+    "inApp": "ऐप सूचनाएं"
+  },
+  "settings": {
+    "title": "सेटिंग्स",
+    "language": "भाषा",
+    "selectLanguage": "भाषा चुनें",
+    "currency": "मुद्रा",
+    "theme": "थीम",
+    "darkMode": "डार्क मोड",
+    "lightMode": "लाइट मोड",
+    "privacy": "गोपनीयता",
+    "security": "सुरक्षा",
+    "about": "के बारे में"
+  },
+  "kyc": {
+    "title": "पहचान सत्यापन",
+    "pending": "लंबित",
+    "submitted": "सबमिट किया गया",
+    "verified": "सत्यापित",
+    "rejected": "अस्वीकृत",
+    "uploadId": "आईडी अपलोड करें",
+    "takeSelfie": "सेल्फी लें",
+    "verifyIdentity": "अपनी पहचान सत्यापित करें"
+  },
+  "tasks": {
+    "title": "कार्य",
+    "daily": "दैनिक कार्य",
+    "weekly": "साप्ताहिक कार्य",
+    "completed": "पूर्ण",
+    "inProgress": "प्रगति में",
+    "claimReward": "पुरस्कार प्राप्त करें"
+  },
+  "errors": {
+    "somethingWentWrong": "कुछ गलत हो गया",
+    "networkError": "नेटवर्क त्रुटि। अपना कनेक्शन जांचें।",
+    "unauthorized": "आप इस क्रिया के लिए अधिकृत नहीं हैं",
+    "notFound": "नहीं मिला",
+    "invalidInput": "अमान्य इनपुट"
+  },
+  "time": {
+    "justNow": "अभी",
+    "minutesAgo": "{count} मिनट पहले",
+    "hoursAgo": "{count} घंटे पहले",
+    "daysAgo": "{count} दिन पहले",
+    "yesterday": "कल",
+    "today": "आज"
+  }
+}

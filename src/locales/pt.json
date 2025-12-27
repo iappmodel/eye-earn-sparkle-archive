@@ -1,0 +1,161 @@
+{
+  "common": {
+    "loading": "Carregando...",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "confirm": "Confirmar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "done": "Feito",
+    "error": "Erro",
+    "success": "Sucesso",
+    "retry": "Tentar novamente",
+    "search": "Buscar",
+    "share": "Compartilhar",
+    "like": "Curtir",
+    "follow": "Seguir",
+    "unfollow": "Deixar de seguir",
+    "offline": "Offline",
+    "online": "Online",
+    "pending": "Pendente",
+    "syncing": "Sincronizando..."
+  },
+  "auth": {
+    "signIn": "Entrar",
+    "signUp": "Cadastrar",
+    "signOut": "Sair",
+    "email": "Email",
+    "password": "Senha",
+    "forgotPassword": "Esqueceu a senha?",
+    "createAccount": "Criar Conta",
+    "alreadyHaveAccount": "Já tem uma conta?",
+    "dontHaveAccount": "Não tem uma conta?",
+    "welcomeBack": "Bem-vindo de volta!",
+    "getStarted": "Comece com sua conta"
+  },
+  "navigation": {
+    "home": "Início",
+    "discover": "Descobrir",
+    "messages": "Mensagens",
+    "wallet": "Carteira",
+    "profile": "Perfil",
+    "settings": "Configurações",
+    "notifications": "Notificações"
+  },
+  "profile": {
+    "title": "Perfil",
+    "editProfile": "Editar Perfil",
+    "followers": "Seguidores",
+    "following": "Seguindo",
+    "likes": "Curtidas",
+    "account": "Conta",
+    "kycVerification": "Verificação KYC",
+    "seeEarnings": "Ver Ganhos",
+    "inviteFriends": "Convidar Amigos",
+    "preferences": "Preferências",
+    "syncStatus": "Status de Sincronização",
+    "support": "Suporte",
+    "helpCenter": "Central de Ajuda",
+    "legal": "Legal",
+    "creatorTools": "Ferramentas de Criador",
+    "uploadContent": "Enviar Conteúdo",
+    "analytics": "Analytics",
+    "moderation": "Moderação",
+    "adminDashboard": "Painel Admin",
+    "contentReview": "Revisão de Conteúdo"
+  },
+  "wallet": {
+    "title": "Carteira",
+    "balance": "Saldo",
+    "vicoins": "Vicoins",
+    "icoins": "Icoins",
+    "transactions": "Transações",
+    "subscription": "Assinatura",
+    "payout": "Saque",
+    "overview": "Visão Geral",
+    "convert": "Converter",
+    "transfer": "Transferir",
+    "withdraw": "Sacar",
+    "earnedToday": "Ganho Hoje",
+    "dailyLimit": "Limite Diário"
+  },
+  "rewards": {
+    "watchPromo": "Assista esta promoção para ganhar recompensas",
+    "earnedReward": "Você ganhou uma recompensa!",
+    "claimReward": "Resgatar Recompensa",
+    "rewardClaimed": "Recompensa Resgatada",
+    "dailyTasksCompleted": "Tarefas Diárias Concluídas"
+  },
+  "feed": {
+    "forYou": "Para Você",
+    "following": "Seguindo",
+    "trending": "Em Alta",
+    "sponsored": "Patrocinado",
+    "noContent": "Nenhum conteúdo disponível",
+    "pullToRefresh": "Puxe para atualizar"
+  },
+  "messages": {
+    "title": "Mensagens",
+    "newMessage": "Nova Mensagem",
+    "typeMessage": "Digite uma mensagem...",
+    "noMessages": "Sem mensagens",
+    "startConversation": "Iniciar conversa"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "markAllRead": "Marcar tudo como lido",
+    "noNotifications": "Sem notificações",
+    "preferences": "Preferências de Notificação",
+    "push": "Notificações Push",
+    "email": "Notificações por Email",
+    "inApp": "Notificações no App"
+  },
+  "settings": {
+    "title": "Configurações",
+    "language": "Idioma",
+    "selectLanguage": "Selecionar Idioma",
+    "currency": "Moeda",
+    "theme": "Tema",
+    "darkMode": "Modo Escuro",
+    "lightMode": "Modo Claro",
+    "privacy": "Privacidade",
+    "security": "Segurança",
+    "about": "Sobre"
+  },
+  "kyc": {
+    "title": "Verificação de Identidade",
+    "pending": "Pendente",
+    "submitted": "Enviado",
+    "verified": "Verificado",
+    "rejected": "Rejeitado",
+    "uploadId": "Enviar ID",
+    "takeSelfie": "Tirar Selfie",
+    "verifyIdentity": "Verificar Sua Identidade"
+  },
+  "tasks": {
+    "title": "Tarefas",
+    "daily": "Tarefas Diárias",
+    "weekly": "Tarefas Semanais",
+    "completed": "Concluído",
+    "inProgress": "Em Progresso",
+    "claimReward": "Resgatar Recompensa"
+  },
+  "errors": {
+    "somethingWentWrong": "Algo deu errado",
+    "networkError": "Erro de rede. Verifique sua conexão.",
+    "unauthorized": "Você não está autorizado a realizar esta ação",
+    "notFound": "Não encontrado",
+    "invalidInput": "Entrada inválida"
+  },
+  "time": {
+    "justNow": "Agora mesmo",
+    "minutesAgo": "Há {count} minutos",
+    "hoursAgo": "Há {count} horas",
+    "daysAgo": "Há {count} dias",
+    "yesterday": "Ontem",
+    "today": "Hoje"
+  }
+}

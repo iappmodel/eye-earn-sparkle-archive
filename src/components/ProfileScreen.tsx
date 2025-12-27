@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Camera, Upload, Video, BarChart3, Shield, Wifi } from 'lucide-react';
+import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
@@ -9,8 +9,10 @@ import { useNavigate } from 'react-router-dom';
 import { OnboardingFlow } from './onboarding';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useLocalization } from '@/contexts/LocalizationContext';
 import { NotificationCenter } from './NotificationCenter';
 import { NotificationPreferences } from './NotificationPreferences';
+import { SettingsScreen } from './SettingsScreen';
 import ConnectionStatusDot from './ConnectionStatusDot';
 import SyncStatusPanel from './SyncStatusPanel';
 import { 
@@ -41,8 +43,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const { role, isCreator, isAdmin, isModerator } = useUserRole();
   const { unreadCount } = useNotifications();
+  const { t, localeConfig } = useLocalization();
 
   if (!isOpen) return null;
 
@@ -189,7 +193,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Preferences</p>
           
-          <SettingsButton onClick={() => {}} />
+          <SettingsButton onClick={() => setShowSettings(true)} />
+          <MenuButton 
+            icon={<Globe className="w-5 h-5 text-primary" />}
+            label={t('settings.language')}
+            description={localeConfig.nativeName}
+            onClick={() => setShowSettings(true)}
+          />
           <MenuButton 
             icon={<Wifi className="w-5 h-5 text-primary" />}
             label="Sync Status"
@@ -215,14 +225,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         </div>
       </div>
 
-      {/* KYC Verification Flow */}
       <OnboardingFlow
         isOpen={showKycFlow}
         onClose={() => setShowKycFlow(false)}
         onComplete={() => setShowKycFlow(false)}
       />
 
-      {/* Notification Center */}
       <NotificationCenter
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
@@ -232,10 +240,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         }}
       />
 
-      {/* Notification Preferences */}
       <NotificationPreferences
         isOpen={showNotificationPrefs}
         onClose={() => setShowNotificationPrefs(false)}
+      />
+
+      <SettingsScreen
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
       />
     </div>
   );

@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      achievements: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          name: string
+          requirement_type: string
+          requirement_value: number
+          xp_reward: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          requirement_type: string
+          requirement_value: number
+          xp_reward?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          requirement_type?: string
+          requirement_value?: number
+          xp_reward?: number
+        }
+        Relationships: []
+      }
       content_interactions: {
         Row: {
           attention_score: number | null
@@ -549,6 +588,57 @@ export type Database = {
         }
         Relationships: []
       }
+      task_templates: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          goal: number
+          icon: string | null
+          id: string
+          is_active: boolean
+          reward_type: string
+          reward_value: number
+          target_roles: string[] | null
+          title: string
+          type: string
+          updated_at: string
+          xp_reward: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          goal?: number
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          reward_type?: string
+          reward_value?: number
+          target_roles?: string[] | null
+          title: string
+          type?: string
+          updated_at?: string
+          xp_reward?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          goal?: number
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          reward_type?: string
+          reward_value?: number
+          target_roles?: string[] | null
+          title?: string
+          type?: string
+          updated_at?: string
+          xp_reward?: number
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
@@ -578,6 +668,74 @@ export type Database = {
           id?: string
           reference_id?: string | null
           type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_achievements: {
+        Row: {
+          achievement_id: string | null
+          id: string
+          unlocked_at: string
+          user_id: string
+        }
+        Insert: {
+          achievement_id?: string | null
+          id?: string
+          unlocked_at?: string
+          user_id: string
+        }
+        Update: {
+          achievement_id?: string | null
+          id?: string
+          unlocked_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_achievements_achievement_id_fkey"
+            columns: ["achievement_id"]
+            isOneToOne: false
+            referencedRelation: "achievements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_levels: {
+        Row: {
+          created_at: string
+          current_xp: number
+          id: string
+          last_active_date: string | null
+          level: number
+          longest_streak: number
+          streak_days: number
+          total_xp: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_xp?: number
+          id?: string
+          last_active_date?: string | null
+          level?: number
+          longest_streak?: number
+          streak_days?: number
+          total_xp?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_xp?: number
+          id?: string
+          last_active_date?: string | null
+          level?: number
+          longest_streak?: number
+          streak_days?: number
+          total_xp?: number
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -647,6 +805,59 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_tasks: {
+        Row: {
+          completed: boolean
+          completed_at: string | null
+          created_at: string
+          goal: number
+          id: string
+          period_end: string | null
+          period_start: string
+          progress: number
+          reward_claimed: boolean
+          template_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          goal: number
+          id?: string
+          period_end?: string | null
+          period_start?: string
+          progress?: number
+          reward_claimed?: boolean
+          template_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          completed_at?: string | null
+          created_at?: string
+          goal?: number
+          id?: string
+          period_end?: string | null
+          period_start?: string
+          progress?: number
+          reward_claimed?: boolean
+          template_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_tasks_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "task_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

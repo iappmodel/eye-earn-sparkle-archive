@@ -4,6 +4,7 @@ import { FloatingControls, ControlsVisibilityProvider } from '@/components/Float
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
+import { DiscoveryMap } from '@/components/DiscoveryMap';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { OnboardingFlow } from '@/components/onboarding';
@@ -64,6 +65,7 @@ const Index = () => {
   const [coinSlideType, setCoinSlideType] = useState<'vicoin' | 'icoin'>('vicoin');
   const [showWallet, setShowWallet] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
@@ -197,7 +199,7 @@ const Index = () => {
         toast('Messages', { description: 'Messages coming soon...' });
         break;
       case 'map':
-        toast('Discovery Map', { description: 'Explore nearby offers coming soon...' });
+        setShowMap(true);
         break;
       case 'create':
         toast('Create', { description: 'Create content coming soon...' });
@@ -267,6 +269,12 @@ const Index = () => {
         <ProfileScreen
           isOpen={showProfile}
           onClose={() => { setShowProfile(false); setActiveTab('home'); }}
+        />
+
+        {/* Discovery Map */}
+        <DiscoveryMap
+          isOpen={showMap}
+          onClose={() => { setShowMap(false); setActiveTab('home'); }}
         />
 
         {/* Bottom Navigation - centered at bottom */}

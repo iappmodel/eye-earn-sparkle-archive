@@ -30,19 +30,19 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 }) => {
   return (
     <nav className={cn(
-      'fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2',
+      'fixed top-0 left-0 right-0 z-50 px-4 pt-4 pb-2',
       className
     )}>
       <div className="max-w-md mx-auto">
-        <div className="neu-card rounded-3xl px-2 py-3 flex items-center justify-around">
+        <div className="neu-card rounded-2xl px-2 py-2 flex items-center justify-around">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
               className={cn(
-                'flex flex-col items-center gap-1 px-3 py-2 rounded-2xl transition-all duration-200',
+                'flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-all duration-200',
                 item.isCreate 
-                  ? 'neu-button w-14 h-14 -mt-6 rounded-full flex items-center justify-center'
+                  ? 'neu-button w-10 h-10 rounded-full flex items-center justify-center'
                   : activeTab === item.id 
                     ? 'neu-inset' 
                     : 'hover:bg-secondary/50'
@@ -59,7 +59,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               </span>
               {!item.isCreate && (
                 <span className={cn(
-                  'text-[10px] font-medium',
+                  'text-[9px] font-medium',
                   activeTab === item.id ? 'text-primary' : 'text-muted-foreground'
                 )}>
                   {item.label}

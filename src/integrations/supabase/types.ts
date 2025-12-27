@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      kyc_submissions: {
+        Row: {
+          created_at: string
+          document_country: string | null
+          document_number: string | null
+          document_type: string | null
+          id: string
+          id_back_url: string | null
+          id_front_url: string | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selfie_url: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_country?: string | null
+          document_number?: string | null
+          document_type?: string | null
+          id?: string
+          id_back_url?: string | null
+          id_front_url?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          selfie_url?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_country?: string | null
+          document_number?: string | null
+          document_type?: string | null
+          id?: string
+          id_back_url?: string | null
+          id_front_url?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          selfie_url?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null

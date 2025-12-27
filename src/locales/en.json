@@ -1,0 +1,161 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "error": "Error",
+    "success": "Success",
+    "retry": "Retry",
+    "search": "Search",
+    "share": "Share",
+    "like": "Like",
+    "follow": "Follow",
+    "unfollow": "Unfollow",
+    "offline": "Offline",
+    "online": "Online",
+    "pending": "Pending",
+    "syncing": "Syncing..."
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "signOut": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot Password?",
+    "createAccount": "Create Account",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?",
+    "welcomeBack": "Welcome back!",
+    "getStarted": "Get started with your account"
+  },
+  "navigation": {
+    "home": "Home",
+    "discover": "Discover",
+    "messages": "Messages",
+    "wallet": "Wallet",
+    "profile": "Profile",
+    "settings": "Settings",
+    "notifications": "Notifications"
+  },
+  "profile": {
+    "title": "Profile",
+    "editProfile": "Edit Profile",
+    "followers": "Followers",
+    "following": "Following",
+    "likes": "Likes",
+    "account": "Account",
+    "kycVerification": "KYC Verification",
+    "seeEarnings": "See Earnings",
+    "inviteFriends": "Invite Friends",
+    "preferences": "Preferences",
+    "syncStatus": "Sync Status",
+    "support": "Support",
+    "helpCenter": "Help Center",
+    "legal": "Legal",
+    "creatorTools": "Creator Tools",
+    "uploadContent": "Upload Content",
+    "analytics": "Analytics",
+    "moderation": "Moderation",
+    "adminDashboard": "Admin Dashboard",
+    "contentReview": "Content Review"
+  },
+  "wallet": {
+    "title": "Wallet",
+    "balance": "Balance",
+    "vicoins": "Vicoins",
+    "icoins": "Icoins",
+    "transactions": "Transactions",
+    "subscription": "Subscription",
+    "payout": "Payout",
+    "overview": "Overview",
+    "convert": "Convert",
+    "transfer": "Transfer",
+    "withdraw": "Withdraw",
+    "earnedToday": "Earned Today",
+    "dailyLimit": "Daily Limit"
+  },
+  "rewards": {
+    "watchPromo": "Watch this promo to earn rewards",
+    "earnedReward": "You earned a reward!",
+    "claimReward": "Claim Reward",
+    "rewardClaimed": "Reward Claimed",
+    "dailyTasksCompleted": "Daily Tasks Completed"
+  },
+  "feed": {
+    "forYou": "For You",
+    "following": "Following",
+    "trending": "Trending",
+    "sponsored": "Sponsored",
+    "noContent": "No content available",
+    "pullToRefresh": "Pull to refresh"
+  },
+  "messages": {
+    "title": "Messages",
+    "newMessage": "New Message",
+    "typeMessage": "Type a message...",
+    "noMessages": "No messages yet",
+    "startConversation": "Start a conversation"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "noNotifications": "No notifications",
+    "preferences": "Notification Preferences",
+    "push": "Push Notifications",
+    "email": "Email Notifications",
+    "inApp": "In-App Notifications"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "selectLanguage": "Select Language",
+    "currency": "Currency",
+    "theme": "Theme",
+    "darkMode": "Dark Mode",
+    "lightMode": "Light Mode",
+    "privacy": "Privacy",
+    "security": "Security",
+    "about": "About"
+  },
+  "kyc": {
+    "title": "Identity Verification",
+    "pending": "Pending",
+    "submitted": "Submitted",
+    "verified": "Verified",
+    "rejected": "Rejected",
+    "uploadId": "Upload ID",
+    "takeSelfie": "Take Selfie",
+    "verifyIdentity": "Verify Your Identity"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "daily": "Daily Tasks",
+    "weekly": "Weekly Tasks",
+    "completed": "Completed",
+    "inProgress": "In Progress",
+    "claimReward": "Claim Reward"
+  },
+  "errors": {
+    "somethingWentWrong": "Something went wrong",
+    "networkError": "Network error. Please check your connection.",
+    "unauthorized": "You are not authorized to perform this action",
+    "notFound": "Not found",
+    "invalidInput": "Invalid input"
+  },
+  "time": {
+    "justNow": "Just now",
+    "minutesAgo": "{count} minutes ago",
+    "hoursAgo": "{count} hours ago",
+    "daysAgo": "{count} days ago",
+    "yesterday": "Yesterday",
+    "today": "Today"
+  }
+}

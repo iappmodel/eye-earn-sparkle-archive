@@ -1,0 +1,161 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "done": "Hecho",
+    "error": "Error",
+    "success": "Éxito",
+    "retry": "Reintentar",
+    "search": "Buscar",
+    "share": "Compartir",
+    "like": "Me gusta",
+    "follow": "Seguir",
+    "unfollow": "Dejar de seguir",
+    "offline": "Sin conexión",
+    "online": "En línea",
+    "pending": "Pendiente",
+    "syncing": "Sincronizando..."
+  },
+  "auth": {
+    "signIn": "Iniciar Sesión",
+    "signUp": "Registrarse",
+    "signOut": "Cerrar Sesión",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "createAccount": "Crear Cuenta",
+    "alreadyHaveAccount": "¿Ya tienes una cuenta?",
+    "dontHaveAccount": "¿No tienes una cuenta?",
+    "welcomeBack": "¡Bienvenido de nuevo!",
+    "getStarted": "Comienza con tu cuenta"
+  },
+  "navigation": {
+    "home": "Inicio",
+    "discover": "Descubrir",
+    "messages": "Mensajes",
+    "wallet": "Billetera",
+    "profile": "Perfil",
+    "settings": "Configuración",
+    "notifications": "Notificaciones"
+  },
+  "profile": {
+    "title": "Perfil",
+    "editProfile": "Editar Perfil",
+    "followers": "Seguidores",
+    "following": "Siguiendo",
+    "likes": "Me gusta",
+    "account": "Cuenta",
+    "kycVerification": "Verificación KYC",
+    "seeEarnings": "Ver Ganancias",
+    "inviteFriends": "Invitar Amigos",
+    "preferences": "Preferencias",
+    "syncStatus": "Estado de Sincronización",
+    "support": "Soporte",
+    "helpCenter": "Centro de Ayuda",
+    "legal": "Legal",
+    "creatorTools": "Herramientas de Creador",
+    "uploadContent": "Subir Contenido",
+    "analytics": "Analíticas",
+    "moderation": "Moderación",
+    "adminDashboard": "Panel de Administrador",
+    "contentReview": "Revisión de Contenido"
+  },
+  "wallet": {
+    "title": "Billetera",
+    "balance": "Saldo",
+    "vicoins": "Vicoins",
+    "icoins": "Icoins",
+    "transactions": "Transacciones",
+    "subscription": "Suscripción",
+    "payout": "Retiro",
+    "overview": "Resumen",
+    "convert": "Convertir",
+    "transfer": "Transferir",
+    "withdraw": "Retirar",
+    "earnedToday": "Ganado Hoy",
+    "dailyLimit": "Límite Diario"
+  },
+  "rewards": {
+    "watchPromo": "Mira esta promoción para ganar recompensas",
+    "earnedReward": "¡Has ganado una recompensa!",
+    "claimReward": "Reclamar Recompensa",
+    "rewardClaimed": "Recompensa Reclamada",
+    "dailyTasksCompleted": "Tareas Diarias Completadas"
+  },
+  "feed": {
+    "forYou": "Para Ti",
+    "following": "Siguiendo",
+    "trending": "Tendencias",
+    "sponsored": "Patrocinado",
+    "noContent": "No hay contenido disponible",
+    "pullToRefresh": "Desliza para actualizar"
+  },
+  "messages": {
+    "title": "Mensajes",
+    "newMessage": "Nuevo Mensaje",
+    "typeMessage": "Escribe un mensaje...",
+    "noMessages": "No hay mensajes",
+    "startConversation": "Iniciar una conversación"
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "markAllRead": "Marcar todo como leído",
+    "noNotifications": "Sin notificaciones",
+    "preferences": "Preferencias de Notificación",
+    "push": "Notificaciones Push",
+    "email": "Notificaciones por Email",
+    "inApp": "Notificaciones en la App"
+  },
+  "settings": {
+    "title": "Configuración",
+    "language": "Idioma",
+    "selectLanguage": "Seleccionar Idioma",
+    "currency": "Moneda",
+    "theme": "Tema",
+    "darkMode": "Modo Oscuro",
+    "lightMode": "Modo Claro",
+    "privacy": "Privacidad",
+    "security": "Seguridad",
+    "about": "Acerca de"
+  },
+  "kyc": {
+    "title": "Verificación de Identidad",
+    "pending": "Pendiente",
+    "submitted": "Enviado",
+    "verified": "Verificado",
+    "rejected": "Rechazado",
+    "uploadId": "Subir ID",
+    "takeSelfie": "Tomar Selfie",
+    "verifyIdentity": "Verificar Tu Identidad"
+  },
+  "tasks": {
+    "title": "Tareas",
+    "daily": "Tareas Diarias",
+    "weekly": "Tareas Semanales",
+    "completed": "Completado",
+    "inProgress": "En Progreso",
+    "claimReward": "Reclamar Recompensa"
+  },
+  "errors": {
+    "somethingWentWrong": "Algo salió mal",
+    "networkError": "Error de red. Verifica tu conexión.",
+    "unauthorized": "No estás autorizado para realizar esta acción",
+    "notFound": "No encontrado",
+    "invalidInput": "Entrada inválida"
+  },
+  "time": {
+    "justNow": "Ahora mismo",
+    "minutesAgo": "Hace {count} minutos",
+    "hoursAgo": "Hace {count} horas",
+    "daysAgo": "Hace {count} días",
+    "yesterday": "Ayer",
+    "today": "Hoy"
+  }
+}

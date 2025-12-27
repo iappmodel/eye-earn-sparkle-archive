@@ -1,0 +1,161 @@
+{
+  "common": {
+    "loading": "جاري التحميل...",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "confirm": "تأكيد",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "back": "رجوع",
+    "next": "التالي",
+    "done": "تم",
+    "error": "خطأ",
+    "success": "نجاح",
+    "retry": "إعادة المحاولة",
+    "search": "بحث",
+    "share": "مشاركة",
+    "like": "إعجاب",
+    "follow": "متابعة",
+    "unfollow": "إلغاء المتابعة",
+    "offline": "غير متصل",
+    "online": "متصل",
+    "pending": "قيد الانتظار",
+    "syncing": "جاري المزامنة..."
+  },
+  "auth": {
+    "signIn": "تسجيل الدخول",
+    "signUp": "إنشاء حساب",
+    "signOut": "تسجيل الخروج",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "forgotPassword": "نسيت كلمة المرور؟",
+    "createAccount": "إنشاء حساب",
+    "alreadyHaveAccount": "لديك حساب بالفعل؟",
+    "dontHaveAccount": "ليس لديك حساب؟",
+    "welcomeBack": "مرحباً بعودتك!",
+    "getStarted": "ابدأ بحسابك"
+  },
+  "navigation": {
+    "home": "الرئيسية",
+    "discover": "اكتشف",
+    "messages": "الرسائل",
+    "wallet": "المحفظة",
+    "profile": "الملف الشخصي",
+    "settings": "الإعدادات",
+    "notifications": "الإشعارات"
+  },
+  "profile": {
+    "title": "الملف الشخصي",
+    "editProfile": "تعديل الملف",
+    "followers": "المتابعون",
+    "following": "يتابع",
+    "likes": "الإعجابات",
+    "account": "الحساب",
+    "kycVerification": "التحقق من الهوية",
+    "seeEarnings": "عرض الأرباح",
+    "inviteFriends": "دعوة الأصدقاء",
+    "preferences": "التفضيلات",
+    "syncStatus": "حالة المزامنة",
+    "support": "الدعم",
+    "helpCenter": "مركز المساعدة",
+    "legal": "قانوني",
+    "creatorTools": "أدوات المنشئ",
+    "uploadContent": "رفع المحتوى",
+    "analytics": "التحليلات",
+    "moderation": "الإشراف",
+    "adminDashboard": "لوحة الإدارة",
+    "contentReview": "مراجعة المحتوى"
+  },
+  "wallet": {
+    "title": "المحفظة",
+    "balance": "الرصيد",
+    "vicoins": "فيكوينز",
+    "icoins": "آي كوينز",
+    "transactions": "المعاملات",
+    "subscription": "الاشتراك",
+    "payout": "السحب",
+    "overview": "نظرة عامة",
+    "convert": "تحويل",
+    "transfer": "نقل",
+    "withdraw": "سحب",
+    "earnedToday": "أرباح اليوم",
+    "dailyLimit": "الحد اليومي"
+  },
+  "rewards": {
+    "watchPromo": "شاهد هذا العرض لكسب المكافآت",
+    "earnedReward": "لقد ربحت مكافأة!",
+    "claimReward": "استلام المكافأة",
+    "rewardClaimed": "تم استلام المكافأة",
+    "dailyTasksCompleted": "المهام اليومية المكتملة"
+  },
+  "feed": {
+    "forYou": "لك",
+    "following": "يتابع",
+    "trending": "الرائج",
+    "sponsored": "مدعوم",
+    "noContent": "لا يوجد محتوى متاح",
+    "pullToRefresh": "اسحب للتحديث"
+  },
+  "messages": {
+    "title": "الرسائل",
+    "newMessage": "رسالة جديدة",
+    "typeMessage": "اكتب رسالة...",
+    "noMessages": "لا توجد رسائل",
+    "startConversation": "ابدأ محادثة"
+  },
+  "notifications": {
+    "title": "الإشعارات",
+    "markAllRead": "تحديد الكل كمقروء",
+    "noNotifications": "لا توجد إشعارات",
+    "preferences": "تفضيلات الإشعارات",
+    "push": "إشعارات الدفع",
+    "email": "إشعارات البريد",
+    "inApp": "إشعارات التطبيق"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "language": "اللغة",
+    "selectLanguage": "اختر اللغة",
+    "currency": "العملة",
+    "theme": "المظهر",
+    "darkMode": "الوضع الداكن",
+    "lightMode": "الوضع الفاتح",
+    "privacy": "الخصوصية",
+    "security": "الأمان",
+    "about": "حول"
+  },
+  "kyc": {
+    "title": "التحقق من الهوية",
+    "pending": "قيد الانتظار",
+    "submitted": "تم الإرسال",
+    "verified": "تم التحقق",
+    "rejected": "مرفوض",
+    "uploadId": "رفع الهوية",
+    "takeSelfie": "التقاط صورة شخصية",
+    "verifyIdentity": "تحقق من هويتك"
+  },
+  "tasks": {
+    "title": "المهام",
+    "daily": "المهام اليومية",
+    "weekly": "المهام الأسبوعية",
+    "completed": "مكتمل",
+    "inProgress": "قيد التنفيذ",
+    "claimReward": "استلام المكافأة"
+  },
+  "errors": {
+    "somethingWentWrong": "حدث خطأ ما",
+    "networkError": "خطأ في الشبكة. تحقق من اتصالك.",
+    "unauthorized": "غير مصرح لك بتنفيذ هذا الإجراء",
+    "notFound": "غير موجود",
+    "invalidInput": "إدخال غير صالح"
+  },
+  "time": {
+    "justNow": "الآن",
+    "minutesAgo": "منذ {count} دقائق",
+    "hoursAgo": "منذ {count} ساعات",
+    "daysAgo": "منذ {count} أيام",
+    "yesterday": "أمس",
+    "today": "اليوم"
+  }
+}

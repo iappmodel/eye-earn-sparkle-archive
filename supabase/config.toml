@@ -16,3 +16,18 @@ verify_jwt = false
 
 [functions.issue-reward]
 verify_jwt = true
+
+[functions.create-checkout]
+verify_jwt = true
+
+[functions.check-subscription]
+verify_jwt = true
+
+[functions.customer-portal]
+verify_jwt = true
+
+[functions.request-payout]
+verify_jwt = true
+
+[functions.transfer-coins]
+verify_jwt = true

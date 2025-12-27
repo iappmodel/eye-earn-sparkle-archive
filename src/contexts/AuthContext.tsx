@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { subscriptionService, SubscriptionStatus } from '@/services/subscription.service';
 
 interface Profile {
   id: string;
@@ -27,11 +28,13 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
+  subscription: SubscriptionStatus | null;
   loading: boolean;
   signUp: (email: string, password: string, username: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshSubscription: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,6 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchProfile = async (userId: string) => {
@@ -71,6 +75,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshSubscription = async () => {
+    if (user) {
+      try {
+        const subStatus = await subscriptionService.checkSubscription();
+        setSubscription(subStatus);
+      } catch (error) {
+        console.error('Error fetching subscription:', error);
+      }
+    }
+  };
+
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -78,13 +93,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Defer profile fetch with setTimeout to avoid deadlock
+        // Defer profile and subscription fetch with setTimeout to avoid deadlock
         if (session?.user) {
           setTimeout(() => {
             fetchProfile(session.user.id).then(setProfile);
+            subscriptionService.checkSubscription().then(setSubscription).catch(console.error);
           }, 0);
         } else {
           setProfile(null);
+          setSubscription(null);
         }
       }
     );
@@ -95,8 +112,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        fetchProfile(session.user.id).then((profileData) => {
+        Promise.all([
+          fetchProfile(session.user.id),
+          subscriptionService.checkSubscription().catch(() => null),
+        ]).then(([profileData, subStatus]) => {
           setProfile(profileData);
+          if (subStatus) setSubscription(subStatus);
           setLoading(false);
         });
       } else {
@@ -139,6 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setSession(null);
     setProfile(null);
+    setSubscription(null);
   };
 
   return (
@@ -147,11 +169,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         session,
         profile,
+        subscription,
         loading,
         signUp,
         signIn,
         signOut,
         refreshProfile,
+        refreshSubscription,
       }}
     >
       {children}

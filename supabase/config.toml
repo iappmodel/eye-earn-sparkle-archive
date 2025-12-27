@@ -15,22 +15,22 @@ site_url = "http://localhost:3000"
 verify_jwt = false
 
 [functions.issue-reward]
-verify_jwt = true
+verify_jwt = false
 
 [functions.create-checkout]
-verify_jwt = true
+verify_jwt = false
 
 [functions.check-subscription]
-verify_jwt = true
+verify_jwt = false
 
 [functions.customer-portal]
-verify_jwt = true
+verify_jwt = false
 
 [functions.request-payout]
-verify_jwt = true
+verify_jwt = false
 
 [functions.transfer-coins]
-verify_jwt = true
+verify_jwt = false
 
 [functions.get-nearby-promotions]
 verify_jwt = false

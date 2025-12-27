@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
 import { FloatingControls } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
@@ -6,6 +6,8 @@ import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -50,49 +52,52 @@ const mockMedia = [
   },
 ];
 
-const mockUser = {
-  name: 'Alex Chen',
-  username: 'alexchen',
-  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
-  isVerified: true,
-  joinDate: new Date('2024-01-15'),
-  location: 'San Francisco, CA',
-  vicoins: 12450,
-  icoins: 85,
-};
-
-const mockTransactions = [
-  { id: '1', type: 'earned' as const, amount: 50, coinType: 'vicoin' as const, description: 'Watched Holiday Special promo', timestamp: new Date() },
-  { id: '2', type: 'received' as const, amount: 100, coinType: 'vicoin' as const, description: 'Gift from @maria', timestamp: new Date(Date.now() - 86400000) },
-  { id: '3', type: 'earned' as const, amount: 1, coinType: 'icoin' as const, description: 'Coffee Shop promotion', timestamp: new Date(Date.now() - 172800000) },
-  { id: '4', type: 'spent' as const, amount: 500, coinType: 'vicoin' as const, description: 'Promoted your video', timestamp: new Date(Date.now() - 259200000) },
-];
-
 const Index = () => {
+  const { profile, refreshProfile } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [showCoinSlide, setShowCoinSlide] = useState(false);
   const [coinSlideType, setCoinSlideType] = useState<'vicoin' | 'icoin'>('vicoin');
   const [showWallet, setShowWallet] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [vicoins, setVicoins] = useState(mockUser.vicoins);
-  const [icoins, setIcoins] = useState(mockUser.icoins);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  const vicoins = profile?.vicoin_balance || 0;
+  const icoins = profile?.icoin_balance || 0;
+
   const currentMedia = mockMedia[currentIndex];
 
-  // Handle promo completion - trigger coin slide animation
-  const handleMediaComplete = useCallback(() => {
-    if (currentMedia.reward) {
+  // Mock transactions for wallet - will be replaced with real data later
+  const mockTransactions = [
+    { id: '1', type: 'earned' as const, amount: 50, coinType: 'vicoin' as const, description: 'Watched Holiday Special promo', timestamp: new Date() },
+    { id: '2', type: 'received' as const, amount: 100, coinType: 'vicoin' as const, description: 'Gift from @maria', timestamp: new Date(Date.now() - 86400000) },
+    { id: '3', type: 'earned' as const, amount: 1, coinType: 'icoin' as const, description: 'Coffee Shop promotion', timestamp: new Date(Date.now() - 172800000) },
+    { id: '4', type: 'spent' as const, amount: 500, coinType: 'vicoin' as const, description: 'Promoted your video', timestamp: new Date(Date.now() - 259200000) },
+  ];
+
+  // Handle promo completion - trigger coin slide animation and update DB
+  const handleMediaComplete = useCallback(async () => {
+    if (currentMedia.reward && profile) {
       setCoinSlideType(currentMedia.reward.type);
       setShowCoinSlide(true);
+
+      // Update balance in database
+      const field = currentMedia.reward.type === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
+      const currentBalance = currentMedia.reward.type === 'vicoin' ? vicoins : icoins;
       
-      // Update balance
-      if (currentMedia.reward.type === 'vicoin') {
-        setVicoins(prev => prev + currentMedia.reward!.amount);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ [field]: currentBalance + currentMedia.reward.amount })
+        .eq('user_id', profile.user_id);
+
+      if (error) {
+        console.error('Error updating balance:', error);
+        toast.error('Failed to update balance');
       } else {
-        setIcoins(prev => prev + currentMedia.reward!.amount);
+        // Refresh profile to get updated balance
+        await refreshProfile();
+        toast.success(`+${currentMedia.reward.amount} ${currentMedia.reward.type === 'vicoin' ? 'Vicoins' : 'Icoins'}!`);
       }
 
       // Haptic feedback
@@ -100,7 +105,7 @@ const Index = () => {
         navigator.vibrate([50, 30, 50]);
       }
     }
-  }, [currentMedia]);
+  }, [currentMedia, profile, vicoins, icoins, refreshProfile]);
 
   const handleCoinSlideComplete = useCallback(() => {
     setShowCoinSlide(false);
@@ -224,7 +229,6 @@ const Index = () => {
       <ProfileScreen
         isOpen={showProfile}
         onClose={() => setShowProfile(false)}
-        user={{ ...mockUser, vicoins, icoins }}
       />
     </div>
   );

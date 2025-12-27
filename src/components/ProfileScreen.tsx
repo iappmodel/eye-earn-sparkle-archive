@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, Camera } from 'lucide-react';
+import { X, Camera, Upload, Video, BarChart3 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
+import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { OnboardingFlow } from './onboarding';
+import { useUserRole } from '@/hooks/useUserRole';
 import { 
   EditProfileButton,
   KYCVerificationButton,
@@ -15,7 +17,8 @@ import {
   NotificationsButton,
   HelpCenterButton,
   LegalButton,
-  LogOutButton
+  LogOutButton,
+  MenuButton
 } from './ProfileButtons';
 
 interface ProfileScreenProps {
@@ -30,6 +33,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { profile, user, signOut } = useAuth();
   const navigate = useNavigate();
   const [showKycFlow, setShowKycFlow] = useState(false);
+  const { role, isCreator, isAdmin, isModerator } = useUserRole();
 
   if (!isOpen) return null;
 
@@ -71,15 +75,24 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full neu-button flex items-center justify-center">
               <Camera className="w-4 h-4 text-primary" />
             </button>
+            {isVerified && (
+              <div className="absolute -top-1 -right-1">
+                <VerificationBadge type="verified" size="lg" />
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-2 mb-1">
             <h2 className="font-display text-xl font-bold">{displayName}</h2>
-            {isVerified && (
-              <CheckCircle2 className="w-5 h-5 text-primary fill-primary" />
-            )}
+            {isCreator && <VerificationBadge type="creator" size="md" />}
+            {isAdmin && <VerificationBadge type="admin" size="md" />}
+            {isModerator && !isAdmin && <VerificationBadge type="moderator" size="md" />}
           </div>
-          <p className="text-muted-foreground text-sm">@{username}</p>
+          <p className="text-muted-foreground text-sm mb-2">@{username}</p>
+          <div className="flex items-center gap-2">
+            <RoleBadge role={role} />
+            <KycStatusBadge status={kycStatus} />
+          </div>
         </div>
 
         {/* Balance Cards */}
@@ -116,6 +129,39 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <KYCVerificationButton status={kycStatus} onClick={() => setShowKycFlow(true)} />
           <SeeEarningsButton todayEarnings={25} onClick={() => {}} />
           <InviteFriendsButton bonus={100} onClick={() => {}} />
+
+          {/* Creator-specific options */}
+          {isCreator && (
+            <>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Creator Tools</p>
+              <MenuButton 
+                icon={<Upload className="w-5 h-5 text-icoin" />}
+                label="Upload Content"
+                description="Share videos, images, and reels"
+                onClick={() => {}}
+              />
+              <MenuButton 
+                icon={<BarChart3 className="w-5 h-5 text-primary" />}
+                label="Analytics"
+                description="Views, engagement, earnings"
+                onClick={() => {}}
+              />
+            </>
+          )}
+
+          {/* Admin/Moderator options */}
+          {(isAdmin || isModerator) && (
+            <>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Moderation</p>
+              <MenuButton 
+                icon={<Video className="w-5 h-5 text-amber-500" />}
+                label="Content Review"
+                description="Review flagged content"
+                badge={isAdmin ? 'Admin' : 'Mod'}
+                onClick={() => {}}
+              />
+            </>
+          )}
           
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Preferences</p>
           

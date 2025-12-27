@@ -1,4 +1,18 @@
 project_id = "tjykxqhliywnmelyuscn"
 
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+
 [functions.validate-attention]
 verify_jwt = false
+
+[functions.issue-reward]
+verify_jwt = true

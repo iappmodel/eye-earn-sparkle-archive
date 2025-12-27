@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      daily_reward_caps: {
+        Row: {
+          created_at: string
+          date: string
+          icoin_earned: number
+          id: string
+          promo_views: number
+          updated_at: string
+          user_id: string
+          vicoin_earned: number
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          icoin_earned?: number
+          id?: string
+          promo_views?: number
+          updated_at?: string
+          user_id: string
+          vicoin_earned?: number
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          icoin_earned?: number
+          id?: string
+          promo_views?: number
+          updated_at?: string
+          user_id?: string
+          vicoin_earned?: number
+        }
+        Relationships: []
+      }
       kyc_submissions: {
         Row: {
           created_at: string
@@ -125,6 +158,72 @@ export type Database = {
           user_id?: string
           username?: string | null
           vicoin_balance?: number | null
+        }
+        Relationships: []
+      }
+      reward_logs: {
+        Row: {
+          amount: number
+          attention_score: number | null
+          coin_type: string
+          content_id: string
+          created_at: string
+          id: string
+          reward_type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          attention_score?: number | null
+          coin_type: string
+          content_id: string
+          created_at?: string
+          id?: string
+          reward_type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          attention_score?: number | null
+          coin_type?: string
+          content_id?: string
+          created_at?: string
+          id?: string
+          reward_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          amount: number
+          coin_type: string
+          created_at: string
+          description: string
+          id: string
+          reference_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          coin_type: string
+          created_at?: string
+          description: string
+          id?: string
+          reference_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          coin_type?: string
+          created_at?: string
+          description?: string
+          id?: string
+          reference_id?: string | null
+          type?: string
+          user_id?: string
         }
         Relationships: []
       }

@@ -43,3 +43,6 @@ verify_jwt = false
 
 [functions.track-interaction]
 verify_jwt = false
+
+[functions.generate-reply]
+verify_jwt = false

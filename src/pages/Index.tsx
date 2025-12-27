@@ -6,6 +6,7 @@ import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { DiscoveryMap } from '@/components/DiscoveryMap';
 import { PersonalizedFeed } from '@/components/PersonalizedFeed';
+import { MessagesScreen } from '@/components/MessagesScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { OnboardingFlow } from '@/components/onboarding';
@@ -68,6 +69,7 @@ const Index = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
@@ -196,19 +198,20 @@ const Index = () => {
     setShowProfile(false);
     setShowMap(false);
     setShowFeed(false);
+    setShowMessages(false);
     
     switch (tab) {
       case 'profile':
         setShowProfile(true);
         break;
       case 'messages':
-        setShowFeed(true); // Show personalized feed on messages tab
+        setShowMessages(true);
         break;
       case 'map':
         setShowMap(true);
         break;
       case 'create':
-        toast('Create', { description: 'Create content coming soon...' });
+        setShowFeed(true); // Show personalized feed on create tab for now
         break;
       default:
         break;
@@ -302,6 +305,12 @@ const Index = () => {
             </div>
           </div>
         )}
+
+        {/* Messages Screen */}
+        <MessagesScreen
+          isOpen={showMessages}
+          onClose={() => { setShowMessages(false); setActiveTab('home'); }}
+        />
 
         {/* Bottom Navigation - centered at bottom */}
         <BottomNavigation 

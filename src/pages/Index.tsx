@@ -135,6 +135,11 @@ const Index = () => {
     }, 300);
   }, [isTransitioning]);
 
+  // Skip to next media
+  const handleSkip = useCallback(() => {
+    navigateToMedia('up');
+  }, [navigateToMedia]);
+
   const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
     if (direction === 'up') {
       navigateToMedia('up');
@@ -215,6 +220,7 @@ const Index = () => {
             duration={currentMedia.duration}
             reward={currentMedia.reward}
             onComplete={handleMediaComplete}
+            onSkip={handleSkip}
             isActive={!isTransitioning}
           />
         </div>

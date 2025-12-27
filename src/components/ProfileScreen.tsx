@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Camera, Upload, Video, BarChart3 } from 'lucide-react';
+import { X, Camera, Upload, Video, BarChart3, Shield, Wifi } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
@@ -11,6 +11,8 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useNotifications } from '@/hooks/useNotifications';
 import { NotificationCenter } from './NotificationCenter';
 import { NotificationPreferences } from './NotificationPreferences';
+import ConnectionStatusDot from './ConnectionStatusDot';
+import SyncStatusPanel from './SyncStatusPanel';
 import { 
   EditProfileButton,
   KYCVerificationButton,
@@ -38,6 +40,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [showKycFlow, setShowKycFlow] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
+  const [showSyncPanel, setShowSyncPanel] = useState(false);
   const { role, isCreator, isAdmin, isModerator } = useUserRole();
   const { unreadCount } = useNotifications();
 
@@ -62,7 +65,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <div className="max-w-md mx-auto h-full flex flex-col p-6 overflow-y-auto pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="font-display text-2xl font-bold">Profile</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-2xl font-bold">Profile</h1>
+            <ConnectionStatusDot showLabel size="sm" />
+          </div>
           <NeuButton onClick={onClose} size="sm">
             <X className="w-5 h-5" />
           </NeuButton>
@@ -160,11 +166,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <>
               <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Moderation</p>
               <MenuButton 
+                icon={<Shield className="w-5 h-5 text-primary" />}
+                label="Admin Dashboard"
+                description="Manage users, content, analytics"
+                badge={isAdmin ? 'Admin' : 'Mod'}
+                onClick={() => {
+                  onClose();
+                  navigate('/admin');
+                }}
+              />
+              <MenuButton 
                 icon={<Video className="w-5 h-5 text-amber-500" />}
                 label="Content Review"
                 description="Review flagged content"
-                badge={isAdmin ? 'Admin' : 'Mod'}
-                onClick={() => {}}
+                onClick={() => {
+                  onClose();
+                  navigate('/admin');
+                }}
               />
             </>
           )}
@@ -172,6 +190,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Preferences</p>
           
           <SettingsButton onClick={() => {}} />
+          <MenuButton 
+            icon={<Wifi className="w-5 h-5 text-primary" />}
+            label="Sync Status"
+            description="View offline sync status"
+            onClick={() => setShowSyncPanel(!showSyncPanel)}
+          />
+          
+          {showSyncPanel && (
+            <div className="mt-3">
+              <SyncStatusPanel />
+            </div>
+          )}
           <NotificationsButton unreadCount={unreadCount} onClick={() => setShowNotifications(true)} />
           
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Support</p>

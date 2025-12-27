@@ -6,7 +6,9 @@ import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
+import { OnboardingFlow } from '@/components/onboarding';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
+import { useOnboarding } from '@/hooks/useOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -55,6 +57,7 @@ const mockMedia = [
 
 const Index = () => {
   const { profile, refreshProfile } = useAuth();
+  const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [showCoinSlide, setShowCoinSlide] = useState(false);
@@ -258,6 +261,13 @@ const Index = () => {
         <BottomNavigation 
           activeTab={activeTab} 
           onTabChange={handleTabChange} 
+        />
+
+        {/* Onboarding Flow for new users */}
+        <OnboardingFlow
+          isOpen={showOnboarding}
+          onClose={closeOnboarding}
+          onComplete={completeOnboarding}
         />
       </div>
     </ControlsVisibilityProvider>

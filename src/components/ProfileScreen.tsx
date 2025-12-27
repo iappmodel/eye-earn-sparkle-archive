@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, CheckCircle2, Camera } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { OnboardingFlow } from './onboarding';
 import { 
   EditProfileButton,
   KYCVerificationButton,
@@ -28,6 +29,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 }) => {
   const { profile, user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [showKycFlow, setShowKycFlow] = useState(false);
 
   if (!isOpen) return null;
 
@@ -111,7 +113,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mb-2">Account</p>
           
           <EditProfileButton onClick={() => {}} />
-          <KYCVerificationButton status={kycStatus} onClick={() => {}} />
+          <KYCVerificationButton status={kycStatus} onClick={() => setShowKycFlow(true)} />
           <SeeEarningsButton todayEarnings={25} onClick={() => {}} />
           <InviteFriendsButton bonus={100} onClick={() => {}} />
           
@@ -130,6 +132,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* KYC Verification Flow */}
+      <OnboardingFlow
+        isOpen={showKycFlow}
+        onClose={() => setShowKycFlow(false)}
+        onComplete={() => setShowKycFlow(false)}
+      />
     </div>
   );
 };

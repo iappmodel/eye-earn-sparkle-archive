@@ -46,9 +46,24 @@
     --vicoin: 175 70% 50%;
     --icoin: 45 90% 55%;
     
+    /* Future-proof: 3D depth layers */
+    --depth-1: 220 15% 16%;
+    --depth-2: 220 15% 14%;
+    --depth-3: 220 15% 12%;
+    --depth-glow: 175 70% 50%;
+    
+    /* Future-proof: Ambient colors */
+    --ambient-warm: 35 100% 60%;
+    --ambient-cool: 200 80% 55%;
+    --ambient-energy: 280 70% 60%;
+    
     /* Neumorphic gradients */
     --neu-gradient: linear-gradient(145deg, hsl(220 15% 17%), hsl(220 15% 12%));
     --neu-inset-gradient: linear-gradient(145deg, hsl(220 15% 11%), hsl(220 15% 16%));
+    
+    /* 3D Perspective */
+    --perspective-depth: 1000px;
+    --transform-3d-subtle: perspective(var(--perspective-depth)) rotateX(2deg) rotateY(-1deg);
     
     --sidebar-background: 220 15% 13%;
     --sidebar-foreground: 210 20% 95%;
@@ -58,6 +73,38 @@
     --sidebar-accent-foreground: 210 20% 95%;
     --sidebar-border: 220 15% 22%;
     --sidebar-ring: 175 70% 50%;
+    
+    /* UI Density - configurable */
+    --ui-density: 1;
+    --spacing-unit: calc(4px * var(--ui-density));
+  }
+  
+  /* Compact UI Mode */
+  .ui-compact {
+    --ui-density: 0.85;
+    --radius: 0.75rem;
+  }
+  
+  /* Comfortable UI Mode */
+  .ui-comfortable {
+    --ui-density: 1.15;
+    --radius: 1.25rem;
+  }
+  
+  /* High contrast accessibility mode */
+  .high-contrast {
+    --foreground: 0 0% 100%;
+    --primary: 175 100% 60%;
+    --border: 220 15% 40%;
+  }
+  
+  /* Reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -69,10 +116,18 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', sans-serif;
+    /* GPU acceleration for smoother animations */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Space Grotesk', sans-serif;
+  }
+  
+  /* Focus-visible for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
   }
 }
 
@@ -85,6 +140,7 @@
       -8px -8px 16px hsl(220 15% 20%),
       inset 0 1px 1px hsl(220 15% 22%);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
   }
   
   .neu-button:hover {
@@ -92,6 +148,7 @@
       12px 12px 24px hsl(220 20% 6%),
       -12px -12px 24px hsl(220 15% 22%),
       inset 0 1px 1px hsl(220 15% 24%);
+    transform: translateY(-2px) scale(1.02);
   }
   
   .neu-button:active, .neu-button-pressed {
@@ -99,6 +156,7 @@
     box-shadow: 
       inset 4px 4px 8px hsl(220 20% 8%),
       inset -4px -4px 8px hsl(220 15% 20%);
+    transform: translateY(1px) scale(0.98);
   }
   
   .neu-inset {
@@ -113,6 +171,76 @@
     box-shadow: 
       10px 10px 20px hsl(220 20% 8%),
       -10px -10px 20px hsl(220 15% 18%);
+    transform-style: preserve-3d;
+  }
+  
+  /* 3D Card with depth */
+  .card-3d {
+    transform-style: preserve-3d;
+    perspective: 1000px;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  
+  .card-3d:hover {
+    transform: perspective(1000px) rotateX(5deg) rotateY(-5deg) translateZ(10px);
+  }
+  
+  /* 3D Button pulse effect */
+  .btn-pulse-3d {
+    position: relative;
+    transform-style: preserve-3d;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  
+  .btn-pulse-3d::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.4), hsl(var(--accent) / 0.2));
+    z-index: -1;
+    opacity: 0;
+    filter: blur(8px);
+    transition: opacity 0.3s;
+  }
+  
+  .btn-pulse-3d:hover::before {
+    opacity: 1;
+    animation: pulse-glow 1.5s ease-in-out infinite;
+  }
+  
+  .btn-pulse-3d:hover {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 10px 30px -10px hsl(var(--primary) / 0.5);
+  }
+  
+  .btn-pulse-3d:active {
+    transform: translateY(1px) scale(0.98);
+  }
+  
+  /* Micro-feedback ripple */
+  .micro-ripple {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .micro-ripple::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%), 
+      hsl(var(--primary) / 0.3) 0%, 
+      transparent 60%);
+    opacity: 0;
+    transform: scale(0);
+    transition: opacity 0.4s, transform 0.4s;
+    pointer-events: none;
+  }
+  
+  .micro-ripple:active::after {
+    opacity: 1;
+    transform: scale(2);
+    transition: opacity 0s, transform 0s;
   }
 
   /* Coin animations */
@@ -141,6 +269,65 @@
     50% { box-shadow: 0 0 40px hsl(175 70% 50% / 0.6); }
   }
   
+  @keyframes pulse-glow {
+    0%, 100% { 
+      opacity: 0.6; 
+      filter: blur(8px); 
+    }
+    50% { 
+      opacity: 1; 
+      filter: blur(12px); 
+    }
+  }
+  
+  @keyframes bounce-3d {
+    0%, 100% { 
+      transform: translateY(0) perspective(500px) rotateX(0); 
+    }
+    50% { 
+      transform: translateY(-15px) perspective(500px) rotateX(10deg); 
+    }
+  }
+  
+  @keyframes float-ambient {
+    0%, 100% { 
+      transform: translateY(0) rotate(0deg); 
+    }
+    25% { 
+      transform: translateY(-5px) rotate(1deg); 
+    }
+    75% { 
+      transform: translateY(5px) rotate(-1deg); 
+    }
+  }
+  
+  @keyframes shimmer-3d {
+    0% { 
+      background-position: -200% 0;
+      transform: perspective(500px) rotateY(-2deg);
+    }
+    50% {
+      transform: perspective(500px) rotateY(2deg);
+    }
+    100% { 
+      background-position: 200% 0;
+      transform: perspective(500px) rotateY(-2deg);
+    }
+  }
+  
+  @keyframes depth-pulse {
+    0%, 100% { 
+      box-shadow: 
+        0 4px 20px hsl(var(--depth-glow) / 0.2),
+        0 8px 40px hsl(var(--depth-glow) / 0.1);
+    }
+    50% { 
+      box-shadow: 
+        0 8px 30px hsl(var(--depth-glow) / 0.4),
+        0 16px 60px hsl(var(--depth-glow) / 0.2);
+    }
+  }
+  
   .animate-coin-pulse {
     animation: coin-pulse 2s ease-in-out infinite;
   }
@@ -161,6 +348,29 @@
     animation: glow-pulse 2s ease-in-out infinite;
   }
   
+  .animate-bounce-3d {
+    animation: bounce-3d 2s ease-in-out infinite;
+  }
+  
+  .animate-float-ambient {
+    animation: float-ambient 4s ease-in-out infinite;
+  }
+  
+  .animate-shimmer-3d {
+    background: linear-gradient(
+      90deg, 
+      hsl(var(--secondary)) 0%, 
+      hsl(var(--primary) / 0.3) 50%, 
+      hsl(var(--secondary)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-3d 3s ease-in-out infinite;
+  }
+  
+  .animate-depth-pulse {
+    animation: depth-pulse 3s ease-in-out infinite;
+  }
+  
   /* Gradient text */
   .gradient-text {
     background: linear-gradient(135deg, hsl(175 70% 50%), hsl(175 70% 70%));
@@ -175,11 +385,33 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  
+  .gradient-text-energy {
+    background: linear-gradient(135deg, hsl(var(--ambient-warm)), hsl(var(--ambient-energy)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 
   /* Radial gradient background */
   .bg-gradient-radial {
     background: radial-gradient(ellipse at center, var(--tw-gradient-stops));
   }
+  
+  /* Glass morphism with 3D depth */
+  .glass-3d {
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid hsl(var(--border) / 0.3);
+    box-shadow: 
+      0 8px 32px hsl(220 20% 5% / 0.3),
+      inset 0 1px 0 hsl(var(--foreground) / 0.1);
+  }
+  
+  /* Depth layers for parallax effects */
+  .depth-layer-1 { transform: translateZ(10px); }
+  .depth-layer-2 { transform: translateZ(20px); }
+  .depth-layer-3 { transform: translateZ(30px); }
 
   /* Coin slide to wallet animation */
   @keyframes slide-to-wallet {
@@ -253,5 +485,25 @@
   
   .animate-swipe-enter-down {
     animation: swipe-enter-down 0.3s ease-out forwards;
+  }
+  
+  /* Skip link for accessibility */
+  .skip-link {
+    @apply fixed -top-10 left-4 z-50 bg-primary text-primary-foreground px-4 py-2 rounded-md transition-all;
+  }
+  
+  .skip-link:focus {
+    @apply top-4;
+  }
+  
+  /* Voice control indicator */
+  .voice-active {
+    @apply relative;
+  }
+  
+  .voice-active::after {
+    content: '';
+    @apply absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full;
+    animation: pulse-glow 1s ease-in-out infinite;
   }
 }

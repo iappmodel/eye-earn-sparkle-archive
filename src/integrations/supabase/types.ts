@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      abuse_logs: {
+        Row: {
+          abuse_type: string
+          created_at: string
+          details: Json | null
+          device_fingerprint: string | null
+          id: string
+          ip_address: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          abuse_type: string
+          created_at?: string
+          details?: Json | null
+          device_fingerprint?: string | null
+          id?: string
+          ip_address?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          abuse_type?: string
+          created_at?: string
+          details?: Json | null
+          device_fingerprint?: string | null
+          id?: string
+          ip_address?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      account_deletion_requests: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          executed_at: string | null
+          id: string
+          reason: string | null
+          scheduled_deletion_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          executed_at?: string | null
+          id?: string
+          reason?: string | null
+          scheduled_deletion_at: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          executed_at?: string | null
+          id?: string
+          reason?: string | null
+          scheduled_deletion_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       achievements: {
         Row: {
           category: string
@@ -283,6 +361,87 @@ export type Database = {
         }
         Relationships: []
       }
+      data_export_requests: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          expires_at: string | null
+          file_url: string | null
+          id: string
+          processed_at: string | null
+          request_type: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string | null
+          file_url?: string | null
+          id?: string
+          processed_at?: string | null
+          request_type?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string | null
+          file_url?: string | null
+          id?: string
+          processed_at?: string | null
+          request_type?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      device_fingerprints: {
+        Row: {
+          created_at: string
+          device_info: Json | null
+          fingerprint_hash: string
+          first_seen_at: string
+          flag_reason: string | null
+          flagged: boolean | null
+          id: string
+          is_trusted: boolean | null
+          last_seen_at: string
+          trust_score: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_info?: Json | null
+          fingerprint_hash: string
+          first_seen_at?: string
+          flag_reason?: string | null
+          flagged?: boolean | null
+          id?: string
+          is_trusted?: boolean | null
+          last_seen_at?: string
+          trust_score?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_info?: Json | null
+          fingerprint_hash?: string
+          first_seen_at?: string
+          flag_reason?: string | null
+          flagged?: boolean | null
+          id?: string
+          is_trusted?: boolean | null
+          last_seen_at?: string
+          trust_score?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       kyc_submissions: {
         Row: {
           created_at: string
@@ -463,6 +622,48 @@ export type Database = {
           title?: string
           type?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      privacy_consents: {
+        Row: {
+          consent_type: string
+          created_at: string
+          granted: boolean
+          granted_at: string | null
+          id: string
+          ip_address: string | null
+          revoked_at: string | null
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          consent_type: string
+          created_at?: string
+          granted?: boolean
+          granted_at?: string | null
+          id?: string
+          ip_address?: string | null
+          revoked_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          consent_type?: string
+          created_at?: string
+          granted?: boolean
+          granted_at?: string | null
+          id?: string
+          ip_address?: string | null
+          revoked_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+          version?: string | null
         }
         Relationships: []
       }

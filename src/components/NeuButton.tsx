@@ -11,6 +11,7 @@ interface NeuButtonProps {
   tooltip?: string;
   showTooltipOnHover?: boolean;
   badge?: number | string;
+  disabled?: boolean;
 }
 
 const sizeClasses = {
@@ -35,6 +36,7 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
   tooltip,
   showTooltipOnHover = true,
   badge,
+  disabled = false,
 }) => {
   const [pressed, setPressed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -72,6 +74,7 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
   return (
     <div className="relative group">
       <button
+        disabled={disabled}
         className={cn(
           // Base styles
           'rounded-2xl flex items-center justify-center',
@@ -85,21 +88,23 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
           // Neumorphic base
           pressed || isPressed ? 'neu-inset scale-95 translate-y-1' : 'neu-button',
           // Hover 3D lift
-          !pressed && !isPressed && 'hover:scale-105 hover:-translate-y-0.5',
+          !pressed && !isPressed && !disabled && 'hover:scale-105 hover:-translate-y-0.5',
           // Active press
-          'active:scale-95 active:translate-y-1',
+          !disabled && 'active:scale-95 active:translate-y-1',
           // Accent colors
           accentStyles,
           // Glow on hover
-          glowStyles,
+          !disabled && glowStyles,
+          // Disabled styles
+          disabled && 'opacity-50 cursor-not-allowed',
           className
         )}
-        onMouseDown={handlePress}
-        onMouseUp={handleRelease}
+        onMouseDown={disabled ? undefined : handlePress}
+        onMouseUp={disabled ? undefined : handleRelease}
         onMouseLeave={handleMouseLeave}
         onMouseEnter={() => setIsHovered(true)}
-        onTouchStart={handlePress}
-        onTouchEnd={handleRelease}
+        onTouchStart={disabled ? undefined : handlePress}
+        onTouchEnd={disabled ? undefined : handleRelease}
       >
         {/* Inner glow effect for accent variants */}
         {(variant === 'accent' || variant === 'gold') && (

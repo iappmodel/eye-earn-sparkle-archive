@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe } from 'lucide-react';
+import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe, Crown, Gift } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
@@ -10,9 +10,11 @@ import { OnboardingFlow } from './onboarding';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLocalization } from '@/contexts/LocalizationContext';
+import { useSubscription } from '@/hooks/useSubscription';
 import { NotificationCenter } from './NotificationCenter';
 import { NotificationPreferences } from './NotificationPreferences';
 import { SettingsScreen } from './SettingsScreen';
+import { PremiumScreen } from './PremiumScreen';
 import ConnectionStatusDot from './ConnectionStatusDot';
 import SyncStatusPanel from './SyncStatusPanel';
 import { 
@@ -44,9 +46,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showPremium, setShowPremium] = useState(false);
   const { role, isCreator, isAdmin, isModerator } = useUserRole();
   const { unreadCount } = useNotifications();
   const { t, localeConfig } = useLocalization();
+  const { tier, tierName, rewardMultiplier } = useSubscription();
 
   if (!isOpen) return null;
 
@@ -144,7 +148,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <EditProfileButton onClick={() => {}} />
           <KYCVerificationButton status={kycStatus} onClick={() => setShowKycFlow(true)} />
           <SeeEarningsButton todayEarnings={25} onClick={() => {}} />
-          <InviteFriendsButton bonus={100} onClick={() => {}} />
+          <InviteFriendsButton bonus={100} onClick={() => setShowPremium(true)} />
+
+          {/* Premium/Subscription */}
+          <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Premium</p>
+          <MenuButton 
+            icon={<Crown className="w-5 h-5 text-icoin" />}
+            label={tier === 'free' ? 'Upgrade to Premium' : `${tierName} Plan`}
+            description={tier === 'free' ? 'Get 2-3x reward multiplier' : `${rewardMultiplier}x reward multiplier active`}
+            badge={tier !== 'free' ? tierName : undefined}
+            onClick={() => setShowPremium(true)}
+          />
+          <MenuButton 
+            icon={<Gift className="w-5 h-5 text-primary" />}
+            label="Referral Program"
+            description="Earn from friends' rewards"
+            onClick={() => setShowPremium(true)}
+          />
 
           {/* Creator-specific options */}
           {isCreator && (
@@ -248,6 +268,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <SettingsScreen
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
+      />
+
+      <PremiumScreen
+        isOpen={showPremium}
+        onClose={() => setShowPremium(false)}
       />
     </div>
   );

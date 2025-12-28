@@ -161,6 +161,39 @@ export type Database = {
         }
         Relationships: []
       }
+      app_versions: {
+        Row: {
+          created_at: string
+          id: string
+          is_deprecated: boolean | null
+          is_stable: boolean | null
+          min_supported_version: string | null
+          release_notes: string | null
+          released_at: string | null
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_deprecated?: boolean | null
+          is_stable?: boolean | null
+          min_supported_version?: string | null
+          release_notes?: string | null
+          released_at?: string | null
+          version: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_deprecated?: boolean | null
+          is_stable?: boolean | null
+          min_supported_version?: string | null
+          release_notes?: string | null
+          released_at?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       content_flags: {
         Row: {
           action_taken: string | null
@@ -439,6 +472,87 @@ export type Database = {
           last_seen_at?: string
           trust_score?: number | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      error_logs: {
+        Row: {
+          app_version: string | null
+          component: string | null
+          created_at: string
+          error_message: string
+          error_type: string
+          id: string
+          metadata: Json | null
+          resolved: boolean | null
+          stack_trace: string | null
+          url: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          component?: string | null
+          created_at?: string
+          error_message: string
+          error_type: string
+          id?: string
+          metadata?: Json | null
+          resolved?: boolean | null
+          stack_trace?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          component?: string | null
+          created_at?: string
+          error_message?: string
+          error_type?: string
+          id?: string
+          metadata?: Json | null
+          resolved?: boolean | null
+          stack_trace?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      feature_flags: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_enabled: boolean
+          metadata: Json | null
+          name: string
+          rollout_percentage: number | null
+          target_roles: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json | null
+          name: string
+          rollout_percentage?: number | null
+          target_roles?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          metadata?: Json | null
+          name?: string
+          rollout_percentage?: number | null
+          target_roles?: string[] | null
+          updated_at?: string
         }
         Relationships: []
       }

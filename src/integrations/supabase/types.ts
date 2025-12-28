@@ -480,6 +480,7 @@ export type Database = {
           kyc_status: string | null
           phone_number: string | null
           phone_verified: boolean | null
+          referred_by: string | null
           total_likes: number | null
           total_views: number | null
           updated_at: string
@@ -500,6 +501,7 @@ export type Database = {
           kyc_status?: string | null
           phone_number?: string | null
           phone_verified?: boolean | null
+          referred_by?: string | null
           total_likes?: number | null
           total_views?: number | null
           updated_at?: string
@@ -520,6 +522,7 @@ export type Database = {
           kyc_status?: string | null
           phone_number?: string | null
           phone_verified?: boolean | null
+          referred_by?: string | null
           total_likes?: number | null
           total_views?: number | null
           updated_at?: string
@@ -630,6 +633,75 @@ export type Database = {
         }
         Relationships: []
       }
+      referral_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean
+          total_earnings: number
+          user_id: string
+          uses_count: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          total_earnings?: number
+          user_id: string
+          uses_count?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          total_earnings?: number
+          user_id?: string
+          uses_count?: number
+        }
+        Relationships: []
+      }
+      referrals: {
+        Row: {
+          commission_rate: number
+          created_at: string
+          earnings_shared: number
+          expires_at: string | null
+          id: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          commission_rate?: number
+          created_at?: string
+          earnings_shared?: number
+          expires_at?: string | null
+          id?: string
+          referral_code: string
+          referred_id: string
+          referrer_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          commission_rate?: number
+          created_at?: string
+          earnings_shared?: number
+          expires_at?: string | null
+          id?: string
+          referral_code?: string
+          referred_id?: string
+          referrer_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       reward_logs: {
         Row: {
           amount: number
@@ -659,6 +731,42 @@ export type Database = {
           created_at?: string
           id?: string
           reward_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      subscription_status: {
+        Row: {
+          created_at: string
+          id: string
+          is_subscribed: boolean
+          product_id: string | null
+          stripe_customer_id: string | null
+          subscription_end: string | null
+          tier: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_subscribed?: boolean
+          product_id?: string | null
+          stripe_customer_id?: string | null
+          subscription_end?: string | null
+          tier?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_subscribed?: boolean
+          product_id?: string | null
+          stripe_customer_id?: string | null
+          subscription_end?: string | null
+          tier?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []

@@ -37,6 +37,21 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
   const attentionFramesRef = useRef({ detected: 0, total: 0 });
   const wasAttentiveRef = useRef(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  
+  // Use refs for callbacks to prevent dependency changes
+  const onAttentionLostRef = useRef(onAttentionLost);
+  const onAttentionRestoredRef = useRef(onAttentionRestored);
+  const isInitializingRef = useRef(false);
+  const isTabVisibleRef = useRef(true);
+
+  // Update callback refs when they change
+  useEffect(() => {
+    onAttentionLostRef.current = onAttentionLost;
+  }, [onAttentionLost]);
+
+  useEffect(() => {
+    onAttentionRestoredRef.current = onAttentionRestored;
+  }, [onAttentionRestored]);
 
   // Track tab visibility
   const [isTabVisible, setIsTabVisible] = useState(true);
@@ -45,24 +60,67 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     const handleVisibilityChange = () => {
       const visible = document.visibilityState === 'visible';
       setIsTabVisible(visible);
+      isTabVisibleRef.current = visible;
       if (!visible && wasAttentiveRef.current) {
         wasAttentiveRef.current = false;
-        onAttentionLost?.();
+        onAttentionLostRef.current?.();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [onAttentionLost]);
+  }, []);
+
+  // Stop tracking - defined first so startTracking can reference it
+  const stopTracking = useCallback(() => {
+    console.log('[EyeTracking] Stopping...');
+    
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      videoRef.current = null;
+    }
+
+    isInitializingRef.current = false;
+
+    setState(prev => ({
+      ...prev,
+      isTracking: false,
+      isFaceDetected: false,
+    }));
+  }, []);
 
   // Request camera permission and start tracking
   const startTracking = useCallback(async () => {
+    // Guard against multiple simultaneous calls
+    if (isInitializingRef.current || streamRef.current) {
+      console.log('[EyeTracking] Already tracking or initializing, skipping...');
+      return;
+    }
+
+    isInitializingRef.current = true;
+
     try {
       console.log('[EyeTracking] Requesting camera access...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 320, height: 240 }
       });
+      
+      // Check if we should still be tracking (might have been disabled during async call)
+      if (!isInitializingRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       
       streamRef.current = stream;
 
@@ -92,7 +150,6 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       console.log('[EyeTracking] Camera started, beginning face detection...');
 
       // Start face detection loop using canvas analysis
-      // For web, we use a simplified approach: checking for face-like features
       detectionIntervalRef.current = setInterval(() => {
         if (!videoRef.current || !canvasRef.current) return;
         
@@ -102,21 +159,18 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
         // Draw current frame
         ctx.drawImage(videoRef.current, 0, 0, 320, 240);
         
-        // Simple face detection heuristic: 
-        // Check if there's significant pixel variation in center (face area)
+        // Simple face detection heuristic
         const imageData = ctx.getImageData(80, 40, 160, 160);
         const data = imageData.data;
         
         let skinTonePixels = 0;
         let totalPixels = 0;
         
-        // Count pixels that could be skin tone (simplified)
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
           
-          // Simple skin tone detection heuristic
           if (r > 60 && g > 40 && b > 20 && 
               r > g && r > b && 
               Math.abs(r - g) > 15 &&
@@ -127,7 +181,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
         }
         
         const skinRatio = skinTonePixels / totalPixels;
-        const faceDetected = skinRatio > 0.15 && isTabVisible;
+        const faceDetected = skinRatio > 0.15 && isTabVisibleRef.current;
 
         attentionFramesRef.current.total++;
         if (faceDetected) {
@@ -138,13 +192,13 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
           (attentionFramesRef.current.detected / attentionFramesRef.current.total) * 100
         );
 
-        // Check attention state changes
+        // Check attention state changes using refs for callbacks
         if (faceDetected && !wasAttentiveRef.current) {
           wasAttentiveRef.current = true;
-          onAttentionRestored?.();
+          onAttentionRestoredRef.current?.();
         } else if (!faceDetected && wasAttentiveRef.current) {
           wasAttentiveRef.current = false;
-          onAttentionLost?.();
+          onAttentionLostRef.current?.();
         }
 
         setState(prev => ({
@@ -152,42 +206,17 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
           isFaceDetected: faceDetected,
           attentionScore,
         }));
-      }, 200); // Check 5 times per second
+      }, 200);
 
     } catch (error) {
       console.error('[EyeTracking] Error starting:', error);
+      isInitializingRef.current = false;
       setState(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Camera access denied',
         isPermissionGranted: false,
       }));
     }
-  }, [isTabVisible, onAttentionLost, onAttentionRestored]);
-
-  // Stop tracking
-  const stopTracking = useCallback(() => {
-    console.log('[EyeTracking] Stopping...');
-    
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-      videoRef.current = null;
-    }
-
-    setState(prev => ({
-      ...prev,
-      isTracking: false,
-      isFaceDetected: false,
-    }));
   }, []);
 
   // Reset attention score for new content
@@ -208,18 +237,25 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     return { score, passed, framesDetected: detected, totalFrames: total };
   }, [requiredAttentionThreshold]);
 
-  // Auto start/stop based on enabled prop
+  // Auto start/stop based on enabled prop - use ref to track previous enabled state
+  const prevEnabledRef = useRef(enabled);
+  
   useEffect(() => {
-    if (enabled && !state.isTracking) {
+    const wasEnabled = prevEnabledRef.current;
+    prevEnabledRef.current = enabled;
+    
+    // Only act on actual changes to the enabled prop
+    if (enabled && !wasEnabled) {
       startTracking();
-    } else if (!enabled && state.isTracking) {
+    } else if (!enabled && wasEnabled) {
       stopTracking();
     }
-  }, [enabled, state.isTracking, startTracking, stopTracking]);
+  }, [enabled, startTracking, stopTracking]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      isInitializingRef.current = false;
       stopTracking();
     };
   }, [stopTracking]);

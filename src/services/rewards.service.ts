@@ -62,13 +62,24 @@ class RewardsService {
         },
       });
 
+      // Handle edge function errors - the response may contain useful error info
       if (error) {
-        console.error('[Rewards] Issue error:', error);
+        console.log('[Rewards] Issue response:', { data, error });
+        // If we have data with an error message, use that (400 responses)
+        if (data && typeof data === 'object' && 'error' in data) {
+          return { success: false, error: data.error as string };
+        }
         return { success: false, error: error.message };
       }
 
+      // Check if response indicates failure
+      if (data && !data.success) {
+        console.log('[Rewards] Issue failed:', data);
+        return { success: false, error: data.error || 'Reward not issued' };
+      }
+
       console.log('[Rewards] Issue success:', data);
-      return data;
+      return data || { success: false, error: 'No response data' };
     } catch (error) {
       console.error('[Rewards] Issue error:', error);
       return { success: false, error: 'Failed to issue reward' };

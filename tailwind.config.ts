@@ -94,6 +94,41 @@ export default {
           "0%": { transform: "translateY(100%)", opacity: "0" },
           "100%": { transform: "translateY(0)", opacity: "1" },
         },
+        "pulse-3d": {
+          "0%, 100%": { 
+            transform: "scale(1) translateZ(0)",
+            boxShadow: "0 0 0 0 hsl(var(--primary) / 0.4)",
+          },
+          "50%": { 
+            transform: "scale(1.05) translateZ(5px)",
+            boxShadow: "0 0 20px 10px hsl(var(--primary) / 0.2)",
+          },
+        },
+        "float-3d": {
+          "0%, 100%": { 
+            transform: "translateY(0) perspective(500px) rotateX(0deg)",
+          },
+          "50%": { 
+            transform: "translateY(-8px) perspective(500px) rotateX(5deg)",
+          },
+        },
+        "glow-ambient": {
+          "0%, 100%": { 
+            boxShadow: "0 0 20px hsl(var(--primary) / 0.3), 0 0 40px hsl(var(--primary) / 0.1)",
+          },
+          "50%": { 
+            boxShadow: "0 0 30px hsl(var(--primary) / 0.5), 0 0 60px hsl(var(--primary) / 0.2)",
+          },
+        },
+        "tilt-3d": {
+          "0%": { transform: "perspective(1000px) rotateY(-5deg) rotateX(5deg)" },
+          "50%": { transform: "perspective(1000px) rotateY(5deg) rotateX(-5deg)" },
+          "100%": { transform: "perspective(1000px) rotateY(-5deg) rotateX(5deg)" },
+        },
+        "morph-blob": {
+          "0%, 100%": { borderRadius: "60% 40% 30% 70% / 60% 30% 70% 40%" },
+          "50%": { borderRadius: "30% 60% 70% 40% / 50% 60% 30% 60%" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -102,6 +137,11 @@ export default {
         "shimmer": "shimmer 2s linear infinite",
         "scale-in": "scale-in 0.3s ease-out",
         "slide-up": "slide-up 0.4s ease-out",
+        "pulse-3d": "pulse-3d 2s ease-in-out infinite",
+        "float-3d": "float-3d 3s ease-in-out infinite",
+        "glow-ambient": "glow-ambient 3s ease-in-out infinite",
+        "tilt-3d": "tilt-3d 6s ease-in-out infinite",
+        "morph-blob": "morph-blob 8s ease-in-out infinite",
       },
     },
   },

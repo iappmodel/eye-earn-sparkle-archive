@@ -113,40 +113,106 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   return (
     <div className={cn('relative flex flex-col items-center gap-1', className)}>
       {/* Backdrop to close */}
-      {(isExpanded || selectedCoin) && (
+      {selectedCoin && (
         <div 
           className="fixed inset-0 z-10"
           onClick={handleClose}
         />
       )}
 
-      {/* Icoin Button (Top) - Always visible */}
-      <button
-        onClick={() => handleCoinSelect('icoin')}
-        className={cn(
-          'w-10 h-10 rounded-full flex items-center justify-center z-20',
-          'bg-gradient-to-br from-icoin to-yellow-600 text-primary-foreground',
-          'shadow-lg shadow-icoin/30',
-          'hover:scale-110 active:scale-95 transition-transform',
-          selectedCoin === 'icoin' && 'ring-2 ring-icoin ring-offset-2 ring-offset-background'
+      {/* Icoin Button (Top) */}
+      <div className="relative flex flex-col items-center">
+        <button
+          onClick={() => handleCoinSelect('icoin')}
+          className={cn(
+            'w-10 h-10 rounded-full flex items-center justify-center z-20',
+            'bg-gradient-to-br from-icoin to-yellow-600 text-primary-foreground',
+            'shadow-lg shadow-icoin/30',
+            'hover:scale-110 active:scale-95 transition-transform',
+            selectedCoin === 'icoin' && 'ring-2 ring-icoin ring-offset-2 ring-offset-background'
+          )}
+        >
+          <span className="font-display font-bold text-base">I</span>
+        </button>
+        
+        {/* Mini ruler for Icoin */}
+        {selectedCoin === 'icoin' && (
+          <div
+            ref={rulerRef}
+            onMouseDown={handleRulerStart}
+            onMouseMove={handleRulerMove}
+            onMouseUp={handleRulerEnd}
+            onMouseLeave={handleRulerEnd}
+            onTouchStart={handleRulerStart}
+            onTouchMove={handleRulerMove}
+            onTouchEnd={handleRulerEnd}
+            className="absolute right-full mr-2 flex items-center gap-1 z-30 animate-fade-in"
+          >
+            <button
+              onClick={handleClose}
+              className="w-6 h-6 rounded-full bg-destructive/20 text-destructive text-xs font-bold"
+            >
+              ×
+            </button>
+            <div className="bg-background/90 backdrop-blur-sm rounded-full px-3 py-1 border border-icoin/50 cursor-ew-resize select-none">
+              <span className="text-icoin font-bold text-sm">{tipAmount}</span>
+            </div>
+            <button
+              onClick={handleConfirmTip}
+              className="w-6 h-6 rounded-full bg-icoin text-primary-foreground text-xs font-bold"
+            >
+              ✓
+            </button>
+          </div>
         )}
-      >
-        <span className="font-display font-bold text-base">I</span>
-      </button>
+      </div>
 
-      {/* Vicoin Button (Middle) - Always visible */}
-      <button
-        onClick={() => handleCoinSelect('vicoin')}
-        className={cn(
-          'w-10 h-10 rounded-full flex items-center justify-center z-20',
-          'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
-          'shadow-lg shadow-primary/30',
-          'hover:scale-110 active:scale-95 transition-transform',
-          selectedCoin === 'vicoin' && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+      {/* Vicoin Button (Middle) */}
+      <div className="relative flex flex-col items-center">
+        <button
+          onClick={() => handleCoinSelect('vicoin')}
+          className={cn(
+            'w-10 h-10 rounded-full flex items-center justify-center z-20',
+            'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
+            'shadow-lg shadow-primary/30',
+            'hover:scale-110 active:scale-95 transition-transform',
+            selectedCoin === 'vicoin' && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+          )}
+        >
+          <span className="font-display font-bold text-base">V</span>
+        </button>
+        
+        {/* Mini ruler for Vicoin */}
+        {selectedCoin === 'vicoin' && (
+          <div
+            ref={rulerRef}
+            onMouseDown={handleRulerStart}
+            onMouseMove={handleRulerMove}
+            onMouseUp={handleRulerEnd}
+            onMouseLeave={handleRulerEnd}
+            onTouchStart={handleRulerStart}
+            onTouchMove={handleRulerMove}
+            onTouchEnd={handleRulerEnd}
+            className="absolute right-full mr-2 flex items-center gap-1 z-30 animate-fade-in"
+          >
+            <button
+              onClick={handleClose}
+              className="w-6 h-6 rounded-full bg-destructive/20 text-destructive text-xs font-bold"
+            >
+              ×
+            </button>
+            <div className="bg-background/90 backdrop-blur-sm rounded-full px-3 py-1 border border-primary/50 cursor-ew-resize select-none">
+              <span className="text-primary font-bold text-sm">{tipAmount}</span>
+            </div>
+            <button
+              onClick={handleConfirmTip}
+              className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold"
+            >
+              ✓
+            </button>
+          </div>
         )}
-      >
-        <span className="font-display font-bold text-base">V</span>
-      </button>
+      </div>
 
       {/* Main Heart Button (Bottom) */}
       <button
@@ -181,114 +247,6 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
       <span className="text-xs text-muted-foreground">
         {formatCount(likeCount)}
       </span>
-
-      {/* Ruler Slider (When coin is selected) */}
-      {selectedCoin && (
-        <div 
-          className="absolute right-full mr-4 flex items-center gap-2 animate-fade-in z-30"
-          style={{ top: '50%', transform: 'translateY(-50%)' }}
-        >
-          {/* Close button */}
-          <button
-            onClick={handleClose}
-            className="w-8 h-8 rounded-full bg-destructive/20 text-destructive
-              flex items-center justify-center text-sm font-bold"
-          >
-            ×
-          </button>
-
-          {/* Ruler */}
-          <div
-            ref={rulerRef}
-            onMouseDown={handleRulerStart}
-            onMouseMove={handleRulerMove}
-            onMouseUp={handleRulerEnd}
-            onMouseLeave={handleRulerEnd}
-            onTouchStart={handleRulerStart}
-            onTouchMove={handleRulerMove}
-            onTouchEnd={handleRulerEnd}
-            className={cn(
-              'relative w-48 h-16 rounded-2xl overflow-hidden cursor-ew-resize select-none',
-              'bg-background/80 backdrop-blur-md border border-border/50',
-              'shadow-lg'
-            )}
-          >
-            {/* Ruler background with gradient */}
-            <div className={cn(
-              'absolute inset-0',
-              selectedCoin === 'vicoin' 
-                ? 'bg-gradient-to-r from-primary/10 via-primary/20 to-primary/10'
-                : 'bg-gradient-to-r from-icoin/10 via-icoin/20 to-icoin/10'
-            )} />
-
-            {/* Center indicator line */}
-            <div className={cn(
-              'absolute left-1/2 top-0 bottom-0 w-0.5 -translate-x-1/2 z-10',
-              selectedCoin === 'vicoin' ? 'bg-primary' : 'bg-icoin'
-            )} />
-
-            {/* Ruler marks */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              {rulerMarks.map((mark) => (
-                <div
-                  key={mark.value}
-                  className="absolute flex flex-col items-center"
-                  style={{ 
-                    left: `calc(50% + ${mark.offset * 24}px)`,
-                    transform: 'translateX(-50%)'
-                  }}
-                >
-                  <div className={cn(
-                    'w-px h-3',
-                    mark.offset === 0 
-                      ? (selectedCoin === 'vicoin' ? 'bg-primary h-5' : 'bg-icoin h-5')
-                      : 'bg-muted-foreground/50'
-                  )} />
-                  <span className={cn(
-                    'text-xs mt-1 font-medium transition-all',
-                    mark.offset === 0 
-                      ? (selectedCoin === 'vicoin' ? 'text-primary text-sm font-bold' : 'text-icoin text-sm font-bold')
-                      : 'text-muted-foreground/70'
-                  )}>
-                    {mark.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Coin icon */}
-            <div className={cn(
-              'absolute top-1 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full',
-              'flex items-center justify-center text-xs font-bold',
-              selectedCoin === 'vicoin'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-icoin text-primary-foreground'
-            )}>
-              {selectedCoin === 'vicoin' ? 'V' : 'I'}
-            </div>
-
-            {/* Drag hint */}
-            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground">
-              ← slide →
-            </div>
-          </div>
-
-          {/* Confirm button */}
-          <button
-            onClick={handleConfirmTip}
-            className={cn(
-              'w-10 h-10 rounded-full flex items-center justify-center',
-              'text-primary-foreground font-bold text-sm',
-              'transition-transform hover:scale-110',
-              selectedCoin === 'vicoin'
-                ? 'bg-primary shadow-lg shadow-primary/30'
-                : 'bg-icoin shadow-lg shadow-icoin/30'
-            )}
-          >
-            ✓
-          </button>
-        </div>
-      )}
     </div>
   );
 };

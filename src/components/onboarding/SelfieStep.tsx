@@ -3,6 +3,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Camera, RefreshCw, Check, Upload, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 interface SelfieStepProps {
   onCapture: (file: File) => void;
@@ -17,6 +18,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
   isLoading,
   existingUrl,
 }) => {
+  const { toast } = useToast();
   const [mode, setMode] = useState<'initial' | 'camera' | 'preview'>('initial');
   const [capturedImage, setCapturedImage] = useState<string | null>(existingUrl);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
@@ -33,10 +35,15 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
       setMode('camera');
     } catch (error) {
       console.error('Camera access denied:', error);
+      toast({
+        title: "Camera access denied",
+        description: "Please allow camera access or upload a photo instead.",
+        variant: "destructive",
+      });
       // Fall back to file upload
       fileInputRef.current?.click();
     }
-  }, []);
+  }, [toast]);
 
   // Assign stream to video element after mode changes to 'camera'
   React.useEffect(() => {

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
-import { X, Navigation, RefreshCw, MapPin, Coins } from 'lucide-react';
+import { X, Navigation, RefreshCw, MapPin, Coins, Search } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -26,14 +26,64 @@ interface DiscoveryMapProps {
   onClose: () => void;
 }
 
+// Generate global mock promotions for demo
+const generateGlobalPromotions = (count: number): Promotion[] => {
+  const cities = [
+    { name: 'New York', lat: 40.7128, lng: -74.006 },
+    { name: 'Los Angeles', lat: 34.0522, lng: -118.2437 },
+    { name: 'Chicago', lat: 41.8781, lng: -87.6298 },
+    { name: 'London', lat: 51.5074, lng: -0.1278 },
+    { name: 'Paris', lat: 48.8566, lng: 2.3522 },
+    { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
+    { name: 'Sydney', lat: -33.8688, lng: 151.2093 },
+    { name: 'Dubai', lat: 25.2048, lng: 55.2708 },
+    { name: 'Singapore', lat: 1.3521, lng: 103.8198 },
+    { name: 'Mumbai', lat: 19.076, lng: 72.8777 },
+    { name: 'São Paulo', lat: -23.5505, lng: -46.6333 },
+    { name: 'Mexico City', lat: 19.4326, lng: -99.1332 },
+    { name: 'Berlin', lat: 52.52, lng: 13.405 },
+    { name: 'Moscow', lat: 55.7558, lng: 37.6173 },
+    { name: 'Seoul', lat: 37.5665, lng: 126.978 },
+    { name: 'Bangkok', lat: 13.7563, lng: 100.5018 },
+    { name: 'Cairo', lat: 30.0444, lng: 31.2357 },
+    { name: 'Lagos', lat: 6.5244, lng: 3.3792 },
+    { name: 'Buenos Aires', lat: -34.6037, lng: -58.3816 },
+    { name: 'Toronto', lat: 43.6532, lng: -79.3832 },
+  ];
+
+  const businesses = ['Coffee House', 'Tech Store', 'Fashion Outlet', 'Restaurant', 'Gym', 'Bookstore', 'Spa', 'Cinema', 'Market', 'Bar'];
+  const categories = ['Food & Drink', 'Shopping', 'Entertainment', 'Health', 'Services'];
+  const actions = ['visit', 'purchase', 'scan', 'checkin'];
+
+  const promotions: Promotion[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const city = cities[Math.floor(Math.random() * cities.length)];
+    const business = businesses[Math.floor(Math.random() * businesses.length)];
+    const rewardTypes: ('vicoin' | 'icoin' | 'both')[] = ['vicoin', 'icoin', 'both'];
+    
+    promotions.push({
+      id: `global-${i}`,
+      business_name: `${business} ${city.name}`,
+      description: `Earn rewards at ${business} in ${city.name}!`,
+      reward_type: rewardTypes[Math.floor(Math.random() * rewardTypes.length)],
+      reward_amount: Math.floor(Math.random() * 450) + 50,
+      required_action: actions[Math.floor(Math.random() * actions.length)],
+      latitude: city.lat + (Math.random() - 0.5) * 2,
+      longitude: city.lng + (Math.random() - 0.5) * 2,
+      address: `${Math.floor(Math.random() * 999) + 1} Main St, ${city.name}`,
+      category: categories[Math.floor(Math.random() * categories.length)],
+    });
+  }
+
+  return promotions;
+};
+
 // Get gradient color based on reward amount (green = low, red = high)
 const getRewardGradient = (amount: number, rewardType: 'vicoin' | 'icoin' | 'both'): string => {
-  // Normalize amount (assuming max reward is ~500)
   const normalized = Math.min(amount / 500, 1);
-  
-  // Calculate gradient colors (green to yellow to red)
-  const hue = 120 - (normalized * 120); // 120 = green, 0 = red
-  const saturation = 80 + (normalized * 20); // More saturated for higher rewards
+  const hue = 120 - (normalized * 120);
+  const saturation = 80 + (normalized * 20);
   
   if (rewardType === 'both') {
     return `linear-gradient(135deg, hsl(${hue}, ${saturation}%, 45%), hsl(270, 80%, 55%))`;
@@ -66,6 +116,9 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [filter, setFilter] = useState<'all' | 'vicoin' | 'icoin'>('all');
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
+  const [showSearchHere, setShowSearchHere] = useState(false);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions(500));
 
   // Create popup HTML for a promotion
   const createPopupHTML = useCallback((promo: Promotion): string => {
@@ -237,6 +290,24 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       .setLngLat([userLocation.lng, userLocation.lat])
       .addTo(map.current);
 
+    // Track map movement for "Search Here" button
+    map.current.on('moveend', () => {
+      if (!map.current) return;
+      const center = map.current.getCenter();
+      const zoom = map.current.getZoom();
+      
+      setMapCenter({ lat: center.lat, lng: center.lng });
+      
+      // Show "Search Here" if map moved significantly
+      if (userLocation) {
+        const distance = Math.sqrt(
+          Math.pow(center.lat - userLocation.lat, 2) + 
+          Math.pow(center.lng - userLocation.lng, 2)
+        );
+        setShowSearchHere(distance > 0.01 || zoom < 10);
+      }
+    });
+
     // Fetch promotions
     fetchPromotions();
 
@@ -337,27 +408,75 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
     });
   }, [promotions, filter, createPopupHTML]);
 
-  const fetchPromotions = async () => {
-    if (!userLocation) return;
+  const fetchPromotions = async (searchCenter?: { lat: number; lng: number }) => {
+    const center = searchCenter || userLocation;
+    if (!center) return;
     
     setIsLoading(true);
+    setShowSearchHere(false);
+    
     try {
       const { data, error } = await supabase.functions.invoke('get-nearby-promotions', {
         body: {
-          latitude: userLocation.lat,
-          longitude: userLocation.lng,
+          latitude: center.lat,
+          longitude: center.lng,
           radiusKm: 10,
           rewardType: filter === 'all' ? undefined : filter,
         },
       });
 
       if (error) throw error;
-      setPromotions(data?.promotions || []);
+      
+      // Combine with global promos for demo
+      const dbPromos = data?.promotions || [];
+      const zoom = map.current?.getZoom() || 14;
+      
+      if (zoom < 8) {
+        // Show global promos when zoomed out
+        const visibleGlobalPromos = globalPromos.filter(p => {
+          if (filter === 'all') return true;
+          return p.reward_type === filter || p.reward_type === 'both';
+        });
+        setPromotions([...dbPromos, ...visibleGlobalPromos]);
+      } else {
+        // Filter global promos by distance when zoomed in
+        const nearbyGlobalPromos = globalPromos.filter(p => {
+          const distance = Math.sqrt(
+            Math.pow(p.latitude - center.lat, 2) + 
+            Math.pow(p.longitude - center.lng, 2)
+          );
+          const inRange = distance < (zoom < 10 ? 5 : 1);
+          if (filter === 'all') return inRange;
+          return inRange && (p.reward_type === filter || p.reward_type === 'both');
+        });
+        setPromotions([...dbPromos, ...nearbyGlobalPromos]);
+      }
+      
+      toast.success(`Found ${promotions.length} promotions`);
     } catch (error) {
       console.error('[DiscoveryMap] Fetch error:', error);
-      toast.error('Failed to load nearby promotions');
+      // Fallback to global promos only
+      const zoom = map.current?.getZoom() || 14;
+      const visiblePromos = globalPromos.filter(p => {
+        if (filter !== 'all' && p.reward_type !== filter && p.reward_type !== 'both') return false;
+        if (zoom >= 8) {
+          const distance = Math.sqrt(
+            Math.pow(p.latitude - center.lat, 2) + 
+            Math.pow(p.longitude - center.lng, 2)
+          );
+          return distance < (zoom < 10 ? 5 : 1);
+        }
+        return true;
+      });
+      setPromotions(visiblePromos);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSearchHere = () => {
+    if (mapCenter) {
+      fetchPromotions(mapCenter);
     }
   };
 
@@ -368,6 +487,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         zoom: 14,
         pitch: 45,
       });
+      setShowSearchHere(false);
     }
   };
 
@@ -469,13 +589,27 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
           <Navigation className="w-5 h-5" />
         </button>
         <button
-          onClick={fetchPromotions}
+          onClick={() => fetchPromotions()}
           disabled={isLoading}
           className="w-12 h-12 rounded-full neu-button flex items-center justify-center"
         >
           <RefreshCw className={cn('w-5 h-5', isLoading && 'animate-spin')} />
         </button>
       </div>
+
+      {/* Search Here Button */}
+      {showSearchHere && (
+        <div className="absolute top-32 left-1/2 transform -translate-x-1/2 z-20 animate-slide-down">
+          <button
+            onClick={handleSearchHere}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-5 py-3 rounded-full bg-primary text-primary-foreground font-medium shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
+          >
+            <Search className="w-4 h-4" />
+            Search Here
+          </button>
+        </div>
+      )}
 
       {/* Promotion Count Badge with Legend */}
       <div className="absolute left-4 bottom-24 bg-background/90 backdrop-blur-sm rounded-2xl px-4 py-3 neu-card">

@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Card3D } from '@/components/ui/Card3D';
 import { GlassText } from '@/components/ui/GlassText';
 import { cn } from '@/lib/utils';
-import iLogo from '@/assets/i-logo.png';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -90,11 +89,9 @@ const Install: React.FC = () => {
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-neon-glow opacity-50" />
         <div className="relative z-10 px-6 pt-12 pb-8 text-center">
-          <img 
-            src={iLogo} 
-            alt="iView Logo" 
-            className="w-24 h-24 mx-auto mb-6 animate-float-neon"
-          />
+          <div className="w-24 h-24 mx-auto mb-6 neu-card rounded-2xl flex items-center justify-center animate-float-ambient">
+            <span className="text-4xl font-display font-bold gradient-text">[ i ]</span>
+          </div>
           <GlassText theme="purple" variant="gradient" size="xl" as="h1" className="text-4xl mb-3">
             iView
           </GlassText>

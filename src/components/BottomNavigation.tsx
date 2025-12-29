@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Compass, MessageCircle, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useControlsVisibility } from './FloatingControls';
 import { AppLogo } from './AppLogo';
@@ -31,6 +32,11 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   className,
 }) => {
   const { isVisible } = useControlsVisibility();
+  const navigate = useNavigate();
+
+  const handleLogoClick = () => {
+    navigate('/create');
+  };
 
   return (
     <nav className={cn(
@@ -43,15 +49,13 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
           <React.Fragment key={item.id}>
           {item.isLogo ? (
               <button
-                onClick={() => onTabChange('home')}
+                onClick={handleLogoClick}
                 className={cn(
                   'flex flex-col items-center justify-center px-3 py-2 rounded-full transition-all duration-200',
-                  activeTab === 'home' 
-                    ? 'bg-primary/20 neon-border' 
-                    : 'hover:bg-primary/10'
+                  'hover:bg-primary/10'
                 )}
               >
-                <AppLogo size="sm" animated={activeTab === 'home'} />
+                <AppLogo size="sm" animated={false} />
               </button>
             ) : (
               <button

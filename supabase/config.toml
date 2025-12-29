@@ -32,6 +32,9 @@ verify_jwt = false
 [functions.transfer-coins]
 verify_jwt = false
 
+[functions.tip-creator]
+verify_jwt = false
+
 [functions.get-nearby-promotions]
 verify_jwt = false
 

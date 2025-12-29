@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Heart, 
   MessageCircle, 
   Share2, 
   Bookmark, 
@@ -14,6 +13,7 @@ import {
   X
 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
+import { MorphingLikeButton } from './MorphingLikeButton';
 import { cn } from '@/lib/utils';
 
 interface MediaInteractionButtonsProps {
@@ -32,6 +32,7 @@ interface MediaInteractionButtonsProps {
   
   // Callbacks
   onLike?: () => void;
+  onTip?: (coinType: 'vicoin' | 'icoin', amount: number) => void;
   onComment?: () => void;
   onShare?: () => void;
   onSave?: () => void;
@@ -61,6 +62,7 @@ export const MediaInteractionButtons: React.FC<MediaInteractionButtonsProps> = (
   commentCount = 0,
   shareCount = 0,
   onLike,
+  onTip,
   onComment,
   onShare,
   onSave,
@@ -130,17 +132,13 @@ export const MediaInteractionButtons: React.FC<MediaInteractionButtonsProps> = (
 
   return (
     <div className={cn('flex flex-col gap-4', className)}>
-      {/* Like */}
-      <div className="flex flex-col items-center gap-1">
-        <NeuButton 
-          onClick={onLike} 
-          variant={isLiked ? 'accent' : 'default'}
-          isPressed={isLiked}
-        >
-          <Heart className={cn('w-6 h-6', isLiked && 'fill-current')} />
-        </NeuButton>
-        <span className="text-xs text-muted-foreground">{formatCount(likeCount)}</span>
-      </div>
+      {/* Like with Morphing Tip Feature */}
+      <MorphingLikeButton
+        isLiked={isLiked}
+        likeCount={likeCount}
+        onLike={onLike}
+        onTip={onTip}
+      />
 
       {/* Comment */}
       <div className="flex flex-col items-center gap-1">

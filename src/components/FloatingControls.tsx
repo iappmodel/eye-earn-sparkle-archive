@@ -29,31 +29,34 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
   autoHideDelay = 3000,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
-  const [hideTimer, setHideTimer] = useState<NodeJS.Timeout | null>(null);
+  const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showControls = useCallback(() => {
     setIsVisible(true);
-    if (hideTimer) clearTimeout(hideTimer);
-    const timer = setTimeout(() => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
       setIsVisible(false);
     }, autoHideDelay);
-    setHideTimer(timer);
-  }, [hideTimer, autoHideDelay]);
+  }, [autoHideDelay]);
 
   useEffect(() => {
     showControls();
+
+    // Don’t use a full-screen overlay (it blocks clicks). Instead, listen globally.
+    const onUserActivity = () => showControls();
+
+    window.addEventListener('pointerdown', onUserActivity, { passive: true });
+    window.addEventListener('keydown', onUserActivity);
+
     return () => {
-      if (hideTimer) clearTimeout(hideTimer);
+      window.removeEventListener('pointerdown', onUserActivity);
+      window.removeEventListener('keydown', onUserActivity);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, []);
+  }, [showControls]);
 
   return (
     <ControlsVisibilityContext.Provider value={{ isVisible, showControls }}>
-      {/* Invisible tap area to show controls */}
-      <div 
-        className="fixed inset-0 z-30"
-        onClick={showControls}
-      />
       {children}
     </ControlsVisibilityContext.Provider>
   );

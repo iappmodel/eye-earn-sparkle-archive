@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 export type UIDensity = 'compact' | 'default' | 'comfortable';
-export type ThemePack = 'default' | 'night' | 'focus' | 'energy' | 'nature';
+export type ThemePack = 'default' | 'lunar' | 'night' | 'focus' | 'energy' | 'nature';
 
 interface AccessibilityState {
   // UI Density
@@ -100,6 +100,13 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     document.documentElement.classList.toggle('high-contrast', state.highContrast);
   }, [state.highContrast]);
+
+  // Apply theme pack class
+  useEffect(() => {
+    const themes = ['theme-default', 'theme-lunar', 'theme-night', 'theme-focus', 'theme-energy', 'theme-nature'];
+    themes.forEach(t => document.documentElement.classList.remove(t));
+    document.documentElement.classList.add(`theme-${state.themePack}`);
+  }, [state.themePack]);
 
   // Apply font size
   useEffect(() => {

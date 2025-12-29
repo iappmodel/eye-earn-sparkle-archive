@@ -155,6 +155,22 @@ export default {
             opacity: "0.9",
           },
         },
+        "glow-ring-icoin": {
+          "0%, 100%": { 
+            boxShadow: "0 0 0 0 hsl(45 100% 55% / 0.4), 0 0 15px hsl(45 100% 55% / 0.2)",
+          },
+          "50%": { 
+            boxShadow: "0 0 0 6px hsl(45 100% 55% / 0), 0 0 25px hsl(45 100% 55% / 0.4)",
+          },
+        },
+        "glow-ring-vicoin": {
+          "0%, 100%": { 
+            boxShadow: "0 0 0 0 hsl(270 95% 65% / 0.4), 0 0 15px hsl(270 95% 65% / 0.2)",
+          },
+          "50%": { 
+            boxShadow: "0 0 0 6px hsl(270 95% 65% / 0), 0 0 25px hsl(270 95% 65% / 0.4)",
+          },
+        },
         "glow-rotate": {
           "0%": { 
             filter: "hue-rotate(0deg)",
@@ -190,6 +206,8 @@ export default {
         "glow-rotate": "glow-rotate 8s linear infinite",
         "float-neon": "float-neon 3s ease-in-out infinite",
         "coin-pulse": "coin-pulse 2.5s ease-in-out infinite",
+        "glow-ring-icoin": "glow-ring-icoin 2s ease-in-out infinite",
+        "glow-ring-vicoin": "glow-ring-vicoin 2s ease-in-out infinite",
       },
     },
   },

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 interface MorphingLikeButtonProps {
   isLiked?: boolean;
@@ -23,6 +24,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const startX = useRef(0);
+  const haptic = useHapticFeedback();
   const rulerRef = useRef<HTMLDivElement>(null);
 
   const formatCount = (count: number): string => {
@@ -53,6 +55,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   }, [isExpanded, selectedCoin, onLike]);
 
   const handleCoinSelect = (coinType: 'vicoin' | 'icoin') => {
+    haptic.medium();
     setSelectedCoin(coinType);
     setTipAmount(10);
   };
@@ -85,6 +88,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
 
   const handleConfirmTip = () => {
     if (selectedCoin && tipAmount > 0) {
+      haptic.success();
       onTip?.(selectedCoin, tipAmount);
       handleClose();
     }

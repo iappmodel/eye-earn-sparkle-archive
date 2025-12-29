@@ -42,11 +42,11 @@ export const AppLogo: React.FC<AppLogoProps> = ({
         {/* Glow background */}
         <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-neon-purple/40 via-neon-magenta/30 to-neon-cyan/20 blur-xl scale-150" />
         
-        {/* Logo image */}
+        {/* Logo image with screen blend to work on dark backgrounds */}
         <img 
           src={iLogo} 
           alt="i Logo" 
-          className="relative w-full h-full object-contain"
+          className="relative w-full h-full object-contain mix-blend-screen"
           style={{
             filter: 'drop-shadow(0 0 15px rgba(168, 85, 247, 0.5)) drop-shadow(0 0 30px rgba(236, 72, 153, 0.3))'
           }}

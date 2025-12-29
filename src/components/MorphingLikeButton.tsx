@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { CoinFlyAnimation } from './CoinFlyAnimation';
 
 interface MorphingLikeButtonProps {
   isLiked?: boolean;
@@ -22,6 +23,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   const [selectedCoin, setSelectedCoin] = useState<'vicoin' | 'icoin' | null>(null);
   const [tipAmount, setTipAmount] = useState(10);
   const [isDragging, setIsDragging] = useState(false);
+  const [flyingCoin, setFlyingCoin] = useState<{ type: 'vicoin' | 'icoin'; amount: number } | null>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const startX = useRef(0);
   const haptic = useHapticFeedback();
@@ -89,6 +91,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   const handleConfirmTip = () => {
     if (selectedCoin && tipAmount > 0) {
       haptic.success();
+      setFlyingCoin({ type: selectedCoin, amount: tipAmount });
       onTip?.(selectedCoin, tipAmount);
       handleClose();
     }
@@ -113,6 +116,15 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
 
   return (
     <div className={cn('relative flex flex-col items-center gap-4', className)}>
+      {/* Coin fly animation */}
+      {flyingCoin && (
+        <CoinFlyAnimation
+          coinType={flyingCoin.type}
+          amount={flyingCoin.amount}
+          onComplete={() => setFlyingCoin(null)}
+        />
+      )}
+
       {/* Backdrop to close */}
       {selectedCoin && (
         <div 

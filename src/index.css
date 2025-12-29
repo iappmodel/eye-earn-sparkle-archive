@@ -1,5 +1,55 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* Video Preview Filter Animations */
+@keyframes strobe-soft {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes color-shift {
+  0% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(30deg); }
+  100% { filter: hue-rotate(0deg); }
+}
+
+@keyframes glow-soft {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.02); }
+}
+
+@keyframes glitch-effect {
+  0%, 100% { transform: translate(0); }
+  20% { transform: translate(-2px, 1px); }
+  40% { transform: translate(2px, -1px); }
+  60% { transform: translate(-1px, 2px); }
+  80% { transform: translate(1px, -2px); }
+}
+
+@keyframes light-leak {
+  0%, 100% { opacity: 0.3; transform: translateX(0); }
+  50% { opacity: 0.5; transform: translateX(5%); }
+}
+
+.animate-strobe {
+  animation: strobe-soft 2s ease-in-out infinite;
+}
+
+.animate-color-shift {
+  animation: color-shift 4s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow-soft 3s ease-in-out infinite;
+}
+
+.animate-glitch {
+  animation: glitch-effect 0.3s ease-in-out infinite;
+}
+
+.animate-light-leak {
+  animation: light-leak 6s ease-in-out infinite;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

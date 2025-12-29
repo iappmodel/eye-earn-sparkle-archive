@@ -41,11 +41,18 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       <div className="glass-neon rounded-full px-3 py-2 flex items-center gap-1">
         {navItems.map((item) => (
           <React.Fragment key={item.id}>
-            {item.isLogo ? (
-              <div className="mx-2 -mt-6 relative">
-                <div className="absolute inset-0 -z-10 bg-gradient-to-b from-neon-purple/30 to-transparent blur-xl scale-150" />
-                <AppLogo size="lg" animated={true} />
-              </div>
+          {item.isLogo ? (
+              <button
+                onClick={() => onTabChange('home')}
+                className={cn(
+                  'flex flex-col items-center justify-center px-3 py-2 rounded-full transition-all duration-200',
+                  activeTab === 'home' 
+                    ? 'bg-primary/20 neon-border' 
+                    : 'hover:bg-primary/10'
+                )}
+              >
+                <AppLogo size="sm" animated={activeTab === 'home'} />
+              </button>
             ) : (
               <button
                 onClick={() => onTabChange(item.id)}

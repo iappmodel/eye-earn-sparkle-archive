@@ -53,8 +53,16 @@ const generateGlobalPromotions = (count: number): Promotion[] => {
 
   const businesses = ['Coffee House', 'Tech Store', 'Fashion Outlet', 'Restaurant', 'Gym', 'Bookstore', 'Spa', 'Cinema', 'Market', 'Bar'];
   const categories = ['Food & Drink', 'Shopping', 'Entertainment', 'Health', 'Services'];
-  const actions = ['visit', 'purchase', 'scan', 'checkin'];
-
+  const actionDescriptions = [
+    { action: 'visit', text: 'Visit the store and check-in at the counter' },
+    { action: 'purchase', text: 'Make any purchase of $10 or more' },
+    { action: 'scan', text: 'Scan the QR code at the entrance' },
+    { action: 'checkin', text: 'Check-in and stay for 15 minutes' },
+    { action: 'share', text: 'Share a photo on social media with our hashtag' },
+    { action: 'review', text: 'Leave a review after your visit' },
+    { action: 'signup', text: 'Sign up for our loyalty program' },
+    { action: 'watch', text: 'Watch our 30-second promo video' },
+  ];
   const promotions: Promotion[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -62,13 +70,15 @@ const generateGlobalPromotions = (count: number): Promotion[] => {
     const business = businesses[Math.floor(Math.random() * businesses.length)];
     const rewardTypes: ('vicoin' | 'icoin' | 'both')[] = ['vicoin', 'icoin', 'both'];
     
+    const actionItem = actionDescriptions[Math.floor(Math.random() * actionDescriptions.length)];
+    
     promotions.push({
       id: `global-${i}`,
       business_name: `${business} ${city.name}`,
       description: `Earn rewards at ${business} in ${city.name}!`,
       reward_type: rewardTypes[Math.floor(Math.random() * rewardTypes.length)],
       reward_amount: Math.floor(Math.random() * 450) + 50,
-      required_action: actions[Math.floor(Math.random() * actions.length)],
+      required_action: actionItem.text,
       latitude: city.lat + (Math.random() - 0.5) * 2,
       longitude: city.lng + (Math.random() - 0.5) * 2,
       address: `${Math.floor(Math.random() * 999) + 1} Main St, ${city.name}`,
@@ -176,13 +186,29 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         <div style="
           font-size: 12px;
           color: rgba(255, 255, 255, 0.7);
-          margin-bottom: 10px;
+          margin-bottom: 8px;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
           line-height: 1.4;
         ">${promo.description || 'Earn rewards at this location!'}</div>
+        
+        <div style="
+          font-size: 11px;
+          color: rgba(139, 92, 246, 0.9);
+          background: rgba(139, 92, 246, 0.1);
+          border: 1px solid rgba(139, 92, 246, 0.2);
+          border-radius: 8px;
+          padding: 8px 10px;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        ">
+          <span style="font-size: 12px;">📋</span>
+          <span style="line-height: 1.3;">${promo.required_action || 'Visit the location to claim'}</span>
+        </div>
         
         <div style="
           display: flex;

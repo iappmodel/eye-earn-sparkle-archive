@@ -8,6 +8,8 @@ import {
   Eye, Heart, Users, Video, Image as ImageIcon, Music,
   Cpu, Brain, Clapperboard, Timer, Gauge, Target, Upload, X, Plus
 } from 'lucide-react';
+import { VideoTimeline, TrimClip } from '@/components/studio/VideoTimeline';
+import { AIVideoEditor, AIStyle, AIEditOptions, aiStyles } from '@/components/studio/AIVideoEditor';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -169,9 +171,12 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   
   // AI state
   const [aiHighlights, setAiHighlights] = useState<AIHighlight[]>([]);
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
+  const [selectedAIStyle, setSelectedAIStyle] = useState<string | null>(null);
   const [referenceVideos, setReferenceVideos] = useState<string[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  
+  // Trim state
+  const [trimClips, setTrimClips] = useState<TrimClip[]>([]);
   
   // Playback
   const [speed, setSpeed] = useState([1]);
@@ -315,17 +320,30 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
     toast.success('AI analysis complete!', { description: `Found ${mockHighlights.length} highlight moments.` });
   };
 
-  const handleSelectStyle = (styleId: string) => {
-    const style = styleTemplates.find(s => s.id === styleId);
-    if (style?.isPremium && !isPremium) {
-      toast.error('Premium style template', {
-        description: 'Upgrade to use this professional style.',
-        action: { label: 'Upgrade', onClick: () => navigate('/settings/subscription') }
-      });
-      return;
+  const handleSelectAIStyle = (style: AIStyle | null) => {
+    setSelectedAIStyle(style?.id || null);
+  };
+
+  const handleApplyAIStyle = async (style: AIStyle, options: AIEditOptions) => {
+    setIsProcessing(true);
+    toast.info(`Applying ${style.name} AI style...`);
+    
+    // Simulate AI processing
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    setIsProcessing(false);
+  };
+
+  const handleTrimChange = (clips: TrimClip[]) => {
+    setTrimClips(clips);
+    toast.success('Trim updated');
+  };
+
+  const handleTimeChange = (time: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
     }
-    setSelectedStyle(styleId);
-    toast.success(`Applied "${style?.name}" style`);
   };
 
   const handleApplyAIEdit = async () => {
@@ -839,47 +857,44 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         </div>
       )}
 
-      {/* Timeline */}
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground w-10">
-            {Math.floor(currentTime / 60)}:{(currentTime % 60).toString().padStart(2, '0')}
-          </span>
-          <div className="flex-1 relative h-8 bg-muted/30 rounded-lg overflow-hidden">
-            {/* Progress */}
-            <div 
-              className="absolute left-0 top-0 bottom-0 bg-primary/30"
-              style={{ width: `${(currentTime / duration) * 100}%` }}
-            />
-            {/* AI Highlights */}
-            {aiHighlights.map((h) => (
-              <button
-                key={h.id}
-                onClick={() => toggleHighlight(h.id)}
-                className={cn(
-                  'absolute top-1 bottom-1 rounded transition-all',
-                  h.selected 
-                    ? 'bg-green-500/50 border border-green-500' 
-                    : 'bg-amber-500/30 border border-amber-500/50'
-                )}
-                style={{
-                  left: `${(h.startTime / duration) * 100}%`,
-                  width: `${((h.endTime - h.startTime) / duration) * 100}%`,
-                }}
-                title={h.reason}
-              />
-            ))}
-            {/* Playhead */}
-            <div 
-              className="absolute top-0 bottom-0 w-0.5 bg-white"
-              style={{ left: `${(currentTime / duration) * 100}%` }}
-            />
-          </div>
-          <span className="text-xs text-muted-foreground w-10 text-right">
-            {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}
-          </span>
+      {/* Advanced Timeline */}
+      {currentMedia?.type === 'video' && (
+        <div className="px-4 py-3">
+          <VideoTimeline
+            duration={duration}
+            currentTime={currentTime}
+            isPlaying={isPlaying}
+            onTimeChange={handleTimeChange}
+            onPlayPause={togglePlayPause}
+            onTrimChange={handleTrimChange}
+            highlights={aiHighlights}
+          />
         </div>
-      </div>
+      )}
+
+      {/* Simple Timeline for images */}
+      {(!currentMedia || currentMedia.type !== 'video') && (
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-10">
+              {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
+            </span>
+            <div className="flex-1 relative h-8 bg-muted/30 rounded-lg overflow-hidden">
+              <div 
+                className="absolute left-0 top-0 bottom-0 bg-primary/30"
+                style={{ width: `${(currentTime / duration) * 100}%` }}
+              />
+              <div 
+                className="absolute top-0 bottom-0 w-0.5 bg-white"
+                style={{ left: `${(currentTime / duration) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs text-muted-foreground w-10 text-right">
+              {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* AI Mode Panel */}
       {editorMode === 'ai' && (
@@ -946,54 +961,23 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
             </div>
           )}
           
-          {/* Style Templates */}
-          <div className="space-y-2">
-            <h4 className="font-medium text-sm">Style Templates</h4>
-            <div className="grid grid-cols-2 gap-2">
-              {styleTemplates.slice(0, 4).map((style) => (
-                <button
-                  key={style.id}
-                  onClick={() => handleSelectStyle(style.id)}
-                  className={cn(
-                    'relative p-3 rounded-xl text-left transition-all',
-                    'hover:scale-[1.02] active:scale-[0.98]',
-                    selectedStyle === style.id
-                      ? 'ring-2 ring-primary'
-                      : 'ring-1 ring-border/50'
-                  )}
-                >
-                  <div 
-                    className="absolute inset-0 rounded-xl opacity-20"
-                    style={{ background: style.thumbnail }}
-                  />
-                  <div className="relative">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">{style.name}</span>
-                      {style.isPremium && !isPremium && (
-                        <Crown className="w-3.5 h-3.5 text-amber-500" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground line-clamp-1">
-                      {style.description}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <Button variant="ghost" size="sm" className="w-full">
-              View All Styles <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
+          {/* AI Video Editor with 20 styles */}
+          <AIVideoEditor
+            isPremium={isPremium}
+            selectedStyleId={selectedAIStyle}
+            onStyleSelect={handleSelectAIStyle}
+            onApplyAI={handleApplyAIStyle}
+          />
           
           {/* Apply AI Edits */}
-          {(aiHighlights.some(h => h.selected) || selectedStyle) && (
+          {aiHighlights.some(h => h.selected) && (
             <Button 
               onClick={handleApplyAIEdit}
               disabled={isProcessing}
               className="w-full bg-gradient-to-r from-primary to-accent"
             >
               <Wand2 className="w-4 h-4 mr-2" />
-              Apply AI Edits
+              Apply AI Highlight Cuts
             </Button>
           )}
         </div>

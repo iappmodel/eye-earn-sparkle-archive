@@ -79,9 +79,16 @@ serve(async (req) => {
 
     if (existingReward) {
       console.log('[IssueReward] Duplicate reward attempt blocked');
+
+      // This is an expected anti-cheat outcome, not a system failure.
+      // Return 200 so clients can handle it via `success: false` without treating it as a runtime error.
       return new Response(
-        JSON.stringify({ error: 'Reward already claimed for this content', success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'Reward already claimed for this content',
+          code: 'reward_already_claimed',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 

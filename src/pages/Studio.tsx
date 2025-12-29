@@ -1,4 +1,4 @@
-import React, { useState, forwardRef, useCallback, useRef } from 'react';
+import React, { useState, forwardRef, useCallback, useRef, ChangeEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Wand2, Sparkles, Play, Pause, Undo, Redo, 
@@ -6,7 +6,7 @@ import {
   Lock, Check, ChevronRight, RefreshCw, Download, Share2,
   Scissors, Copy, Trash2, RotateCcw, Sun, Contrast, Droplet,
   Eye, Heart, Users, Video, Image as ImageIcon, Music,
-  Cpu, Brain, Clapperboard, Timer, Gauge, Target
+  Cpu, Brain, Clapperboard, Timer, Gauge, Target, Upload, X, Plus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useStudioMedia } from '@/hooks/useStudioMedia';
 import { toast } from 'sonner';
 
 type EditorMode = 'manual' | 'ai' | 'hybrid';
@@ -134,13 +135,25 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   const { user } = useAuth();
   const { tier } = useSubscription();
   const isPremium = tier === 'pro' || tier === 'creator';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Media upload hook
+  const { 
+    mediaFiles, 
+    currentMedia, 
+    isUploading, 
+    addMedia, 
+    removeMedia, 
+    selectMedia 
+  } = useStudioMedia();
   
   // Editor state
   const [editorMode, setEditorMode] = useState<EditorMode>('hybrid');
   const [activeTool, setActiveTool] = useState<EditingTool>('filters');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration] = useState(30); // seconds
+  const [duration, setDuration] = useState(30); // seconds
   const [isProcessing, setIsProcessing] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   
@@ -172,6 +185,54 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
 
   const handleBack = () => {
     navigate('/create');
+  };
+
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      addMedia(e.target.files);
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addMedia(e.dataTransfer.files);
+    }
+  }, [addMedia]);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleVideoLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  const handleVideoTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const togglePlayPause = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
   };
 
   const handleUndo = () => {
@@ -617,48 +678,166 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         </Tabs>
       </div>
 
-      {/* Video Preview */}
-      <div className="relative aspect-[9/16] max-h-[50vh] bg-black/80 mx-4 mt-4 rounded-xl overflow-hidden">
-        {/* Placeholder for video */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center text-muted-foreground">
-            <Video className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Video Preview</p>
-          </div>
-        </div>
-        
-        {/* Play overlay */}
-        <button 
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"
-        >
-          <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-            {isPlaying ? (
-              <Pause className="w-8 h-8 text-white" />
-            ) : (
-              <Play className="w-8 h-8 text-white ml-1" />
-            )}
-          </div>
-        </button>
-        
-        {/* Processing overlay */}
-        {(isProcessing || aiAnalyzing) && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center">
-            <RefreshCw className="w-10 h-10 text-primary animate-spin mb-3" />
-            <p className="text-white font-medium">
-              {aiAnalyzing ? 'AI Analyzing...' : 'Processing...'}
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
+      {/* Media Preview Area */}
+      <div 
+        className="relative aspect-[9/16] max-h-[50vh] bg-black/80 mx-4 mt-4 rounded-xl overflow-hidden"
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        {/* Upload zone when no media */}
+        {!currentMedia ? (
+          <button
+            onClick={handleFileSelect}
+            className="absolute inset-0 flex flex-col items-center justify-center hover:bg-muted/10 transition-colors border-2 border-dashed border-muted-foreground/30 rounded-xl"
+          >
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Upload className="w-8 h-8 text-primary" />
+            </div>
+            <p className="text-foreground font-medium mb-1">Upload Media</p>
+            <p className="text-sm text-muted-foreground">
+              Drag & drop or click to select
             </p>
-          </div>
-        )}
-        
-        {/* Filter preview */}
-        {selectedFilter !== 'none' && (
-          <div 
-            className="absolute inset-0 mix-blend-overlay opacity-50"
-            style={{ background: filters.find(f => f.id === selectedFilter)?.preview }}
-          />
+            <p className="text-xs text-muted-foreground mt-2">
+              Videos up to 100MB • Images up to 20MB
+            </p>
+            {isUploading && (
+              <div className="mt-4 flex items-center gap-2 text-primary">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Uploading...</span>
+              </div>
+            )}
+          </button>
+        ) : (
+          <>
+            {/* Actual media display */}
+            {currentMedia.type === 'video' ? (
+              <video
+                ref={videoRef}
+                src={currentMedia.url}
+                className="absolute inset-0 w-full h-full object-contain"
+                onLoadedMetadata={handleVideoLoadedMetadata}
+                onTimeUpdate={handleVideoTimeUpdate}
+                onEnded={() => setIsPlaying(false)}
+                playsInline
+              />
+            ) : (
+              <img
+                src={currentMedia.url}
+                alt="Preview"
+                className="absolute inset-0 w-full h-full object-contain"
+              />
+            )}
+
+            {/* Upload overlay indicator */}
+            {currentMedia.isUploading && (
+              <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                <RefreshCw className="w-8 h-8 text-primary animate-spin mb-2" />
+                <p className="text-white text-sm">Uploading...</p>
+              </div>
+            )}
+            
+            {/* Play/Pause overlay for videos */}
+            {currentMedia.type === 'video' && !currentMedia.isUploading && (
+              <button 
+                onClick={togglePlayPause}
+                className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors"
+              >
+                <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                  {isPlaying ? (
+                    <Pause className="w-8 h-8 text-white" />
+                  ) : (
+                    <Play className="w-8 h-8 text-white ml-1" />
+                  )}
+                </div>
+              </button>
+            )}
+            
+            {/* Processing overlay */}
+            {(isProcessing || aiAnalyzing) && (
+              <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center">
+                <RefreshCw className="w-10 h-10 text-primary animate-spin mb-3" />
+                <p className="text-white font-medium">
+                  {aiAnalyzing ? 'AI Analyzing...' : 'Processing...'}
+                </p>
+              </div>
+            )}
+            
+            {/* Filter preview */}
+            {selectedFilter !== 'none' && (
+              <div 
+                className="absolute inset-0 mix-blend-overlay opacity-50 pointer-events-none"
+                style={{ background: filters.find(f => f.id === selectedFilter)?.preview }}
+              />
+            )}
+
+            {/* Remove current media button */}
+            <button
+              onClick={() => removeMedia(currentMedia.id)}
+              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center hover:bg-black/80 transition-colors"
+            >
+              <X className="w-4 h-4 text-white" />
+            </button>
+          </>
         )}
       </div>
+
+      {/* Media thumbnails strip */}
+      {mediaFiles.length > 0 && (
+        <div className="px-4 mt-3">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {mediaFiles.map((media) => (
+              <button
+                key={media.id}
+                onClick={() => selectMedia(media.id)}
+                className={cn(
+                  'relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 transition-all',
+                  currentMedia?.id === media.id 
+                    ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' 
+                    : 'opacity-70 hover:opacity-100'
+                )}
+              >
+                {media.type === 'video' ? (
+                  <video src={media.url} className="w-full h-full object-cover" muted />
+                ) : (
+                  <img src={media.url} alt="" className="w-full h-full object-cover" />
+                )}
+                {media.isUploading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                  </div>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeMedia(media.id);
+                  }}
+                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive flex items-center justify-center"
+                >
+                  <X className="w-3 h-3 text-white" />
+                </button>
+              </button>
+            ))}
+            
+            {/* Add more button */}
+            <button
+              onClick={handleFileSelect}
+              className="w-14 h-14 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center flex-shrink-0 hover:border-primary/50 transition-colors"
+            >
+              <Plus className="w-5 h-5 text-muted-foreground" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Timeline */}
       <div className="px-4 py-3">

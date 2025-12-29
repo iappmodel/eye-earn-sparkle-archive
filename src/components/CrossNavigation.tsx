@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+type Direction = 'up' | 'down' | 'left' | 'right';
+
 interface CrossNavigationProps {
-  onNavigate: (direction: 'up' | 'down' | 'left' | 'right') => void;
+  onNavigate: (direction: Direction) => void;
   labels?: {
     up?: string;
     down?: string;
     left?: string;
     right?: string;
   };
-  isVisible?: boolean;
+  activeDirection?: Direction | null;
 }
 
 export const CrossNavigation: React.FC<CrossNavigationProps> = ({
@@ -21,46 +23,109 @@ export const CrossNavigation: React.FC<CrossNavigationProps> = ({
     left: 'Friends',
     right: 'Promos',
   },
-  isVisible = true,
+  activeDirection,
 }) => {
-  if (!isVisible) return null;
+  const [visibleDirection, setVisibleDirection] = useState<Direction | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // Show the direction indicator briefly when activeDirection changes
+  useEffect(() => {
+    if (activeDirection) {
+      setVisibleDirection(activeDirection);
+      setIsAnimating(true);
+
+      const timer = setTimeout(() => {
+        setIsAnimating(false);
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [activeDirection]);
+
+  // Clear visible direction after fade-out animation completes
+  useEffect(() => {
+    if (!isAnimating && visibleDirection) {
+      const timer = setTimeout(() => {
+        setVisibleDirection(null);
+      }, 300); // Match fade-out duration
+      return () => clearTimeout(timer);
+    }
+  }, [isAnimating, visibleDirection]);
+
+  const handleClick = useCallback((direction: Direction) => {
+    setVisibleDirection(direction);
+    setIsAnimating(true);
+    onNavigate(direction);
+
+    const timer = setTimeout(() => {
+      setIsAnimating(false);
+    }, 1000);
+  }, [onNavigate]);
+
+  const baseClasses = "fixed z-40 flex items-center gap-2 transition-all duration-300 pointer-events-auto";
+  const visibleClasses = "opacity-90 scale-100";
+  const hiddenClasses = "opacity-0 scale-75 pointer-events-none";
 
   return (
     <>
       {/* Top indicator */}
       <button
-        onClick={() => onNavigate('up')}
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+        onClick={() => handleClick('up')}
+        className={cn(
+          baseClasses,
+          "top-6 left-1/2 -translate-x-1/2 flex-col",
+          visibleDirection === 'up' && isAnimating ? visibleClasses : hiddenClasses
+        )}
       >
-        <ChevronUp className="w-6 h-6 text-foreground animate-bounce" />
-        <span className="text-xs text-muted-foreground">{labels.up}</span>
+        <ChevronUp className="w-8 h-8 text-primary animate-bounce" />
+        <span className="text-sm font-medium text-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full">
+          {labels.up}
+        </span>
       </button>
 
       {/* Bottom indicator */}
       <button
-        onClick={() => onNavigate('down')}
-        className="fixed bottom-28 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+        onClick={() => handleClick('down')}
+        className={cn(
+          baseClasses,
+          "bottom-28 left-1/2 -translate-x-1/2 flex-col-reverse",
+          visibleDirection === 'down' && isAnimating ? visibleClasses : hiddenClasses
+        )}
       >
-        <span className="text-xs text-muted-foreground">{labels.down}</span>
-        <ChevronDown className="w-6 h-6 text-foreground animate-bounce" />
+        <ChevronDown className="w-8 h-8 text-primary animate-bounce" />
+        <span className="text-sm font-medium text-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full">
+          {labels.down}
+        </span>
       </button>
 
       {/* Left indicator */}
       <button
-        onClick={() => onNavigate('left')}
-        className="fixed left-4 top-1/2 -translate-y-1/2 z-40 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+        onClick={() => handleClick('left')}
+        className={cn(
+          baseClasses,
+          "left-6 top-1/2 -translate-y-1/2",
+          visibleDirection === 'left' && isAnimating ? visibleClasses : hiddenClasses
+        )}
       >
-        <ChevronLeft className="w-6 h-6 text-foreground" />
-        <span className="text-xs text-muted-foreground writing-vertical">{labels.left}</span>
+        <ChevronLeft className="w-8 h-8 text-primary" />
+        <span className="text-sm font-medium text-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full">
+          {labels.left}
+        </span>
       </button>
 
-      {/* Right indicator - hidden when controls visible */}
+      {/* Right indicator */}
       <button
-        onClick={() => onNavigate('right')}
-        className="fixed right-24 top-1/2 -translate-y-1/2 z-35 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+        onClick={() => handleClick('right')}
+        className={cn(
+          baseClasses,
+          "right-6 top-1/2 -translate-y-1/2",
+          visibleDirection === 'right' && isAnimating ? visibleClasses : hiddenClasses
+        )}
       >
-        <span className="text-xs text-muted-foreground">{labels.right}</span>
-        <ChevronRight className="w-6 h-6 text-foreground" />
+        <span className="text-sm font-medium text-foreground bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full">
+          {labels.right}
+        </span>
+        <ChevronRight className="w-8 h-8 text-primary" />
       </button>
     </>
   );

@@ -100,18 +100,19 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
     setTipAmount(10);
   };
 
-  // Generate ruler marks
-  const rulerMarks = [];
-  const centerValue = tipAmount;
-  for (let i = -3; i <= 3; i++) {
-    const value = centerValue + (i * 10);
-    if (value > 0 && value <= 1000) {
-      rulerMarks.push({ value, offset: i });
-    }
-  }
+  // Shared neumorphic button styles matching NeuButton
+  const neuButtonBase = cn(
+    'rounded-2xl flex items-center justify-center',
+    'transition-all duration-200 ease-out',
+    'transform-gpu will-change-transform',
+    'shadow-[0_8px_16px_rgba(0,0,0,0.4),0_2px_4px_rgba(0,0,0,0.3)]',
+    'neu-button',
+    'hover:scale-105 hover:-translate-y-0.5',
+    'active:scale-95 active:translate-y-1'
+  );
 
   return (
-    <div className={cn('relative flex flex-col items-center gap-1', className)}>
+    <div className={cn('relative flex flex-col items-center gap-4', className)}>
       {/* Backdrop to close */}
       {selectedCoin && (
         <div 
@@ -125,14 +126,19 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
         <button
           onClick={() => handleCoinSelect('icoin')}
           className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center z-20',
-            'bg-gradient-to-br from-icoin to-yellow-600 text-primary-foreground',
-            'shadow-lg shadow-icoin/30',
-            'hover:scale-110 active:scale-95 transition-transform',
-            selectedCoin === 'icoin' && 'ring-2 ring-icoin ring-offset-2 ring-offset-background'
+            neuButtonBase,
+            'w-14 h-14 z-20',
+            'text-icoin border border-icoin/30',
+            'hover:shadow-[0_0_20px_hsl(var(--icoin)/0.3)]',
+            selectedCoin === 'icoin' && 'neu-inset scale-95 translate-y-1'
           )}
         >
-          <span className="font-display font-bold text-base">I</span>
+          {/* Inner glow effect */}
+          <div className={cn(
+            'absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300',
+            'group-hover:opacity-100 bg-icoin/10'
+          )} />
+          <span className="relative z-10 font-display font-bold text-lg">I</span>
         </button>
         
         {/* Mini ruler for Icoin */}
@@ -150,16 +156,20 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
           >
             <button
               onClick={handleClose}
-              className="w-6 h-6 rounded-full bg-destructive/20 text-destructive text-xs font-bold"
+              className="w-8 h-8 rounded-xl neu-button bg-destructive/20 text-destructive text-sm font-bold
+                shadow-[0_4px_8px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 transition-transform"
             >
               ×
             </button>
-            <div className="bg-background/90 backdrop-blur-sm rounded-full px-3 py-1 border border-icoin/50 cursor-ew-resize select-none">
-              <span className="text-icoin font-bold text-sm">{tipAmount}</span>
+            <div className="neu-card rounded-xl px-4 py-2 border border-icoin/30 cursor-ew-resize select-none
+              shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
+              <span className="text-icoin font-bold text-base">{tipAmount}</span>
             </div>
             <button
               onClick={handleConfirmTip}
-              className="w-6 h-6 rounded-full bg-icoin text-primary-foreground text-xs font-bold"
+              className="w-8 h-8 rounded-xl neu-button text-icoin text-sm font-bold
+                shadow-[0_4px_8px_rgba(0,0,0,0.3)] border border-icoin/30
+                hover:shadow-[0_0_15px_hsl(var(--icoin)/0.3)] hover:scale-105 active:scale-95 transition-all"
             >
               ✓
             </button>
@@ -172,14 +182,19 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
         <button
           onClick={() => handleCoinSelect('vicoin')}
           className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center z-20',
-            'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
-            'shadow-lg shadow-primary/30',
-            'hover:scale-110 active:scale-95 transition-transform',
-            selectedCoin === 'vicoin' && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+            neuButtonBase,
+            'w-14 h-14 z-20',
+            'text-primary border border-primary/30',
+            'hover:shadow-[0_0_20px_hsl(var(--primary)/0.3)]',
+            selectedCoin === 'vicoin' && 'neu-inset scale-95 translate-y-1'
           )}
         >
-          <span className="font-display font-bold text-base">V</span>
+          {/* Inner glow effect */}
+          <div className={cn(
+            'absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300',
+            'group-hover:opacity-100 bg-primary/10'
+          )} />
+          <span className="relative z-10 font-display font-bold text-lg">V</span>
         </button>
         
         {/* Mini ruler for Vicoin */}
@@ -197,16 +212,20 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
           >
             <button
               onClick={handleClose}
-              className="w-6 h-6 rounded-full bg-destructive/20 text-destructive text-xs font-bold"
+              className="w-8 h-8 rounded-xl neu-button bg-destructive/20 text-destructive text-sm font-bold
+                shadow-[0_4px_8px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 transition-transform"
             >
               ×
             </button>
-            <div className="bg-background/90 backdrop-blur-sm rounded-full px-3 py-1 border border-primary/50 cursor-ew-resize select-none">
-              <span className="text-primary font-bold text-sm">{tipAmount}</span>
+            <div className="neu-card rounded-xl px-4 py-2 border border-primary/30 cursor-ew-resize select-none
+              shadow-[0_4px_12px_rgba(0,0,0,0.3)]">
+              <span className="text-primary font-bold text-base">{tipAmount}</span>
             </div>
             <button
               onClick={handleConfirmTip}
-              className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold"
+              className="w-8 h-8 rounded-xl neu-button text-primary text-sm font-bold
+                shadow-[0_4px_8px_rgba(0,0,0,0.3)] border border-primary/30
+                hover:shadow-[0_0_15px_hsl(var(--primary)/0.3)] hover:scale-105 active:scale-95 transition-all"
             >
               ✓
             </button>
@@ -215,38 +234,42 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
       </div>
 
       {/* Main Heart Button (Bottom) */}
-      <button
-        onMouseDown={handlePressStart}
-        onMouseUp={handlePressEnd}
-        onMouseLeave={() => {
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-          }
-        }}
-        onTouchStart={handlePressStart}
-        onTouchEnd={handlePressEnd}
-        className={cn(
-          'relative w-10 h-10 rounded-full flex items-center justify-center z-20',
-          'transition-all duration-200',
-          'shadow-[0_4px_12px_rgba(0,0,0,0.15),inset_0_1px_2px_rgba(255,255,255,0.1)]',
-          isLiked 
-            ? 'bg-destructive/20 border border-destructive/50' 
-            : 'bg-background/80 backdrop-blur-md border border-border/50',
-          'hover:scale-105 active:scale-95'
-        )}
-      >
-        <Heart 
+      <div className="flex flex-col items-center gap-1">
+        <button
+          onMouseDown={handlePressStart}
+          onMouseUp={handlePressEnd}
+          onMouseLeave={() => {
+            if (longPressTimer.current) {
+              clearTimeout(longPressTimer.current);
+            }
+          }}
+          onTouchStart={handlePressStart}
+          onTouchEnd={handlePressEnd}
           className={cn(
-            'w-5 h-5 transition-colors',
-            isLiked ? 'fill-destructive text-destructive' : 'text-foreground'
-          )} 
-        />
-      </button>
+            neuButtonBase,
+            'w-14 h-14 z-20',
+            isLiked 
+              ? 'text-destructive border border-destructive/30 hover:shadow-[0_0_20px_hsl(var(--destructive)/0.3)]' 
+              : 'text-foreground border border-border/30 hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]',
+          )}
+        >
+          {/* Inner glow for liked state */}
+          {isLiked && (
+            <div className="absolute inset-0 rounded-2xl bg-destructive/10" />
+          )}
+          <Heart 
+            className={cn(
+              'relative z-10 w-6 h-6 transition-colors',
+              isLiked && 'fill-destructive'
+            )} 
+          />
+        </button>
 
-      {/* Like count */}
-      <span className="text-xs text-muted-foreground">
-        {formatCount(likeCount)}
-      </span>
+        {/* Like count */}
+        <span className="text-xs text-muted-foreground">
+          {formatCount(likeCount)}
+        </span>
+      </div>
     </div>
   );
 };

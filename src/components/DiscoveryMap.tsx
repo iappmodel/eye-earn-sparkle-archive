@@ -26,12 +26,66 @@ interface DiscoveryMapProps {
   onClose: () => void;
 }
 
-// Generate global mock promotions for demo
-const generateGlobalPromotions = (count: number): Promotion[] => {
+// Generate local pins near a location (within ~10 miles / 16km)
+const generateLocalPromotions = (centerLat: number, centerLng: number, count: number, startId: number = 0): Promotion[] => {
+  const businesses = ['Coffee House', 'Tech Store', 'Fashion Outlet', 'Restaurant', 'Gym', 'Bookstore', 'Spa', 'Cinema', 'Market', 'Bar', 'Bakery', 'Pharmacy', 'Grocery', 'Pizza Place', 'Sushi Bar', 'Nail Salon', 'Hair Studio', 'Pet Store', 'Electronics', 'Clothing'];
+  const categories = ['Food & Drink', 'Shopping', 'Entertainment', 'Health', 'Services'];
+  const actionDescriptions = [
+    'Visit the store and check-in at the counter',
+    'Make any purchase of $10 or more',
+    'Scan the QR code at the entrance',
+    'Check-in and stay for 15 minutes',
+    'Share a photo on social media with our hashtag',
+    'Leave a review after your visit',
+    'Sign up for our loyalty program',
+    'Watch our 30-second promo video',
+  ];
+  const rewardTypes: ('vicoin' | 'icoin' | 'both')[] = ['vicoin', 'icoin', 'both'];
+  const promotions: Promotion[] = [];
+  
+  // 10 miles ≈ 0.145 degrees latitude, varies for longitude
+  const radiusDegrees = 0.145;
+  
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const distance = Math.sqrt(Math.random()) * radiusDegrees; // sqrt for uniform distribution
+    const lat = centerLat + distance * Math.cos(angle);
+    const lng = centerLng + distance * Math.sin(angle) / Math.cos(centerLat * Math.PI / 180);
+    
+    const business = businesses[Math.floor(Math.random() * businesses.length)];
+    
+    promotions.push({
+      id: `local-${startId + i}`,
+      business_name: `${business} #${Math.floor(Math.random() * 999) + 1}`,
+      description: `Exclusive rewards at this ${business.toLowerCase()}!`,
+      reward_type: rewardTypes[Math.floor(Math.random() * rewardTypes.length)],
+      reward_amount: Math.floor(Math.random() * 450) + 50,
+      required_action: actionDescriptions[Math.floor(Math.random() * actionDescriptions.length)],
+      latitude: lat,
+      longitude: lng,
+      address: `${Math.floor(Math.random() * 9999) + 1} ${['Main', 'Oak', 'Maple', 'Cedar', 'Pine', 'Elm', 'Park', 'Lake', 'River', 'Hill'][Math.floor(Math.random() * 10)]} St`,
+      category: categories[Math.floor(Math.random() * categories.length)],
+    });
+  }
+  
+  return promotions;
+};
+
+// Generate global mock promotions for demo - creates clusters around major cities
+const generateGlobalPromotions = (): Promotion[] => {
   const cities = [
     { name: 'New York', lat: 40.7128, lng: -74.006 },
     { name: 'Los Angeles', lat: 34.0522, lng: -118.2437 },
     { name: 'Chicago', lat: 41.8781, lng: -87.6298 },
+    { name: 'Houston', lat: 29.7604, lng: -95.3698 },
+    { name: 'Phoenix', lat: 33.4484, lng: -112.074 },
+    { name: 'Philadelphia', lat: 39.9526, lng: -75.1652 },
+    { name: 'San Antonio', lat: 29.4241, lng: -98.4936 },
+    { name: 'San Diego', lat: 32.7157, lng: -117.1611 },
+    { name: 'Dallas', lat: 32.7767, lng: -96.797 },
+    { name: 'San Jose', lat: 37.3382, lng: -121.8863 },
+    { name: 'Austin', lat: 30.2672, lng: -97.7431 },
+    { name: 'Jacksonville', lat: 30.3322, lng: -81.6557 },
     { name: 'London', lat: 51.5074, lng: -0.1278 },
     { name: 'Paris', lat: 48.8566, lng: 2.3522 },
     { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
@@ -49,43 +103,29 @@ const generateGlobalPromotions = (count: number): Promotion[] => {
     { name: 'Lagos', lat: 6.5244, lng: 3.3792 },
     { name: 'Buenos Aires', lat: -34.6037, lng: -58.3816 },
     { name: 'Toronto', lat: 43.6532, lng: -79.3832 },
+    { name: 'Madrid', lat: 40.4168, lng: -3.7038 },
+    { name: 'Rome', lat: 41.9028, lng: 12.4964 },
+    { name: 'Istanbul', lat: 41.0082, lng: 28.9784 },
+    { name: 'Beijing', lat: 39.9042, lng: 116.4074 },
+    { name: 'Shanghai', lat: 31.2304, lng: 121.4737 },
+    { name: 'Hong Kong', lat: 22.3193, lng: 114.1694 },
+    { name: 'Taipei', lat: 25.033, lng: 121.5654 },
+    { name: 'Jakarta', lat: -6.2088, lng: 106.8456 },
+    { name: 'Manila', lat: 14.5995, lng: 120.9842 },
+    { name: 'Johannesburg', lat: -26.2041, lng: 28.0473 },
+    { name: 'Cape Town', lat: -33.9249, lng: 18.4241 },
   ];
-
-  const businesses = ['Coffee House', 'Tech Store', 'Fashion Outlet', 'Restaurant', 'Gym', 'Bookstore', 'Spa', 'Cinema', 'Market', 'Bar'];
-  const categories = ['Food & Drink', 'Shopping', 'Entertainment', 'Health', 'Services'];
-  const actionDescriptions = [
-    { action: 'visit', text: 'Visit the store and check-in at the counter' },
-    { action: 'purchase', text: 'Make any purchase of $10 or more' },
-    { action: 'scan', text: 'Scan the QR code at the entrance' },
-    { action: 'checkin', text: 'Check-in and stay for 15 minutes' },
-    { action: 'share', text: 'Share a photo on social media with our hashtag' },
-    { action: 'review', text: 'Leave a review after your visit' },
-    { action: 'signup', text: 'Sign up for our loyalty program' },
-    { action: 'watch', text: 'Watch our 30-second promo video' },
-  ];
-  const promotions: Promotion[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const city = cities[Math.floor(Math.random() * cities.length)];
-    const business = businesses[Math.floor(Math.random() * businesses.length)];
-    const rewardTypes: ('vicoin' | 'icoin' | 'both')[] = ['vicoin', 'icoin', 'both'];
-    
-    const actionItem = actionDescriptions[Math.floor(Math.random() * actionDescriptions.length)];
-    
-    promotions.push({
-      id: `global-${i}`,
-      business_name: `${business} ${city.name}`,
-      description: `Earn rewards at ${business} in ${city.name}!`,
-      reward_type: rewardTypes[Math.floor(Math.random() * rewardTypes.length)],
-      reward_amount: Math.floor(Math.random() * 450) + 50,
-      required_action: actionItem.text,
-      latitude: city.lat + (Math.random() - 0.5) * 2,
-      longitude: city.lng + (Math.random() - 0.5) * 2,
-      address: `${Math.floor(Math.random() * 999) + 1} Main St, ${city.name}`,
-      category: categories[Math.floor(Math.random() * categories.length)],
-    });
-  }
-
+  
+  let promotions: Promotion[] = [];
+  let idCounter = 0;
+  
+  // Generate 50 pins per city (hundreds within 10-mile radius each)
+  cities.forEach((city) => {
+    const cityPromos = generateLocalPromotions(city.lat, city.lng, 50, idCounter);
+    promotions = [...promotions, ...cityPromos];
+    idCounter += 50;
+  });
+  
   return promotions;
 };
 
@@ -128,7 +168,8 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [showSearchHere, setShowSearchHere] = useState(false);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
-  const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions(500));
+  const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions());
+  const [localPromos, setLocalPromos] = useState<Promotion[]>([]);
 
   // Create popup HTML for a promotion
   const createPopupHTML = useCallback((promo: Promotion): string => {
@@ -260,19 +301,24 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
     }
   }, [isOpen]);
 
-  // Get user location
+  // Get user location and generate local promos
   useEffect(() => {
     if (isOpen && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setUserLocation({
+          const loc = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          });
+          };
+          setUserLocation(loc);
+          // Generate 200 local pins within 10 miles of user
+          setLocalPromos(generateLocalPromotions(loc.lat, loc.lng, 200, 10000));
         },
         (error) => {
           console.error('[DiscoveryMap] Geolocation error:', error);
-          setUserLocation({ lat: 40.7128, lng: -74.0060 });
+          const defaultLoc = { lat: 40.7128, lng: -74.0060 };
+          setUserLocation(defaultLoc);
+          setLocalPromos(generateLocalPromotions(defaultLoc.lat, defaultLoc.lng, 200, 10000));
           toast.info('Using default location - enable GPS for nearby promos');
         }
       );
@@ -453,44 +499,58 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
 
       if (error) throw error;
       
-      // Combine with global promos for demo
+      // Combine DB promos with local + global mock promos
       const dbPromos = data?.promotions || [];
       const zoom = map.current?.getZoom() || 14;
+      const allMockPromos = [...localPromos, ...globalPromos];
       
-      if (zoom < 8) {
-        // Show global promos when zoomed out
-        const visibleGlobalPromos = globalPromos.filter(p => {
+      if (zoom < 6) {
+        // Show all global promos when zoomed out far
+        const visiblePromos = allMockPromos.filter(p => {
           if (filter === 'all') return true;
           return p.reward_type === filter || p.reward_type === 'both';
         });
-        setPromotions([...dbPromos, ...visibleGlobalPromos]);
-      } else {
-        // Filter global promos by distance when zoomed in
-        const nearbyGlobalPromos = globalPromos.filter(p => {
+        setPromotions([...dbPromos, ...visiblePromos]);
+      } else if (zoom < 10) {
+        // Show promos within a wider range
+        const visiblePromos = allMockPromos.filter(p => {
           const distance = Math.sqrt(
             Math.pow(p.latitude - center.lat, 2) + 
             Math.pow(p.longitude - center.lng, 2)
           );
-          const inRange = distance < (zoom < 10 ? 5 : 1);
+          const inRange = distance < 3;
           if (filter === 'all') return inRange;
           return inRange && (p.reward_type === filter || p.reward_type === 'both');
         });
-        setPromotions([...dbPromos, ...nearbyGlobalPromos]);
-      }
-      
-      toast.success(`Found ${promotions.length} promotions`);
-    } catch (error) {
-      console.error('[DiscoveryMap] Fetch error:', error);
-      // Fallback to global promos only
-      const zoom = map.current?.getZoom() || 14;
-      const visiblePromos = globalPromos.filter(p => {
-        if (filter !== 'all' && p.reward_type !== filter && p.reward_type !== 'both') return false;
-        if (zoom >= 8) {
+        setPromotions([...dbPromos, ...visiblePromos]);
+      } else {
+        // Show nearby promos when zoomed in
+        const nearbyPromos = allMockPromos.filter(p => {
           const distance = Math.sqrt(
             Math.pow(p.latitude - center.lat, 2) + 
             Math.pow(p.longitude - center.lng, 2)
           );
-          return distance < (zoom < 10 ? 5 : 1);
+          const inRange = distance < 0.5;
+          if (filter === 'all') return inRange;
+          return inRange && (p.reward_type === filter || p.reward_type === 'both');
+        });
+        setPromotions([...dbPromos, ...nearbyPromos]);
+      }
+      
+      toast.success(`Found ${dbPromos.length + allMockPromos.length} promotions nearby`);
+    } catch (error) {
+      console.error('[DiscoveryMap] Fetch error:', error);
+      // Fallback to mock promos only
+      const zoom = map.current?.getZoom() || 14;
+      const allMockPromos = [...localPromos, ...globalPromos];
+      const visiblePromos = allMockPromos.filter(p => {
+        if (filter !== 'all' && p.reward_type !== filter && p.reward_type !== 'both') return false;
+        if (zoom >= 6) {
+          const distance = Math.sqrt(
+            Math.pow(p.latitude - center.lat, 2) + 
+            Math.pow(p.longitude - center.lng, 2)
+          );
+          return distance < (zoom < 10 ? 3 : 0.5);
         }
         return true;
       });

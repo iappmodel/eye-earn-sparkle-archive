@@ -335,8 +335,8 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
         </div>
       )}
 
-      {/* Right Side Actions */}
-      <div className="absolute right-4 bottom-40 z-20 flex flex-col items-center gap-6">
+      {/* Left Side Controls */}
+      <div className="absolute left-4 bottom-40 z-20 flex flex-col items-center gap-6">
         <button className="flex flex-col items-center gap-1">
           <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
             <Eye className="w-7 h-7 text-white" />
@@ -363,7 +363,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
       </div>
 
       {/* Bottom Content */}
-      <div className="absolute bottom-24 left-0 right-20 z-10 px-4">
+      <div className="absolute bottom-24 left-20 right-0 z-10 px-4">
         <h2 className="text-white text-xl font-bold mb-2">{currentVideo.title}</h2>
         <p className="text-white/80 text-sm leading-relaxed">{currentVideo.description}</p>
       </div>

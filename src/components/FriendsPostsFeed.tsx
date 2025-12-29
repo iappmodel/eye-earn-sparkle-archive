@@ -200,6 +200,29 @@ export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, on
         )}
       </button>
 
+      {/* Left Side Controls */}
+      <div className="absolute left-4 bottom-32 z-20 flex flex-col items-center gap-4">
+        <button onClick={handlePlayPause} className="flex flex-col items-center gap-1">
+          <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
+            {isPlaying ? (
+              <Pause className="w-7 h-7 text-white" />
+            ) : (
+              <Play className="w-7 h-7 text-white ml-0.5" />
+            )}
+          </div>
+        </button>
+
+        <button onClick={() => setIsMuted(!isMuted)} className="flex flex-col items-center gap-1">
+          <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
+            {isMuted ? (
+              <VolumeX className="w-7 h-7 text-white" />
+            ) : (
+              <Volume2 className="w-7 h-7 text-white" />
+            )}
+          </div>
+        </button>
+      </div>
+
       {/* Right Side Actions */}
       <div className="absolute right-4 bottom-32 z-20 flex flex-col items-center gap-6">
         <button onClick={handleLike} className="flex flex-col items-center gap-1">
@@ -228,16 +251,6 @@ export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, on
             <Share2 className="w-7 h-7 text-white" />
           </div>
           <span className="text-white text-xs font-medium">Share</span>
-        </button>
-
-        <button onClick={() => setIsMuted(!isMuted)} className="flex flex-col items-center gap-1">
-          <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
-            {isMuted ? (
-              <VolumeX className="w-7 h-7 text-white" />
-            ) : (
-              <Volume2 className="w-7 h-7 text-white" />
-            )}
-          </div>
         </button>
       </div>
 

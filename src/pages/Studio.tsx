@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { VideoTimeline, TrimClip } from '@/components/studio/VideoTimeline';
 import { AIVideoEditor, AIStyle, AIEditOptions, aiStyles } from '@/components/studio/AIVideoEditor';
+import { VideoPreviewFilters } from '@/components/studio/VideoPreviewFilters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -860,13 +861,19 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               </div>
             )}
             
-            {/* Filter preview */}
-            {selectedFilter !== 'none' && (
+            {/* Basic Filter preview */}
+            {selectedFilter !== 'none' && !selectedAIStyle && (
               <div 
                 className="absolute inset-0 mix-blend-overlay opacity-50 pointer-events-none"
                 style={{ background: filters.find(f => f.id === selectedFilter)?.preview }}
               />
             )}
+
+            {/* AI Style Preview Filters */}
+            <VideoPreviewFilters
+              selectedStyleId={selectedAIStyle}
+              intensity={filterIntensity[0]}
+            />
 
             {/* Remove current media button */}
             <button

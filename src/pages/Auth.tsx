@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff, Mail, Lock, User, Loader2 } from 'lucide-react';
 import { z } from 'zod';
+import { AppLogo } from '@/components/AppLogo';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -132,10 +133,10 @@ const Auth: React.FC = () => {
       {/* Logo/Brand */}
       <div className="mb-8 text-center">
         <div className="w-20 h-20 mx-auto mb-4 neu-card rounded-2xl flex items-center justify-center">
-          <span className="text-4xl font-display font-bold gradient-text">[ i ]</span>
+          <AppLogo size="xl" />
         </div>
         <h1 className="text-2xl font-display font-semibold text-foreground">
-          {isLogin ? 'Welcome Back' : 'Join the [i] App'}
+          {isLogin ? 'Welcome Back' : 'Join viewi'}
         </h1>
         <p className="text-muted-foreground mt-2">
           {isLogin ? 'Sign in to continue earning' : 'Start earning by watching & creating'}

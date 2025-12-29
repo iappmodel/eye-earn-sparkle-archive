@@ -1,6 +1,6 @@
 import React, { useState, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Image, Video, Megaphone, Target, Upload, X, MapPin, Hash, Link as LinkIcon, DollarSign } from 'lucide-react';
+import { ArrowLeft, Image, Video, Megaphone, Target, Upload, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -217,6 +217,33 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
                 ))}
               </div>
             </div>
+
+            {/* Studio Button */}
+            <button
+              onClick={() => navigate('/studio')}
+              className={cn(
+                'w-full p-4 rounded-2xl transition-all duration-300',
+                'bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20',
+                'border border-primary/30 hover:border-primary/50',
+                'hover:shadow-lg hover:shadow-primary/20',
+                'active:scale-[0.98]'
+              )}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shrink-0">
+                  <Clapperboard className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-lg">Open Studio</h3>
+                    <Wand2 className="w-4 h-4 text-primary animate-pulse" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    AI-powered editing • Filters • Beauty tools • Effects
+                  </p>
+                </div>
+              </div>
+            </button>
 
             {/* Title (for promotions/campaigns) */}
             {(selectedType === 'promotion' || selectedType === 'campaign') && (

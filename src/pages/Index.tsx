@@ -16,6 +16,7 @@ import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
 import { rewardsService } from '@/services/rewards.service';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -228,6 +229,50 @@ const Index = () => {
     }
   };
 
+  const handleTip = useCallback(async (coinType: 'vicoin' | 'icoin', amount: number) => {
+    if (!profile) {
+      toast.error('Please log in to tip');
+      return;
+    }
+
+    // For demo purposes, use a mock creator ID (in real app, would come from content metadata)
+    const mockCreatorId = 'demo-creator-id';
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('tip-creator', {
+        body: {
+          contentId: currentMedia.id,
+          creatorId: mockCreatorId,
+          amount,
+          coinType,
+        },
+      });
+
+      if (error) {
+        console.error('[Index] Tip error:', error);
+        toast.error('Failed to send tip');
+        return;
+      }
+
+      if (data?.success) {
+        toast.success(`Tipped ${amount} ${coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}!`, {
+          description: 'Thank you for supporting the creator',
+        });
+        
+        // Refresh profile to update balance
+        await refreshProfile();
+        
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+      } else {
+        toast.error(data?.error || 'Failed to send tip');
+      }
+    } catch (err) {
+      console.error('[Index] Tip failed:', err);
+      toast.error('Failed to send tip');
+    }
+  }, [profile, currentMedia.id, refreshProfile]);
+
   const handleComment = () => {
     toast('Comments', { description: 'Comments panel coming soon...' });
   };
@@ -343,6 +388,7 @@ const Index = () => {
                 onWalletClick={() => setShowWallet(true)}
                 onProfileClick={() => setShowProfile(true)}
                 onLikeClick={handleLike}
+                onTip={handleTip}
                 onCommentClick={handleComment}
                 onShareClick={handleShare}
                 onSettingsClick={handleSettings}

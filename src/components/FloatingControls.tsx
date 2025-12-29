@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { Wallet, User, Heart, MessageCircle, Share2, Settings, UserPlus } from 'lucide-react';
+import { Wallet, User, MessageCircle, Share2, Settings, UserPlus } from 'lucide-react';
 import { NeuButton } from './NeuButton';
+import { MorphingLikeButton } from './MorphingLikeButton';
 import { cn } from '@/lib/utils';
 
 // Context for sharing visibility state across components
@@ -70,6 +71,7 @@ interface FloatingControlsProps {
   onShareClick: () => void;
   onSettingsClick: () => void;
   onFollowClick?: () => void;
+  onTip?: (coinType: 'vicoin' | 'icoin', amount: number) => void;
   isLiked?: boolean;
   isFollowing?: boolean;
   likeCount?: number;
@@ -85,6 +87,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onShareClick,
   onSettingsClick,
   onFollowClick,
+  onTip,
   isLiked = false,
   isFollowing = false,
   likeCount = 0,
@@ -111,22 +114,13 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           ? 'opacity-100 translate-x-0' 
           : 'opacity-0 translate-x-12 pointer-events-none'
       )}>
-        {/* Like button with count */}
-        <div className="flex flex-col items-center gap-1">
-          <NeuButton 
-            onClick={onLikeClick} 
-            variant={isLiked ? 'accent' : 'default'}
-            isPressed={isLiked}
-            tooltip={isLiked ? 'Unlike' : 'Like this content'}
-            size="md"
-          >
-            <Heart className={cn(
-              'transition-all duration-200',
-              isLiked && 'fill-current text-primary animate-scale-in'
-            )} />
-          </NeuButton>
-          <span className="text-xs font-medium text-foreground/70">{formatCount(likeCount)}</span>
-        </div>
+        {/* Morphing Like/Tip button with count */}
+        <MorphingLikeButton
+          isLiked={isLiked}
+          likeCount={likeCount}
+          onLike={onLikeClick}
+          onTip={onTip}
+        />
 
         {/* Comment button with count */}
         <div className="flex flex-col items-center gap-1">

@@ -107,34 +107,76 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   }
 
   return (
-    <div className={cn('relative flex flex-col items-center', className)}>
-      {/* Expanded State - Coin Buttons */}
-      {isExpanded && !selectedCoin && (
-        <>
-          {/* Vicoin Button (Above) */}
-          <button
-            onClick={() => handleCoinSelect('vicoin')}
-            className="absolute -top-14 w-12 h-12 rounded-full flex items-center justify-center
-              bg-gradient-to-br from-primary to-primary/70 text-primary-foreground
-              shadow-lg shadow-primary/30 animate-scale-in z-20
-              hover:scale-110 transition-transform"
-          >
-            <span className="font-display font-bold text-lg">V</span>
-          </button>
-
-          {/* Icoin Button (Below) */}
-          <button
-            onClick={() => handleCoinSelect('icoin')}
-            className="absolute -bottom-14 w-12 h-12 rounded-full flex items-center justify-center
-              bg-gradient-to-br from-icoin to-yellow-600 text-primary-foreground
-              shadow-lg shadow-icoin/30 animate-scale-in z-20
-              hover:scale-110 transition-transform"
-            style={{ animationDelay: '50ms' }}
-          >
-            <span className="font-display font-bold text-lg">I</span>
-          </button>
-        </>
+    <div className={cn('relative flex flex-col items-center gap-1', className)}>
+      {/* Backdrop to close */}
+      {(isExpanded || selectedCoin) && (
+        <div 
+          className="fixed inset-0 z-10"
+          onClick={handleClose}
+        />
       )}
+
+      {/* Icoin Button (Top) - Always visible */}
+      <button
+        onClick={() => handleCoinSelect('icoin')}
+        className={cn(
+          'w-10 h-10 rounded-full flex items-center justify-center z-20',
+          'bg-gradient-to-br from-icoin to-yellow-600 text-primary-foreground',
+          'shadow-lg shadow-icoin/30',
+          'hover:scale-110 active:scale-95 transition-transform',
+          selectedCoin === 'icoin' && 'ring-2 ring-icoin ring-offset-2 ring-offset-background'
+        )}
+      >
+        <span className="font-display font-bold text-base">I</span>
+      </button>
+
+      {/* Vicoin Button (Middle) - Always visible */}
+      <button
+        onClick={() => handleCoinSelect('vicoin')}
+        className={cn(
+          'w-10 h-10 rounded-full flex items-center justify-center z-20',
+          'bg-gradient-to-br from-primary to-primary/70 text-primary-foreground',
+          'shadow-lg shadow-primary/30',
+          'hover:scale-110 active:scale-95 transition-transform',
+          selectedCoin === 'vicoin' && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+        )}
+      >
+        <span className="font-display font-bold text-base">V</span>
+      </button>
+
+      {/* Main Heart Button (Bottom) */}
+      <button
+        onMouseDown={handlePressStart}
+        onMouseUp={handlePressEnd}
+        onMouseLeave={() => {
+          if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+          }
+        }}
+        onTouchStart={handlePressStart}
+        onTouchEnd={handlePressEnd}
+        className={cn(
+          'relative w-10 h-10 rounded-full flex items-center justify-center z-20',
+          'transition-all duration-200',
+          'shadow-[0_4px_12px_rgba(0,0,0,0.15),inset_0_1px_2px_rgba(255,255,255,0.1)]',
+          isLiked 
+            ? 'bg-destructive/20 border border-destructive/50' 
+            : 'bg-background/80 backdrop-blur-md border border-border/50',
+          'hover:scale-105 active:scale-95'
+        )}
+      >
+        <Heart 
+          className={cn(
+            'w-5 h-5 transition-colors',
+            isLiked ? 'fill-destructive text-destructive' : 'text-foreground'
+          )} 
+        />
+      </button>
+
+      {/* Like count */}
+      <span className="text-xs text-muted-foreground">
+        {formatCount(likeCount)}
+      </span>
 
       {/* Ruler Slider (When coin is selected) */}
       {selectedCoin && (
@@ -183,7 +225,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
 
             {/* Ruler marks */}
             <div className="absolute inset-0 flex items-center justify-center">
-              {rulerMarks.map((mark, i) => (
+              {rulerMarks.map((mark) => (
                 <div
                   key={mark.value}
                   className="absolute flex flex-col items-center"
@@ -242,55 +284,6 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
             ✓
           </button>
         </div>
-      )}
-
-      {/* Main Heart Button */}
-      <button
-        onMouseDown={handlePressStart}
-        onMouseUp={handlePressEnd}
-        onMouseLeave={() => {
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-          }
-        }}
-        onTouchStart={handlePressStart}
-        onTouchEnd={handlePressEnd}
-        className={cn(
-          'relative w-12 h-12 rounded-full flex items-center justify-center',
-          'transition-all duration-200',
-          'shadow-[0_4px_12px_rgba(0,0,0,0.15),inset_0_1px_2px_rgba(255,255,255,0.1)]',
-          isExpanded || selectedCoin
-            ? 'bg-primary/20 border-2 border-primary scale-110'
-            : isLiked 
-              ? 'bg-destructive/20 border border-destructive/50' 
-              : 'bg-background/80 backdrop-blur-md border border-border/50',
-          'hover:scale-105 active:scale-95'
-        )}
-      >
-        <Heart 
-          className={cn(
-            'w-6 h-6 transition-colors',
-            isLiked ? 'fill-destructive text-destructive' : 'text-foreground'
-          )} 
-        />
-
-        {/* Glow effect when expanded */}
-        {(isExpanded || selectedCoin) && (
-          <div className="absolute inset-0 rounded-full bg-primary/20 animate-pulse" />
-        )}
-      </button>
-
-      {/* Like count */}
-      <span className="text-xs text-muted-foreground mt-1">
-        {formatCount(likeCount)}
-      </span>
-
-      {/* Backdrop to close */}
-      {(isExpanded || selectedCoin) && (
-        <div 
-          className="fixed inset-0 z-10"
-          onClick={handleClose}
-        />
       )}
     </div>
   );

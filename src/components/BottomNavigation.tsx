@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Map, MessageCircle, User } from 'lucide-react';
+import { Home, Compass, MessageCircle, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlsVisibility } from './FloatingControls';
 import { AppLogo } from './AppLogo';
@@ -19,7 +19,7 @@ interface BottomNavigationProps {
 
 const navItems: NavItem[] = [
   { id: 'home', icon: <Home className="w-5 h-5" />, label: 'Home' },
-  { id: 'map', icon: <Map className="w-5 h-5" />, label: 'Map' },
+  { id: 'discover', icon: <Compass className="w-5 h-5" />, label: 'Discover' },
   { id: 'logo', icon: null, label: '', isLogo: true },
   { id: 'messages', icon: <MessageCircle className="w-5 h-5" />, label: 'Messages' },
   { id: 'profile', icon: <User className="w-5 h-5" />, label: 'Profile' },

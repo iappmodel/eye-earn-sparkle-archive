@@ -83,6 +83,9 @@ const Index = () => {
   const [horizontalSwipeDirection, setHorizontalSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isHorizontalTransitioning, setIsHorizontalTransitioning] = useState(false);
   
+  // Active direction for CrossNavigation indicator
+  const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
+  
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
 
@@ -194,6 +197,9 @@ const Index = () => {
   }, [navigateToMedia]);
 
   const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+    // Set active direction to trigger the brief indicator display
+    setActiveDirection(direction);
+    
     if (direction === 'up') {
       navigateToMedia('up');
     } else if (direction === 'down') {
@@ -328,7 +334,7 @@ const Index = () => {
 
             {/* Cross Navigation hints - only on main screen */}
             {currentScreen === 'main' && (
-              <CrossNavigation onNavigate={handleNavigate} />
+              <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
             )}
 
             {/* Floating Controls - only on main screen */}

@@ -49,6 +49,13 @@ export default {
         },
         vicoin: "hsl(var(--vicoin))",
         icoin: "hsl(var(--icoin))",
+        neon: {
+          purple: "hsl(var(--neon-purple))",
+          magenta: "hsl(var(--neon-magenta))",
+          cyan: "hsl(var(--neon-cyan))",
+          blue: "hsl(var(--neon-blue))",
+          pink: "hsl(var(--neon-pink))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -61,8 +68,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        display: ['Space Grotesk', 'sans-serif'],
+        sans: ['Rajdhani', 'sans-serif'],
+        display: ['Orbitron', 'sans-serif'],
+        body: ['Inter', 'sans-serif'],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -129,6 +137,32 @@ export default {
           "0%, 100%": { borderRadius: "60% 40% 30% 70% / 60% 30% 70% 40%" },
           "50%": { borderRadius: "30% 60% 70% 40% / 50% 60% 30% 60%" },
         },
+        "neon-pulse": {
+          "0%, 100%": { 
+            boxShadow: "0 0 20px hsl(270 95% 65% / 0.3), 0 0 40px hsl(270 95% 65% / 0.1)",
+          },
+          "50%": { 
+            boxShadow: "0 0 40px hsl(270 95% 65% / 0.5), 0 0 80px hsl(320 90% 60% / 0.2)",
+          },
+        },
+        "glow-rotate": {
+          "0%": { 
+            filter: "hue-rotate(0deg)",
+          },
+          "100%": { 
+            filter: "hue-rotate(360deg)",
+          },
+        },
+        "float-neon": {
+          "0%, 100%": { 
+            transform: "translateY(0)",
+            filter: "drop-shadow(0 0 10px hsl(270 95% 65% / 0.5))",
+          },
+          "50%": { 
+            transform: "translateY(-10px)",
+            filter: "drop-shadow(0 0 20px hsl(320 90% 60% / 0.5))",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -142,6 +176,9 @@ export default {
         "glow-ambient": "glow-ambient 3s ease-in-out infinite",
         "tilt-3d": "tilt-3d 6s ease-in-out infinite",
         "morph-blob": "morph-blob 8s ease-in-out infinite",
+        "neon-pulse": "neon-pulse 2s ease-in-out infinite",
+        "glow-rotate": "glow-rotate 8s linear infinite",
+        "float-neon": "float-neon 3s ease-in-out infinite",
       },
     },
   },

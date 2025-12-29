@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Image, Video, Megaphone, Target, Upload, X, MapPin, Hash, Link as LinkIcon, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -33,7 +33,7 @@ const contentTypes: { id: ContentType; label: string; icon: React.ReactNode; des
   { id: 'campaign', label: 'Campaign', icon: <Target className="w-6 h-6" />, description: 'Run targeted ad campaigns', color: 'from-purple-500 to-violet-500' },
 ];
 
-export default function Create() {
+const Create = forwardRef<HTMLDivElement>((_, ref) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [selectedType, setSelectedType] = useState<ContentType | null>(null);
@@ -126,7 +126,7 @@ export default function Create() {
   const selectedTypeInfo = contentTypes.find(t => t.id === selectedType);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div ref={ref} className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 glass-dark border-b border-border/50">
         <div className="flex items-center justify-between px-4 py-3">
@@ -366,4 +366,8 @@ export default function Create() {
       )}
     </div>
   );
-}
+});
+
+Create.displayName = 'Create';
+
+export default Create;

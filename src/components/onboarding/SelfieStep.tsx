@@ -30,9 +30,6 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
         video: { facingMode: 'user', width: 720, height: 720 },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
       setMode('camera');
     } catch (error) {
       console.error('Camera access denied:', error);
@@ -40,6 +37,13 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
       fileInputRef.current?.click();
     }
   }, []);
+
+  // Assign stream to video element after mode changes to 'camera'
+  React.useEffect(() => {
+    if (mode === 'camera' && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [mode]);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -113,15 +117,17 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
           </div>
         )}
 
-        {mode === 'camera' && (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-          />
-        )}
+        {/* Always render video element, hide when not in camera mode */}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={cn(
+            "absolute inset-0 w-full h-full object-cover scale-x-[-1]",
+            mode !== 'camera' && "hidden"
+          )}
+        />
 
         {mode === 'preview' && capturedImage && (
           <img

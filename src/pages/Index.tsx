@@ -300,7 +300,7 @@ const Index = () => {
       case 'messages':
         setShowMessages(true);
         break;
-      case 'map':
+      case 'discover':
         setShowMap(true);
         break;
       case 'create':

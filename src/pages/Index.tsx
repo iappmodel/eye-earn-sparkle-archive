@@ -10,6 +10,8 @@ import { MessagesScreen } from '@/components/MessagesScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { OnboardingFlow } from '@/components/onboarding';
+import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
+import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,6 +60,8 @@ const mockMedia = [
   },
 ];
 
+type HorizontalScreen = 'friends' | 'main' | 'promos';
+
 const Index = () => {
   const { profile, refreshProfile } = useAuth();
   const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
@@ -73,12 +77,45 @@ const Index = () => {
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
+  
+  // Horizontal screen navigation
+  const [currentScreen, setCurrentScreen] = useState<HorizontalScreen>('main');
+  const [horizontalSwipeDirection, setHorizontalSwipeDirection] = useState<'left' | 'right' | null>(null);
+  const [isHorizontalTransitioning, setIsHorizontalTransitioning] = useState(false);
+  
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
 
   const currentMedia = mockMedia[currentIndex];
 
-  // Wallet will load its own transactions now, remove mock data
+  // Navigate horizontal screens
+  const navigateHorizontal = useCallback((direction: 'left' | 'right') => {
+    if (isHorizontalTransitioning) return;
+    
+    let newScreen: HorizontalScreen = currentScreen;
+    
+    if (direction === 'left') {
+      // Swipe left = go right (to promos from main, or main from friends)
+      if (currentScreen === 'main') newScreen = 'promos';
+      else if (currentScreen === 'friends') newScreen = 'main';
+    } else {
+      // Swipe right = go left (to friends from main, or main from promos)
+      if (currentScreen === 'main') newScreen = 'friends';
+      else if (currentScreen === 'promos') newScreen = 'main';
+    }
+    
+    if (newScreen !== currentScreen) {
+      setIsHorizontalTransitioning(true);
+      setHorizontalSwipeDirection(direction);
+      
+      setTimeout(() => {
+        setCurrentScreen(newScreen);
+        setHorizontalSwipeDirection(null);
+        setIsHorizontalTransitioning(false);
+      }, 300);
+    }
+  }, [currentScreen, isHorizontalTransitioning]);
+
   // Handle promo completion - use rewards service for secure backend validation
   const handleMediaComplete = useCallback(async (attentionValidated: boolean = true, attentionScore?: number) => {
     // Only give rewards if attention was validated for promo content
@@ -123,13 +160,18 @@ const Index = () => {
     }
   }, [currentMedia, profile, refreshProfile]);
 
+  const handleRewardEarned = useCallback((amount: number, type: 'vicoin' | 'icoin') => {
+    setCoinSlideType(type);
+    setShowCoinSlide(true);
+  }, []);
+
   const handleCoinSlideComplete = useCallback(() => {
     setShowCoinSlide(false);
   }, []);
 
-  // Navigate with swipe animation
+  // Navigate with swipe animation (vertical)
   const navigateToMedia = useCallback((direction: 'up' | 'down') => {
-    if (isTransitioning) return;
+    if (isTransitioning || currentScreen !== 'main') return;
     
     setIsTransitioning(true);
     setSwipeDirection(direction);
@@ -144,7 +186,7 @@ const Index = () => {
       setSwipeDirection(null);
       setIsTransitioning(false);
     }, 300);
-  }, [isTransitioning]);
+  }, [isTransitioning, currentScreen]);
 
   // Skip to next media
   const handleSkip = useCallback(() => {
@@ -156,20 +198,20 @@ const Index = () => {
       navigateToMedia('up');
     } else if (direction === 'down') {
       navigateToMedia('down');
-    } else {
-      toast(`Navigating ${direction}...`, {
-        description: `This would show ${direction === 'left' ? 'friends feed' : 'promotions'}`,
-      });
+    } else if (direction === 'left') {
+      navigateHorizontal('left');
+    } else if (direction === 'right') {
+      navigateHorizontal('right');
     }
-  }, [navigateToMedia]);
+  }, [navigateToMedia, navigateHorizontal]);
 
   // Swipe gesture handling
   const { handlers } = useSwipeNavigation({
     threshold: 80,
-    onSwipeUp: () => navigateToMedia('up'),
-    onSwipeDown: () => navigateToMedia('down'),
-    onSwipeLeft: () => handleNavigate('right'),
-    onSwipeRight: () => handleNavigate('left'),
+    onSwipeUp: () => handleNavigate('up'),
+    onSwipeDown: () => handleNavigate('down'),
+    onSwipeLeft: () => handleNavigate('left'),
+    onSwipeRight: () => handleNavigate('right'),
   });
 
   const handleLike = () => {
@@ -218,46 +260,129 @@ const Index = () => {
     }
   };
 
+  // Calculate screen positions for horizontal navigation
+  const getScreenTransform = (screen: HorizontalScreen) => {
+    const screenOrder: HorizontalScreen[] = ['friends', 'main', 'promos'];
+    const currentIdx = screenOrder.indexOf(currentScreen);
+    const screenIdx = screenOrder.indexOf(screen);
+    const offset = (screenIdx - currentIdx) * 100;
+    
+    // Apply transition animation
+    let translateX = offset;
+    if (horizontalSwipeDirection === 'left') {
+      translateX = offset - 10;
+    } else if (horizontalSwipeDirection === 'right') {
+      translateX = offset + 10;
+    }
+    
+    return `translateX(${translateX}%)`;
+  };
+
   return (
     <ControlsVisibilityProvider autoHideDelay={3000}>
       <div 
         className="fixed inset-0 bg-background overflow-hidden touch-none"
         {...handlers}
       >
-        {/* Main Media Display with swipe animation */}
-        <div className={cn(
-          'absolute inset-0 transition-transform duration-300 ease-out',
-          swipeDirection === 'up' && 'animate-swipe-exit-up',
-          swipeDirection === 'down' && 'animate-swipe-exit-down'
-        )}>
-          <MediaCard
-            key={currentMedia.id}
-            type={currentMedia.type}
-            src={currentMedia.src}
-            duration={currentMedia.duration}
-            reward={currentMedia.reward}
-            contentId={currentMedia.id}
-            onComplete={handleMediaComplete}
-            onSkip={handleSkip}
-            isActive={!isTransitioning}
-          />
+        {/* Horizontal Screen Container */}
+        <div className="absolute inset-0 flex">
+          {/* Friends Posts Feed (Left) */}
+          <div 
+            className={cn(
+              "absolute inset-0 transition-transform duration-300 ease-out",
+              currentScreen === 'friends' ? 'z-10' : 'z-0'
+            )}
+            style={{ transform: getScreenTransform('friends') }}
+          >
+            <FriendsPostsFeed 
+              isActive={currentScreen === 'friends'} 
+              onSwipeRight={() => navigateHorizontal('right')}
+            />
+          </div>
+
+          {/* Main Media Feed (Center) */}
+          <div 
+            className={cn(
+              "absolute inset-0 transition-transform duration-300 ease-out",
+              currentScreen === 'main' ? 'z-10' : 'z-0'
+            )}
+            style={{ transform: getScreenTransform('main') }}
+          >
+            <div className={cn(
+              'absolute inset-0 transition-transform duration-300 ease-out',
+              swipeDirection === 'up' && 'animate-swipe-exit-up',
+              swipeDirection === 'down' && 'animate-swipe-exit-down'
+            )}>
+              <MediaCard
+                key={currentMedia.id}
+                type={currentMedia.type}
+                src={currentMedia.src}
+                duration={currentMedia.duration}
+                reward={currentMedia.reward}
+                contentId={currentMedia.id}
+                onComplete={handleMediaComplete}
+                onSkip={handleSkip}
+                isActive={!isTransitioning && currentScreen === 'main'}
+              />
+            </div>
+
+            {/* Cross Navigation hints - only on main screen */}
+            {currentScreen === 'main' && (
+              <CrossNavigation onNavigate={handleNavigate} />
+            )}
+
+            {/* Floating Controls - only on main screen */}
+            {currentScreen === 'main' && (
+              <FloatingControls
+                onWalletClick={() => setShowWallet(true)}
+                onProfileClick={() => setShowProfile(true)}
+                onLikeClick={handleLike}
+                onCommentClick={handleComment}
+                onShareClick={handleShare}
+                onSettingsClick={handleSettings}
+                isLiked={isLiked}
+                likeCount={1234}
+                commentCount={89}
+              />
+            )}
+          </div>
+
+          {/* Promo Videos Feed (Right) */}
+          <div 
+            className={cn(
+              "absolute inset-0 transition-transform duration-300 ease-out",
+              currentScreen === 'promos' ? 'z-10' : 'z-0'
+            )}
+            style={{ transform: getScreenTransform('promos') }}
+          >
+            <PromoVideosFeed 
+              isActive={currentScreen === 'promos'} 
+              onSwipeLeft={() => navigateHorizontal('left')}
+              onRewardEarned={handleRewardEarned}
+            />
+          </div>
         </div>
 
-        {/* Cross Navigation hints */}
-        <CrossNavigation onNavigate={handleNavigate} />
-
-        {/* Floating Controls */}
-        <FloatingControls
-          onWalletClick={() => setShowWallet(true)}
-          onProfileClick={() => setShowProfile(true)}
-          onLikeClick={handleLike}
-          onCommentClick={handleComment}
-          onShareClick={handleShare}
-          onSettingsClick={handleSettings}
-          isLiked={isLiked}
-          likeCount={1234}
-          commentCount={89}
-        />
+        {/* Screen Indicators */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
+          {(['friends', 'main', 'promos'] as HorizontalScreen[]).map((screen) => (
+            <button
+              key={screen}
+              onClick={() => {
+                if (screen !== currentScreen && !isHorizontalTransitioning) {
+                  const direction = (['friends', 'main', 'promos'].indexOf(screen) > ['friends', 'main', 'promos'].indexOf(currentScreen)) ? 'left' : 'right';
+                  navigateHorizontal(direction);
+                }
+              }}
+              className={cn(
+                "h-1 rounded-full transition-all duration-300",
+                currentScreen === screen 
+                  ? "w-6 bg-white" 
+                  : "w-2 bg-white/40 hover:bg-white/60"
+              )}
+            />
+          ))}
+        </div>
 
         {/* Coin slide animation on reward */}
         <CoinSlideAnimation

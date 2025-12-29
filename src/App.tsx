@@ -14,6 +14,7 @@ import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import Install from "./pages/Install";
 import Create from "./pages/Create";
+import Studio from "./pages/Studio";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,14 @@ const App = () => (
                     element={
                       <ProtectedRoute>
                         <Create />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/studio"
+                    element={
+                      <ProtectedRoute>
+                        <Studio />
                       </ProtectedRoute>
                     }
                   />

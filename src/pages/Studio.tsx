@@ -12,6 +12,7 @@ import { VideoTimeline, TrimClip } from '@/components/studio/VideoTimeline';
 import { AIVideoEditor, AIStyle, AIEditOptions, aiStyles } from '@/components/studio/AIVideoEditor';
 import { VideoPreviewFilters } from '@/components/studio/VideoPreviewFilters';
 import { ComparisonSlider } from '@/components/studio/ComparisonSlider';
+import { AudioLibrary, AudioTrack } from '@/components/studio/AudioLibrary';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -180,6 +181,10 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   
   // Comparison slider state
   const [isComparing, setIsComparing] = useState(false);
+  
+  // Audio state
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState<AudioTrack | null>(null);
+  const [beatSyncPoints, setBeatSyncPoints] = useState<number[]>([]);
   
   // Trim state
   const [trimClips, setTrimClips] = useState<TrimClip[]>([]);
@@ -708,6 +713,28 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               </div>
             </div>
           </div>
+        );
+      
+      case 'audio':
+        return (
+          <AudioLibrary
+            isPremium={isPremium}
+            videoDuration={duration}
+            aiHighlights={aiHighlights.map(h => ({ startTime: h.startTime, endTime: h.endTime }))}
+            onSelectTrack={(track) => {
+              setSelectedAudioTrack(track);
+              toast.success(`Added: ${track.name}`, { 
+                description: `${track.bpm} BPM • ${track.duration}s` 
+              });
+            }}
+            onSyncBeat={(beats) => {
+              setBeatSyncPoints(beats);
+              toast.success('Beat sync applied!', {
+                description: `${beats.length} beat points synced with your video.`
+              });
+            }}
+            selectedTrackId={selectedAudioTrack?.id}
+          />
         );
         
       default:

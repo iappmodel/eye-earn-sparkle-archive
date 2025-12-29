@@ -14,6 +14,7 @@ import { VideoPreviewFilters } from '@/components/studio/VideoPreviewFilters';
 import { ComparisonSlider } from '@/components/studio/ComparisonSlider';
 import { AudioLibrary, AudioTrack } from '@/components/studio/AudioLibrary';
 import { AISoundGenerator, GeneratedAudio } from '@/components/studio/AISoundGenerator';
+import { AIVoiceoverGenerator } from '@/components/studio/AIVoiceoverGenerator';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -720,12 +721,15 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
       case 'audio':
         return (
           <Tabs defaultValue="library" className="w-full">
-            <TabsList className="grid grid-cols-2 w-full mb-4">
+            <TabsList className="grid grid-cols-3 w-full mb-4">
               <TabsTrigger value="library">
                 <Music className="w-4 h-4 mr-1.5" /> Library
               </TabsTrigger>
               <TabsTrigger value="generate">
-                <Wand2 className="w-4 h-4 mr-1.5" /> AI Generate
+                <Wand2 className="w-4 h-4 mr-1.5" /> AI Sound
+              </TabsTrigger>
+              <TabsTrigger value="voiceover">
+                <span className="text-xs">🎙️</span> Voiceover
               </TabsTrigger>
             </TabsList>
             
@@ -756,6 +760,16 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                   setGeneratedAudios(prev => [...prev, audio]);
                   toast.success('Added to timeline', {
                     description: `${audio.type === 'sfx' ? 'Sound effect' : 'Music'} added`
+                  });
+                }}
+              />
+            </TabsContent>
+            
+            <TabsContent value="voiceover">
+              <AIVoiceoverGenerator
+                onVoiceoverGenerated={(voiceover) => {
+                  toast.success('Voiceover ready', {
+                    description: `${voiceover.voiceName} voice added to timeline`
                   });
                 }}
               />

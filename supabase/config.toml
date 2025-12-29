@@ -7,57 +7,71 @@ schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
-[auth]
+[db]
+port = 54322
+major_version = 15
+
+[studio]
 enabled = true
-site_url = "http://localhost:3000"
+port = 54323
+api_url = "http://127.0.0.1"
 
-[functions.validate-attention]
-verify_jwt = false
-
-[functions.issue-reward]
-verify_jwt = false
-
-[functions.create-checkout]
+[functions.analyze-video]
 verify_jwt = false
 
 [functions.check-subscription]
 verify_jwt = false
 
+[functions.create-checkout]
+verify_jwt = false
+
 [functions.customer-portal]
 verify_jwt = false
 
-[functions.request-payout]
-verify_jwt = false
-
-[functions.transfer-coins]
-verify_jwt = false
-
-[functions.tip-creator]
-verify_jwt = false
-
-[functions.get-nearby-promotions]
-verify_jwt = false
-
-[functions.get-mapbox-token]
-verify_jwt = false
-
-[functions.get-personalized-feed]
-verify_jwt = false
-
-[functions.track-interaction]
+[functions.export-user-data]
 verify_jwt = false
 
 [functions.generate-reply]
-verify_jwt = false
-
-[functions.send-notification-email]
-verify_jwt = false
-
-[functions.analyze-video]
 verify_jwt = false
 
 [functions.generate-sfx]
 verify_jwt = false
 
 [functions.generate-music]
+verify_jwt = false
+
+[functions.generate-voiceover]
+verify_jwt = false
+
+[functions.get-mapbox-token]
+verify_jwt = false
+
+[functions.get-nearby-promotions]
+verify_jwt = false
+
+[functions.get-personalized-feed]
+verify_jwt = false
+
+[functions.issue-reward]
+verify_jwt = false
+
+[functions.manage-referral]
+verify_jwt = false
+
+[functions.request-payout]
+verify_jwt = false
+
+[functions.send-notification-email]
+verify_jwt = false
+
+[functions.tip-creator]
+verify_jwt = false
+
+[functions.track-interaction]
+verify_jwt = false
+
+[functions.transfer-coins]
+verify_jwt = false
+
+[functions.validate-attention]
 verify_jwt = false

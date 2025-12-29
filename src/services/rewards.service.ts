@@ -62,14 +62,27 @@ class RewardsService {
         },
       });
 
-      // Handle edge function errors - the response may contain useful error info
+      // Handle edge function errors - parse the response body when available
       if (error) {
         console.log('[Rewards] Issue response:', { data, error });
-        // If we have data with an error message, use that (400 responses)
-        if (data && typeof data === 'object' && 'error' in data) {
-          return { success: false, error: data.error as string };
+
+        // supabase-js returns FunctionsHttpError with `context` as a Response object.
+        // Reading the JSON body gives us the real, user-meaningful error message.
+        const ctx = (error as any)?.context;
+        if (ctx && typeof ctx === 'object' && typeof (ctx as Response).json === 'function') {
+          try {
+            const parsed = await (ctx as Response).clone().json().catch(() => null);
+            const message = parsed?.error || parsed?.message;
+            if (typeof message === 'string' && message.length > 0) {
+              return { success: false, error: message };
+            }
+          } catch {
+            // ignore - fallback to error.message
+          }
         }
-        return { success: false, error: error.message };
+
+        // Fallback (fetch/relay errors or non-JSON bodies)
+        return { success: false, error: (error as any)?.message || 'Failed to issue reward' };
       }
 
       // Check if response indicates failure

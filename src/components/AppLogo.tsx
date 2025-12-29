@@ -35,8 +35,7 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       <div 
         className={cn(
           sizeClasses[size],
-          'relative flex items-center justify-center',
-          animated && 'animate-float-neon'
+          'relative flex items-center justify-center'
         )}
       >
         {/* Glow background */}

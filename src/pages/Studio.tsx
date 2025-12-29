@@ -15,6 +15,7 @@ import { ComparisonSlider } from '@/components/studio/ComparisonSlider';
 import { AudioLibrary, AudioTrack } from '@/components/studio/AudioLibrary';
 import { AISoundGenerator, GeneratedAudio } from '@/components/studio/AISoundGenerator';
 import { AIVoiceoverGenerator } from '@/components/studio/AIVoiceoverGenerator';
+import { AISubtitleGenerator } from '@/components/studio/AISubtitleGenerator';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -773,6 +774,40 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                   });
                 }}
               />
+            </TabsContent>
+          </Tabs>
+        );
+
+      case 'text':
+        return (
+          <Tabs defaultValue="subtitles" className="w-full">
+            <TabsList className="grid grid-cols-2 w-full mb-4">
+              <TabsTrigger value="subtitles">
+                <span className="mr-1.5">📝</span> AI Subtitles
+              </TabsTrigger>
+              <TabsTrigger value="captions">
+                <span className="mr-1.5">T</span> Captions
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="subtitles">
+              <AISubtitleGenerator
+                videoRef={videoRef}
+                onSubtitlesGenerated={(subs) => {
+                  toast.success('Subtitles ready', {
+                    description: `${subs.length} segments generated`
+                  });
+                }}
+              />
+            </TabsContent>
+            
+            <TabsContent value="captions">
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium">Add Text Overlay</h4>
+                <p className="text-xs text-muted-foreground">
+                  Text overlay editor coming soon. Use AI Subtitles for automatic transcription.
+                </p>
+              </div>
             </TabsContent>
           </Tabs>
         );

@@ -145,6 +145,16 @@ export default {
             boxShadow: "0 0 40px hsl(270 95% 65% / 0.5), 0 0 80px hsl(320 90% 60% / 0.2)",
           },
         },
+        "coin-pulse": {
+          "0%, 100%": { 
+            transform: "scale(1)",
+            opacity: "1",
+          },
+          "50%": { 
+            transform: "scale(1.05)",
+            opacity: "0.9",
+          },
+        },
         "glow-rotate": {
           "0%": { 
             filter: "hue-rotate(0deg)",
@@ -179,6 +189,7 @@ export default {
         "neon-pulse": "neon-pulse 2s ease-in-out infinite",
         "glow-rotate": "glow-rotate 8s linear infinite",
         "float-neon": "float-neon 3s ease-in-out infinite",
+        "coin-pulse": "coin-pulse 2.5s ease-in-out infinite",
       },
     },
   },

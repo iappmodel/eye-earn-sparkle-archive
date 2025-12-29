@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useStudioMedia } from '@/hooks/useStudioMedia';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 type EditorMode = 'manual' | 'ai' | 'hybrid';
@@ -295,29 +296,98 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   };
 
   const handleAIAnalyze = async () => {
+    if (!currentMedia) {
+      toast.error('Please upload a video first');
+      return;
+    }
+    
     setAiAnalyzing(true);
-    toast.info('AI is analyzing your video...', { description: 'This may take a moment.' });
+    toast.info('AI is analyzing your video...', { description: 'Using Lovable AI for smart analysis.' });
     
-    // Simulate AI analysis
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Generate mock highlights
-    const mockHighlights: AIHighlight[] = [
-      { id: '1', startTime: 2, endTime: 8, score: 95, reason: 'High engagement moment - peak action', selected: true },
-      { id: '2', startTime: 12, endTime: 18, score: 88, reason: 'Emotional highlight - smile detected', selected: true },
-      { id: '3', startTime: 22, endTime: 28, score: 82, reason: 'Visual interest - dynamic movement', selected: false },
-    ];
-    
-    setAiHighlights(mockHighlights);
-    setAiSuggestions([
-      'Add trending audio "Summer Vibes" to boost engagement',
-      'Apply "Cinematic" color grade for professional look',
-      'Trim intro by 2 seconds for faster hook',
-      'Add text overlay at 0:05 for context',
-    ]);
+    try {
+      // Generate a thumbnail from the video for AI analysis
+      let thumbnailUrl = null;
+      if (currentMedia.type === 'video' && videoRef.current) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = videoRef.current.videoWidth || 640;
+          canvas.height = videoRef.current.videoHeight || 360;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+            thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+          }
+        } catch (e) {
+          console.log('Could not capture thumbnail:', e);
+        }
+      } else if (currentMedia.type === 'image') {
+        thumbnailUrl = currentMedia.url;
+      }
+
+      const response = await supabase.functions.invoke('analyze-video', {
+        body: {
+          thumbnailUrl,
+          duration,
+          stylePreference: selectedAIStyle,
+          videoMetadata: {
+            fileName: currentMedia.file?.name,
+            fileType: currentMedia.file?.type,
+            fileSize: currentMedia.file?.size,
+          }
+        }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Analysis failed');
+      }
+
+      const analysisResult = response.data;
+      
+      // Transform highlights to our format
+      const highlights: AIHighlight[] = (analysisResult.highlights || []).map((h: any, index: number) => ({
+        id: h.id || `${index}`,
+        startTime: h.startTime,
+        endTime: h.endTime,
+        score: h.score,
+        reason: h.reason,
+        selected: index < 2, // Auto-select top 2 highlights
+      }));
+      
+      setAiHighlights(highlights);
+      setAiSuggestions(analysisResult.suggestions || []);
+      
+      // If AI recommended styles, show them
+      if (analysisResult.recommendedStyles?.length > 0) {
+        toast.success('AI analysis complete!', { 
+          description: `Found ${highlights.length} highlights. Recommended style: ${analysisResult.recommendedStyles[0]}` 
+        });
+      } else {
+        toast.success('AI analysis complete!', { 
+          description: `Found ${highlights.length} highlight moments. Engagement prediction: ${analysisResult.engagementPrediction}%` 
+        });
+      }
+      
+    } catch (error) {
+      console.error('AI analysis error:', error);
+      toast.error('Analysis failed', { 
+        description: error instanceof Error ? error.message : 'Please try again' 
+      });
+      
+      // Fallback to generated highlights
+      const fallbackHighlights: AIHighlight[] = [
+        { id: '1', startTime: duration * 0.05, endTime: duration * 0.2, score: 92, reason: 'Opening hook - critical for viewer retention', selected: true },
+        { id: '2', startTime: duration * 0.35, endTime: duration * 0.5, score: 85, reason: 'Mid-video engagement peak', selected: true },
+        { id: '3', startTime: duration * 0.75, endTime: duration * 0.9, score: 88, reason: 'Climax moment for strong finish', selected: false },
+      ];
+      setAiHighlights(fallbackHighlights);
+      setAiSuggestions([
+        'Consider adding a strong hook in the first 3 seconds',
+        'Use dynamic transitions between scenes',
+        'Apply color grading for professional look'
+      ]);
+    }
     
     setAiAnalyzing(false);
-    toast.success('AI analysis complete!', { description: `Found ${mockHighlights.length} highlight moments.` });
   };
 
   const handleSelectAIStyle = (style: AIStyle | null) => {

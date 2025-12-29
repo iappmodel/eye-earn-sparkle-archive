@@ -142,7 +142,6 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
             'w-14 h-14 z-20',
             'text-icoin border border-icoin/30',
             'hover:shadow-[0_0_20px_hsl(var(--icoin)/0.3)]',
-            !selectedCoin && 'animate-coin-pulse',
             selectedCoin === 'icoin' && 'neu-inset scale-95 translate-y-1'
           )}
         >
@@ -199,7 +198,6 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
             'w-14 h-14 z-20',
             'text-primary border border-primary/30',
             'hover:shadow-[0_0_20px_hsl(var(--primary)/0.3)]',
-            !selectedCoin && 'animate-coin-pulse',
             selectedCoin === 'vicoin' && 'neu-inset scale-95 translate-y-1'
           )}
         >

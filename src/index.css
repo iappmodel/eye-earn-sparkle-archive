@@ -103,6 +103,139 @@
     --border: 270 40% 40%;
   }
   
+  /* ===== LUNAR THEME ===== */
+  /* Soft moonlight aesthetic - ethereal, calming, silvery */
+  .theme-lunar {
+    --background: 225 25% 12%;
+    --foreground: 210 30% 95%;
+
+    --card: 225 20% 16%;
+    --card-foreground: 210 30% 95%;
+
+    --popover: 225 22% 14%;
+    --popover-foreground: 210 30% 95%;
+
+    /* Primary - Soft Moonlight Blue */
+    --primary: 220 60% 75%;
+    --primary-foreground: 225 25% 10%;
+
+    --secondary: 225 15% 20%;
+    --secondary-foreground: 210 25% 90%;
+
+    --muted: 225 12% 22%;
+    --muted-foreground: 215 15% 55%;
+
+    /* Accent - Soft Silver */
+    --accent: 210 20% 80%;
+    --accent-foreground: 225 25% 12%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 25%;
+    --input: 225 15% 18%;
+    --ring: 220 60% 75%;
+
+    /* Lunar Glow Colors */
+    --neon-purple: 230 50% 70%;
+    --neon-magenta: 260 40% 65%;
+    --neon-cyan: 200 50% 70%;
+    --neon-blue: 220 60% 75%;
+    --neon-pink: 280 30% 70%;
+    
+    /* Currency Colors */
+    --vicoin: 220 60% 75%;
+    --icoin: 45 40% 60%;
+    
+    /* Glass morphism */
+    --glass-bg: 225 20% 14%;
+    --glass-border: 220 30% 30%;
+    
+    /* Gradient stops */
+    --gradient-start: 220 60% 75%;
+    --gradient-mid: 240 40% 70%;
+    --gradient-end: 200 50% 75%;
+    
+    /* Depth layers */
+    --depth-1: 225 20% 18%;
+    --depth-2: 225 20% 14%;
+    --depth-3: 225 22% 10%;
+    --depth-glow: 220 60% 75%;
+    
+    /* Ambient effects */
+    --ambient-warm: 240 30% 65%;
+    --ambient-cool: 200 50% 75%;
+    --ambient-energy: 220 60% 75%;
+    
+    --sidebar-background: 225 25% 10%;
+    --sidebar-foreground: 210 30% 95%;
+    --sidebar-primary: 220 60% 75%;
+    --sidebar-primary-foreground: 225 25% 10%;
+    --sidebar-accent: 225 15% 18%;
+    --sidebar-accent-foreground: 210 30% 95%;
+    --sidebar-border: 220 15% 25%;
+    --sidebar-ring: 220 60% 75%;
+  }
+  
+  /* Lunar theme body gradient */
+  .theme-lunar body {
+    background-image: 
+      radial-gradient(ellipse at top, hsl(220 60% 75% / 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom right, hsl(240 40% 70% / 0.05) 0%, transparent 50%);
+  }
+  
+  /* Lunar button styles */
+  .theme-lunar .neu-button {
+    background: linear-gradient(135deg, hsl(220 60% 75% / 0.15), hsl(240 40% 70% / 0.08));
+    border: 1px solid hsl(220 60% 75% / 0.25);
+    box-shadow: 
+      0 0 25px hsl(220 60% 75% / 0.15),
+      0 4px 20px hsl(225 25% 5% / 0.4),
+      inset 0 1px 0 hsl(220 60% 85% / 0.15);
+  }
+  
+  .theme-lunar .neu-button:hover {
+    box-shadow: 
+      0 0 40px hsl(220 60% 75% / 0.25),
+      0 8px 30px hsl(225 25% 5% / 0.5),
+      inset 0 1px 0 hsl(220 60% 85% / 0.2);
+    border-color: hsl(220 60% 75% / 0.4);
+  }
+  
+  .theme-lunar .neu-card {
+    background: linear-gradient(145deg, hsl(225 20% 18% / 0.95), hsl(225 22% 12% / 0.95));
+    border: 1px solid hsl(220 60% 75% / 0.12);
+    box-shadow: 
+      0 8px 40px hsl(225 25% 5% / 0.5),
+      0 0 0 1px hsl(220 60% 75% / 0.08),
+      inset 0 1px 0 hsl(220 60% 85% / 0.05);
+  }
+  
+  .theme-lunar .neon-card {
+    background: hsl(var(--card) / 0.85);
+    border: 1px solid hsl(var(--neon-blue) / 0.2);
+    box-shadow: 
+      0 0 30px hsl(var(--neon-blue) / 0.1),
+      inset 0 1px 0 hsl(var(--neon-blue) / 0.08);
+  }
+  
+  .theme-lunar .glass-3d {
+    background: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid hsl(var(--neon-blue) / 0.15);
+    box-shadow: 
+      0 8px 40px hsl(225 25% 5% / 0.4),
+      inset 0 1px 0 hsl(220 60% 85% / 0.08);
+  }
+  
+  .theme-lunar .gradient-text {
+    background: linear-gradient(135deg, hsl(220 60% 85%), hsl(240 40% 80%), hsl(200 50% 85%));
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
   /* Reduced motion preference */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

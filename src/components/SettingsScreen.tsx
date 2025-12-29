@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useLocalization } from '@/contexts/LocalizationContext';
+import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
 import { cn } from '@/lib/utils';
 
 interface SettingsScreenProps {
@@ -10,11 +11,28 @@ interface SettingsScreenProps {
   onClose: () => void;
 }
 
+// Theme configuration with icons and labels
+const themeOptions: { id: ThemePack; label: string; icon: React.ReactNode; description: string }[] = [
+  { 
+    id: 'default', 
+    label: 'Cyberpunk', 
+    icon: <Sparkles className="w-5 h-5" />, 
+    description: 'Neon purple & magenta' 
+  },
+  { 
+    id: 'lunar', 
+    label: 'Lunar', 
+    icon: <Moon className="w-5 h-5" />, 
+    description: 'Soft moonlight glow' 
+  },
+];
+
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   isOpen,
   onClose,
 }) => {
   const { t, localeConfig, formatCurrency, isRTL } = useLocalization();
+  const { themePack, setThemePack } = useAccessibility();
   const [isDarkMode, setIsDarkMode] = useState(() => 
     document.documentElement.classList.contains('dark')
   );
@@ -47,6 +65,58 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
 
         <div className="space-y-6">
+          {/* Theme Pack Section */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Palette className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Theme Pack</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {themeOptions.map((theme) => (
+                <button
+                  key={theme.id}
+                  onClick={() => setThemePack(theme.id)}
+                  className={cn(
+                    "relative flex flex-col items-center gap-2 p-4 rounded-xl transition-all duration-300",
+                    "border backdrop-blur-sm",
+                    themePack === theme.id
+                      ? "border-primary bg-primary/10 shadow-[0_0_20px_hsl(var(--primary)/0.3)]"
+                      : "border-border/50 bg-card/50 hover:border-primary/50 hover:bg-card/80"
+                  )}
+                >
+                  {/* Theme icon */}
+                  <div className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center",
+                    "transition-all duration-300",
+                    themePack === theme.id
+                      ? "bg-primary text-primary-foreground shadow-[0_0_15px_hsl(var(--primary)/0.5)]"
+                      : "bg-muted text-muted-foreground"
+                  )}>
+                    {theme.icon}
+                  </div>
+                  
+                  {/* Theme label */}
+                  <span className={cn(
+                    "font-display text-sm font-semibold",
+                    themePack === theme.id ? "text-primary" : "text-foreground"
+                  )}>
+                    {theme.label}
+                  </span>
+                  
+                  {/* Theme description */}
+                  <span className="text-xs text-muted-foreground text-center">
+                    {theme.description}
+                  </span>
+                  
+                  {/* Active indicator */}
+                  {themePack === theme.id && (
+                    <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
+
           {/* Language Section */}
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -75,10 +145,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </section>
 
-          {/* Theme Section */}
+          {/* Dark Mode Toggle */}
           <section>
             <div className="flex items-center gap-2 mb-4">
-              <Palette className="w-5 h-5 text-primary" />
+              {isDarkMode ? <Moon className="w-5 h-5 text-primary" /> : <Sun className="w-5 h-5 text-icoin" />}
               <h2 className="font-display text-lg font-semibold">{t('settings.theme')}</h2>
             </div>
             <button

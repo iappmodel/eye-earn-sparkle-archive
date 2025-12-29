@@ -11,6 +11,7 @@ import {
 import { VideoTimeline, TrimClip } from '@/components/studio/VideoTimeline';
 import { AIVideoEditor, AIStyle, AIEditOptions, aiStyles } from '@/components/studio/AIVideoEditor';
 import { VideoPreviewFilters } from '@/components/studio/VideoPreviewFilters';
+import { ComparisonSlider } from '@/components/studio/ComparisonSlider';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -176,6 +177,9 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   const [selectedAIStyle, setSelectedAIStyle] = useState<string | null>(null);
   const [referenceVideos, setReferenceVideos] = useState<string[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  
+  // Comparison slider state
+  const [isComparing, setIsComparing] = useState(false);
   
   // Trim state
   const [trimClips, setTrimClips] = useState<TrimClip[]>([]);
@@ -861,19 +865,42 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               </div>
             )}
             
-            {/* Basic Filter preview */}
-            {selectedFilter !== 'none' && !selectedAIStyle && (
-              <div 
-                className="absolute inset-0 mix-blend-overlay opacity-50 pointer-events-none"
-                style={{ background: filters.find(f => f.id === selectedFilter)?.preview }}
+            {/* Comparison Slider - only show when there's an effect to compare */}
+            {(selectedAIStyle || selectedFilter !== 'none') && (
+              <ComparisonSlider
+                isActive={isComparing}
+                onToggle={() => setIsComparing(!isComparing)}
               />
             )}
 
-            {/* AI Style Preview Filters */}
-            <VideoPreviewFilters
-              selectedStyleId={selectedAIStyle}
-              intensity={filterIntensity[0]}
-            />
+            {/* Basic Filter preview - hidden on left side during comparison */}
+            {selectedFilter !== 'none' && !selectedAIStyle && (
+              <div 
+                className="absolute inset-0 mix-blend-overlay opacity-50 pointer-events-none transition-all duration-300"
+                style={{ 
+                  background: filters.find(f => f.id === selectedFilter)?.preview,
+                  clipPath: isComparing ? 'inset(0 0 0 50%)' : 'none',
+                }}
+              />
+            )}
+
+            {/* AI Style Preview Filters - hidden on left side during comparison */}
+            {!isComparing ? (
+              <VideoPreviewFilters
+                selectedStyleId={selectedAIStyle}
+                intensity={filterIntensity[0]}
+              />
+            ) : (
+              <div 
+                className="absolute inset-0 pointer-events-none"
+                style={{ clipPath: 'inset(0 0 0 50%)' }}
+              >
+                <VideoPreviewFilters
+                  selectedStyleId={selectedAIStyle}
+                  intensity={filterIntensity[0]}
+                />
+              </div>
+            )}
 
             {/* Remove current media button */}
             <button

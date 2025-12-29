@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { ComparisonSlider } from './ComparisonSlider';
 
 interface BeautyTool {
   id: string;
@@ -139,6 +140,7 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
   const [beautyValues, setBeautyValues] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState('face');
   const [autoEnhance, setAutoEnhance] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
 
   const handleValueChange = (toolId: string, value: number, tool: BeautyTool) => {
     if (tool.isPremium && !isPremium) {
@@ -216,10 +218,26 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
           <Sparkles className="w-4 h-4 text-primary" />
           Beauty Studio
         </h3>
-        <Button variant="ghost" size="sm" onClick={handleReset}>
-          <RotateCcw className="w-4 h-4 mr-1" /> Reset
-        </Button>
+        <div className="flex items-center gap-2">
+          <ComparisonSlider 
+            isActive={false}
+            onToggle={() => setShowComparison(!showComparison)}
+            standalone
+          />
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            <RotateCcw className="w-4 h-4 mr-1" /> Reset
+          </Button>
+        </div>
       </div>
+
+      {/* Before/After Comparison */}
+      {showComparison && (
+        <ComparisonSlider
+          isActive={true}
+          onToggle={() => setShowComparison(false)}
+          standalone
+        />
+      )}
 
       {/* AI Auto-Enhance */}
       <div className="p-3 rounded-xl bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-blue-500/10 border border-primary/20">

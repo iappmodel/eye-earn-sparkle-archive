@@ -1,17 +1,21 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { GripVertical, Eye, EyeOff } from 'lucide-react';
+import { GripVertical, Eye, EyeOff, SplitSquareHorizontal, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ComparisonSliderProps {
   isActive: boolean;
   onToggle: () => void;
   className?: string;
+  /** If true, renders as a standalone panel with preview area */
+  standalone?: boolean;
 }
 
 export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
   isActive,
   onToggle,
   className,
+  standalone = false,
 }) => {
   const [position, setPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
@@ -67,6 +71,22 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
     };
   }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove]);
 
+  // Standalone button mode - for beauty editor header
+  if (!isActive && standalone) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onToggle}
+        className={cn("gap-2 h-8", className)}
+      >
+        <SplitSquareHorizontal className="w-4 h-4" />
+        Compare
+      </Button>
+    );
+  }
+
+  // Overlay button mode - for video preview
   if (!isActive) {
     return (
       <button
@@ -85,6 +105,112 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
     );
   }
 
+  // Standalone panel mode - embedded preview within beauty editor
+  if (standalone) {
+    return (
+      <div className={cn("space-y-3", className)}>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <SplitSquareHorizontal className="w-4 h-4" />
+            Before/After Comparison
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggle}
+            className="h-7 px-2"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+        
+        {/* Comparison Preview Container */}
+        <div
+          ref={containerRef}
+          className="relative w-full aspect-[4/3] bg-muted rounded-xl overflow-hidden cursor-ew-resize select-none border border-border"
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+        >
+          {/* Original (Before) Side - left portion */}
+          <div 
+            className="absolute inset-0 bg-gradient-to-br from-muted via-muted/90 to-muted/80"
+            style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-2 opacity-70">
+                <div className="w-20 h-20 mx-auto rounded-full bg-foreground/10 flex items-center justify-center border-2 border-dashed border-foreground/20">
+                  <span className="text-3xl">👤</span>
+                </div>
+                <span className="text-xs font-medium text-muted-foreground">Original</span>
+              </div>
+            </div>
+            {/* Before Label */}
+            <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-background/90 backdrop-blur-sm border border-border/50">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Before</span>
+            </div>
+          </div>
+
+          {/* Enhanced (After) Side - right portion */}
+          <div 
+            className="absolute inset-0 bg-gradient-to-br from-primary/10 via-pink-500/10 to-purple-500/10"
+            style={{ clipPath: `inset(0 0 0 ${position}%)` }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <div className="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center ring-2 ring-primary/40 shadow-lg shadow-primary/20">
+                  <span className="text-3xl">✨</span>
+                </div>
+                <span className="text-xs font-medium text-primary">Enhanced</span>
+              </div>
+            </div>
+            {/* After Label */}
+            <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-primary backdrop-blur-sm">
+              <span className="text-[10px] font-bold text-primary-foreground uppercase tracking-wider">After</span>
+            </div>
+          </div>
+
+          {/* Slider Divider */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none z-20"
+            style={{ left: `${position}%`, transform: 'translateX(-50%)' }}
+          >
+            {/* Slider Handle */}
+            <div
+              className={cn(
+                'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+                'w-11 h-11 rounded-full bg-white shadow-xl',
+                'flex items-center justify-center',
+                'border-2 border-primary',
+                isDragging && 'scale-110 ring-4 ring-primary/20',
+                'transition-all duration-150'
+              )}
+            >
+              <GripVertical className="w-5 h-5 text-primary" />
+            </div>
+
+            {/* Top arrow */}
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-white" />
+            
+            {/* Bottom arrow */}
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[8px] border-l-transparent border-r-transparent border-t-white" />
+          </div>
+
+          {/* Instruction Hint */}
+          {!isDragging && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-background/90 backdrop-blur-sm shadow-lg border border-border/50">
+              <span className="text-[10px] text-muted-foreground font-medium">← Drag to compare →</span>
+            </div>
+          )}
+        </div>
+        
+        <p className="text-[10px] text-center text-muted-foreground">
+          Upload media to see real-time before/after comparison
+        </p>
+      </div>
+    );
+  }
+
+  // Overlay mode - for video preview
   return (
     <>
       {/* Toggle button when active */}

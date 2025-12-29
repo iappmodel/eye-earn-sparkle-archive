@@ -1229,6 +1229,99 @@ export type Database = {
         }
         Relationships: []
       }
+      user_content: {
+        Row: {
+          budget: number | null
+          call_to_action: string | null
+          caption: string | null
+          comments_count: number | null
+          content_type: string
+          created_at: string
+          expires_at: string | null
+          external_link: string | null
+          id: string
+          is_public: boolean | null
+          likes_count: number | null
+          location_address: string | null
+          location_lat: number | null
+          location_lng: number | null
+          media_type: string | null
+          media_url: string | null
+          published_at: string | null
+          reward_type: string | null
+          shares_count: number | null
+          status: string
+          tags: string[] | null
+          target_audience: string | null
+          thumbnail_url: string | null
+          title: string | null
+          total_rewards_earned: number | null
+          updated_at: string
+          user_id: string
+          views_count: number | null
+        }
+        Insert: {
+          budget?: number | null
+          call_to_action?: string | null
+          caption?: string | null
+          comments_count?: number | null
+          content_type: string
+          created_at?: string
+          expires_at?: string | null
+          external_link?: string | null
+          id?: string
+          is_public?: boolean | null
+          likes_count?: number | null
+          location_address?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          media_type?: string | null
+          media_url?: string | null
+          published_at?: string | null
+          reward_type?: string | null
+          shares_count?: number | null
+          status?: string
+          tags?: string[] | null
+          target_audience?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          total_rewards_earned?: number | null
+          updated_at?: string
+          user_id: string
+          views_count?: number | null
+        }
+        Update: {
+          budget?: number | null
+          call_to_action?: string | null
+          caption?: string | null
+          comments_count?: number | null
+          content_type?: string
+          created_at?: string
+          expires_at?: string | null
+          external_link?: string | null
+          id?: string
+          is_public?: boolean | null
+          likes_count?: number | null
+          location_address?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          media_type?: string | null
+          media_url?: string | null
+          published_at?: string | null
+          reward_type?: string | null
+          shares_count?: number | null
+          status?: string
+          tags?: string[] | null
+          target_audience?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          total_rewards_earned?: number | null
+          updated_at?: string
+          user_id?: string
+          views_count?: number | null
+        }
+        Relationships: []
+      }
       user_levels: {
         Row: {
           created_at: string

@@ -6,3 +6,4 @@ export * from './AudioLibrary';
 export * from './AISoundGenerator';
 export * from './AIVoiceoverGenerator';
 export * from './AISubtitleGenerator';
+export * from './FacetuneBeautyEditor';

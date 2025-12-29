@@ -13,6 +13,7 @@ import { AIVideoEditor, AIStyle, AIEditOptions, aiStyles } from '@/components/st
 import { VideoPreviewFilters } from '@/components/studio/VideoPreviewFilters';
 import { ComparisonSlider } from '@/components/studio/ComparisonSlider';
 import { AudioLibrary, AudioTrack } from '@/components/studio/AudioLibrary';
+import { AISoundGenerator, GeneratedAudio } from '@/components/studio/AISoundGenerator';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -185,6 +186,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   // Audio state
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<AudioTrack | null>(null);
   const [beatSyncPoints, setBeatSyncPoints] = useState<number[]>([]);
+  const [generatedAudios, setGeneratedAudios] = useState<GeneratedAudio[]>([]);
   
   // Trim state
   const [trimClips, setTrimClips] = useState<TrimClip[]>([]);
@@ -717,24 +719,48 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
       
       case 'audio':
         return (
-          <AudioLibrary
-            isPremium={isPremium}
-            videoDuration={duration}
-            aiHighlights={aiHighlights.map(h => ({ startTime: h.startTime, endTime: h.endTime }))}
-            onSelectTrack={(track) => {
-              setSelectedAudioTrack(track);
-              toast.success(`Added: ${track.name}`, { 
-                description: `${track.bpm} BPM • ${track.duration}s` 
-              });
-            }}
-            onSyncBeat={(beats) => {
-              setBeatSyncPoints(beats);
-              toast.success('Beat sync applied!', {
-                description: `${beats.length} beat points synced with your video.`
-              });
-            }}
-            selectedTrackId={selectedAudioTrack?.id}
-          />
+          <Tabs defaultValue="library" className="w-full">
+            <TabsList className="grid grid-cols-2 w-full mb-4">
+              <TabsTrigger value="library">
+                <Music className="w-4 h-4 mr-1.5" /> Library
+              </TabsTrigger>
+              <TabsTrigger value="generate">
+                <Wand2 className="w-4 h-4 mr-1.5" /> AI Generate
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="library">
+              <AudioLibrary
+                isPremium={isPremium}
+                videoDuration={duration}
+                aiHighlights={aiHighlights.map(h => ({ startTime: h.startTime, endTime: h.endTime }))}
+                onSelectTrack={(track) => {
+                  setSelectedAudioTrack(track);
+                  toast.success(`Added: ${track.name}`, { 
+                    description: `${track.bpm} BPM • ${track.duration}s` 
+                  });
+                }}
+                onSyncBeat={(beats) => {
+                  setBeatSyncPoints(beats);
+                  toast.success('Beat sync applied!', {
+                    description: `${beats.length} beat points synced with your video.`
+                  });
+                }}
+                selectedTrackId={selectedAudioTrack?.id}
+              />
+            </TabsContent>
+            
+            <TabsContent value="generate">
+              <AISoundGenerator
+                onAddToTimeline={(audio) => {
+                  setGeneratedAudios(prev => [...prev, audio]);
+                  toast.success('Added to timeline', {
+                    description: `${audio.type === 'sfx' ? 'Sound effect' : 'Music'} added`
+                  });
+                }}
+              />
+            </TabsContent>
+          </Tabs>
         );
         
       default:

@@ -16,6 +16,7 @@ import { AudioLibrary, AudioTrack } from '@/components/studio/AudioLibrary';
 import { AISoundGenerator, GeneratedAudio } from '@/components/studio/AISoundGenerator';
 import { AIVoiceoverGenerator } from '@/components/studio/AIVoiceoverGenerator';
 import { AISubtitleGenerator } from '@/components/studio/AISubtitleGenerator';
+import { FacetuneBeautyEditor } from '@/components/studio/FacetuneBeautyEditor';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -524,83 +525,12 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         
       case 'beauty':
         return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Beauty Tools</h3>
-              <Button variant="ghost" size="sm" onClick={() => setBeautyValues({})}>
-                <RotateCcw className="w-4 h-4 mr-1" /> Reset
-              </Button>
-            </div>
-            
-            <div className="space-y-4">
-              {beautyTools.map((tool) => (
-                <div key={tool.id} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={cn(
-                        'w-8 h-8 rounded-lg flex items-center justify-center',
-                        tool.isPremium && !isPremium 
-                          ? 'bg-muted text-muted-foreground'
-                          : 'bg-primary/10 text-primary'
-                      )}>
-                        {tool.icon}
-                      </div>
-                      <span className="text-sm font-medium">{tool.name}</span>
-                      {tool.isPremium && !isPremium && (
-                        <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <span className="text-sm text-muted-foreground w-8 text-right">
-                      {beautyValues[tool.id] || 0}
-                    </span>
-                  </div>
-                  <Slider
-                    value={[beautyValues[tool.id] || 0]}
-                    onValueChange={([value]) => handleBeautyChange(tool.id, value)}
-                    max={100}
-                    step={1}
-                    disabled={tool.isPremium && !isPremium}
-                    className={cn(tool.isPremium && !isPremium && 'opacity-50')}
-                  />
-                </div>
-              ))}
-            </div>
-            
-            {/* AI Beauty Enhancement */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                  <Brain className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h4 className="font-semibold">AI Auto-Enhance</h4>
-                  <p className="text-xs text-muted-foreground">Let AI optimize your appearance</p>
-                </div>
-              </div>
-              <Button 
-                className="w-full" 
-                variant="secondary"
-                onClick={() => {
-                  if (!isPremium) {
-                    toast.error('Premium feature', { description: 'Upgrade to use AI auto-enhance.' });
-                    return;
-                  }
-                  setBeautyValues({
-                    smooth: 35,
-                    brighten: 20,
-                    sharpen: 15,
-                    teeth: 25,
-                    eyes: 30,
-                  });
-                  toast.success('AI beauty enhancement applied!');
-                }}
-              >
-                <Wand2 className="w-4 h-4 mr-2" />
-                Apply AI Enhancement
-                {!isPremium && <Crown className="w-4 h-4 ml-2 text-amber-500" />}
-              </Button>
-            </div>
-          </div>
+          <FacetuneBeautyEditor
+            isPremium={isPremium}
+            onValuesChange={(values) => {
+              setBeautyValues(values);
+            }}
+          />
         );
         
       case 'effects':

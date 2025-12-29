@@ -1,10 +1,12 @@
 // Promo Videos Feed Component - Right swipe screen with reward earning
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Gift, Coins, Clock, Check, Eye, Volume2, VolumeX, ChevronUp } from 'lucide-react';
+import { Gift, Coins, Clock, Check, Eye, Volume2, VolumeX, ChevronUp, Play, Pause } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { rewardsService } from '@/services/rewards.service';
 import { toast } from 'sonner';
+import { Neu3DButton, VideoTheme } from '@/components/ui/Neu3DButton';
+import { GlassText } from '@/components/ui/GlassText';
 
 interface PromoVideo {
   id: string;
@@ -14,12 +16,13 @@ interface PromoVideo {
   thumbnail: string;
   title: string;
   description: string;
-  duration: number; // in seconds
+  duration: number;
   reward: {
     amount: number;
     type: 'vicoin' | 'icoin';
   };
   claimed: boolean;
+  theme: VideoTheme;
 }
 
 const mockPromoVideos: PromoVideo[] = [
@@ -34,6 +37,7 @@ const mockPromoVideos: PromoVideo[] = [
     duration: 8,
     reward: { amount: 50, type: 'vicoin' },
     claimed: false,
+    theme: 'purple',
   },
   {
     id: 'pv2',
@@ -46,6 +50,7 @@ const mockPromoVideos: PromoVideo[] = [
     duration: 8,
     reward: { amount: 75, type: 'vicoin' },
     claimed: false,
+    theme: 'magenta',
   },
   {
     id: 'pv3',
@@ -58,6 +63,7 @@ const mockPromoVideos: PromoVideo[] = [
     duration: 8,
     reward: { amount: 1, type: 'icoin' },
     claimed: false,
+    theme: 'gold',
   },
   {
     id: 'pv4',
@@ -70,6 +76,7 @@ const mockPromoVideos: PromoVideo[] = [
     duration: 8,
     reward: { amount: 100, type: 'vicoin' },
     claimed: false,
+    theme: 'cyan',
   },
   {
     id: 'pv5',
@@ -82,8 +89,28 @@ const mockPromoVideos: PromoVideo[] = [
     duration: 8,
     reward: { amount: 2, type: 'icoin' },
     claimed: false,
+    theme: 'emerald',
   },
 ];
+
+// Theme-specific gradient overlays
+const themeOverlays: Record<VideoTheme, string> = {
+  purple: 'from-[hsl(270,95%,10%,0.4)] via-transparent to-[hsl(270,95%,5%,0.8)]',
+  magenta: 'from-[hsl(320,90%,10%,0.4)] via-transparent to-[hsl(320,90%,5%,0.8)]',
+  cyan: 'from-[hsl(185,100%,10%,0.4)] via-transparent to-[hsl(185,100%,5%,0.8)]',
+  gold: 'from-[hsl(45,100%,10%,0.4)] via-transparent to-[hsl(45,100%,5%,0.8)]',
+  emerald: 'from-[hsl(160,84%,10%,0.4)] via-transparent to-[hsl(160,84%,5%,0.8)]',
+  rose: 'from-[hsl(350,89%,10%,0.4)] via-transparent to-[hsl(350,89%,5%,0.8)]',
+};
+
+const themeProgressBars: Record<VideoTheme, string> = {
+  purple: 'bg-[hsl(270,95%,65%)]',
+  magenta: 'bg-[hsl(320,90%,60%)]',
+  cyan: 'bg-[hsl(185,100%,50%)]',
+  gold: 'bg-[hsl(45,100%,55%)]',
+  emerald: 'bg-[hsl(160,84%,39%)]',
+  rose: 'bg-[hsl(350,89%,60%)]',
+};
 
 interface PromoVideosFeedProps {
   isActive: boolean;
@@ -103,15 +130,17 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   const [isWatching, setIsWatching] = useState(false);
   const [showReward, setShowReward] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isClaimingReward, setIsClaimingReward] = useState(false);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const watchStartTime = useRef<number | null>(null);
 
   const currentVideo = videos[currentIndex];
+  const currentTheme = currentVideo.theme;
 
   // Start/stop watching when screen becomes active
   useEffect(() => {
-    if (isActive && currentVideo && !currentVideo.claimed) {
+    if (isActive && currentVideo && !currentVideo.claimed && !isPaused) {
       setIsWatching(true);
       watchStartTime.current = Date.now();
     } else {
@@ -123,7 +152,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
       setIsWatching(false);
       watchStartTime.current = null;
     };
-  }, [isActive, currentIndex, currentVideo]);
+  }, [isActive, currentIndex, currentVideo, isPaused]);
 
   // Video progress and reward logic
   useEffect(() => {
@@ -140,7 +169,6 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
           clearInterval(progressInterval.current!);
           setIsWatching(false);
           setShowReward(true);
-          // Haptic feedback
           if (navigator.vibrate) {
             navigator.vibrate([100, 50, 100]);
           }
@@ -159,6 +187,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   useEffect(() => {
     setProgress(0);
     setShowReward(false);
+    setIsPaused(false);
   }, [currentIndex]);
 
   const claimReward = useCallback(async () => {
@@ -167,7 +196,6 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
     setIsClaimingReward(true);
     
     try {
-      // Call the rewards service
       const result = await rewardsService.issueReward(
         'promo_view',
         currentVideo.id,
@@ -178,27 +206,21 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
       );
 
       if (result.success && result.amount) {
-        // Mark as claimed
         setVideos((prev) =>
           prev.map((v, idx) => (idx === currentIndex ? { ...v, claimed: true } : v))
         );
         
-        // Refresh profile to update balance
         await refreshProfile();
-        
-        // Notify parent
         onRewardEarned?.(result.amount, result.coinType || currentVideo.reward.type);
         
         toast.success(`+${result.amount} ${result.coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}!`, {
           description: 'Reward added to your wallet',
         });
         
-        // Haptic feedback
         if (navigator.vibrate) {
           navigator.vibrate([50, 30, 50, 30, 50]);
         }
         
-        // Auto advance after claiming
         setTimeout(() => {
           setShowReward(false);
           setCurrentIndex((prev) => (prev + 1) % videos.length);
@@ -222,16 +244,6 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
     }
   }, [currentVideo, currentIndex, isClaimingReward, videos.length, onRewardEarned, refreshProfile]);
 
-  const navigateVertical = (direction: 'up' | 'down') => {
-    if (direction === 'up') {
-      setCurrentIndex((prev) => (prev + 1) % videos.length);
-    } else {
-      setCurrentIndex((prev) => (prev - 1 + videos.length) % videos.length);
-    }
-    setProgress(0);
-    setShowReward(false);
-  };
-
   const skipVideo = () => {
     setCurrentIndex((prev) => (prev + 1) % videos.length);
     setProgress(0);
@@ -239,7 +251,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   };
 
   return (
-    <div className="h-full w-full bg-background relative">
+    <div className="h-full w-full bg-background relative overflow-hidden">
       {/* Video/Image Background */}
       <div className="absolute inset-0">
         <img
@@ -247,46 +259,67 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
           alt={currentVideo.title}
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" />
+        {/* Theme-colored gradient overlay */}
+        <div className={cn(
+          'absolute inset-0 bg-gradient-to-b',
+          themeOverlays[currentTheme]
+        )} />
       </div>
 
       {/* Progress Bar with Timer */}
       <div className="absolute top-0 left-0 right-0 z-20 p-4">
         <div className="flex items-center gap-3 mb-2">
-          <Clock className="w-4 h-4 text-white" />
-          <div className="flex-1 h-2 bg-white/30 rounded-full overflow-hidden">
+          <Clock className="w-4 h-4 text-white drop-shadow-lg" />
+          <div className="flex-1 h-2.5 bg-white/20 rounded-full overflow-hidden backdrop-blur-sm border border-white/10">
             <div
               className={cn(
                 'h-full rounded-full transition-all duration-100 ease-linear',
-                progress >= 100 ? 'bg-green-400' : 'bg-primary'
+                progress >= 100 ? 'bg-green-400' : themeProgressBars[currentTheme],
+                'shadow-[0_0_10px_currentColor]'
               )}
               style={{ width: `${progress}%` }}
             />
           </div>
-          <span className="text-white text-sm font-medium min-w-[40px]">
+          <GlassText theme={currentTheme} variant="glow" size="sm">
             {Math.ceil((currentVideo.duration * (100 - progress)) / 100)}s
-          </span>
+          </GlassText>
         </div>
         
-        {/* Reward indicator */}
-        <div className="flex items-center justify-center gap-2 bg-black/40 backdrop-blur-sm rounded-full px-4 py-2 w-fit mx-auto">
-          <Coins className={cn('w-5 h-5', currentVideo.reward.type === 'icoin' ? 'text-amber-400' : 'text-primary')} />
-          <span className="text-white font-bold">+{currentVideo.reward.amount}</span>
-          <span className="text-white/70 text-sm">
+        {/* Reward indicator - glass morphism */}
+        <div className="flex items-center justify-center gap-2 glass-neon rounded-full px-4 py-2 w-fit mx-auto">
+          <Coins className={cn(
+            'w-5 h-5',
+            currentVideo.reward.type === 'icoin' ? 'text-icoin' : 'text-primary',
+            'drop-shadow-[0_0_8px_currentColor]'
+          )} />
+          <GlassText 
+            theme={currentVideo.reward.type === 'icoin' ? 'gold' : currentTheme} 
+            variant="gradient" 
+            size="lg"
+          >
+            +{currentVideo.reward.amount}
+          </GlassText>
+          <span className="text-white/70 text-sm font-medium">
             {currentVideo.reward.type === 'vicoin' ? 'Vicoins' : 'Icoins'}
           </span>
         </div>
       </div>
 
-      {/* Brand Header */}
-      <div className="absolute top-24 left-0 right-0 z-10 px-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/50 bg-white">
+      {/* Brand Header - glass morphism */}
+      <div className="absolute top-28 left-0 right-0 z-10 px-4">
+        <div className="flex items-center gap-3 glass-neon rounded-2xl p-3">
+          <div className={cn(
+            'w-12 h-12 rounded-full overflow-hidden border-2',
+            `border-[hsl(var(--neon-${currentTheme === 'gold' ? 'purple' : currentTheme}))]`,
+            'shadow-[0_0_15px_hsl(var(--primary)/0.3)]'
+          )}>
             <img src={currentVideo.brandLogo} alt={currentVideo.brandName} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1">
-            <p className="text-white font-bold text-lg">{currentVideo.brandName}</p>
-            <p className="text-white/70 text-xs flex items-center gap-1">
+            <GlassText theme={currentTheme} variant="3d" size="lg" as="p">
+              {currentVideo.brandName}
+            </GlassText>
+            <p className="text-white/60 text-xs flex items-center gap-1 font-medium">
               <Gift className="w-3 h-3" /> Sponsored
             </p>
           </div>
@@ -295,22 +328,45 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
 
       {/* Reward Popup */}
       {showReward && !currentVideo.claimed && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-card rounded-3xl p-8 mx-6 text-center animate-scale-in shadow-2xl">
-            <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
-              <Coins className={cn('w-10 h-10', currentVideo.reward.type === 'icoin' ? 'text-amber-400' : 'text-primary')} />
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-md">
+          <div className="glass-neon rounded-3xl p-8 mx-6 text-center animate-scale-in border-2 border-primary/30">
+            <div className={cn(
+              'w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4',
+              'bg-gradient-to-br from-primary/30 to-accent/20',
+              'shadow-[0_0_40px_hsl(var(--primary)/0.4)]',
+              'animate-pulse-3d'
+            )}>
+              <Coins className={cn(
+                'w-10 h-10',
+                currentVideo.reward.type === 'icoin' ? 'text-icoin' : 'text-primary',
+                'drop-shadow-[0_0_15px_currentColor]'
+              )} />
             </div>
-            <h3 className="text-2xl font-bold mb-2">Reward Earned!</h3>
-            <p className="text-4xl font-black text-primary mb-2">
+            <GlassText theme={currentTheme} variant="gradient" size="xl" as="h3" className="mb-2">
+              Reward Earned!
+            </GlassText>
+            <GlassText 
+              theme={currentVideo.reward.type === 'icoin' ? 'gold' : currentTheme} 
+              variant="neon" 
+              className="text-5xl mb-2 block"
+            >
               +{currentVideo.reward.amount}
-            </p>
-            <p className="text-muted-foreground mb-6">
+            </GlassText>
+            <p className="text-muted-foreground mb-6 font-medium">
               {currentVideo.reward.type === 'vicoin' ? 'Vicoins' : 'Icoins'}
             </p>
             <button
               onClick={claimReward}
               disabled={isClaimingReward}
-              className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className={cn(
+                'w-full py-4 rounded-2xl font-display font-bold text-lg',
+                'flex items-center justify-center gap-2',
+                'bg-gradient-to-r from-primary to-accent text-white',
+                'shadow-[0_0_30px_hsl(var(--primary)/0.5)]',
+                'hover:shadow-[0_0_50px_hsl(var(--primary)/0.7)]',
+                'transition-all duration-300',
+                'disabled:opacity-50'
+              )}
             >
               {isClaimingReward ? (
                 'Claiming...'
@@ -327,57 +383,72 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
 
       {/* Already Claimed Badge */}
       {currentVideo.claimed && (
-        <div className="absolute top-40 left-1/2 -translate-x-1/2 z-20">
-          <div className="flex items-center gap-2 bg-green-500/20 backdrop-blur-sm rounded-full px-4 py-2">
-            <Check className="w-5 h-5 text-green-400" />
-            <span className="text-green-400 font-medium">Reward Claimed</span>
+        <div className="absolute top-44 left-1/2 -translate-x-1/2 z-20">
+          <div className="flex items-center gap-2 glass-neon rounded-full px-4 py-2 border border-green-500/30">
+            <Check className="w-5 h-5 text-green-400 drop-shadow-[0_0_8px_hsl(120,70%,50%)]" />
+            <GlassText theme="emerald" variant="glow" size="sm">
+              Reward Claimed
+            </GlassText>
           </div>
         </div>
       )}
 
-      {/* Left Side Controls */}
-      <div className="absolute left-4 bottom-40 z-20 flex flex-col items-center gap-6">
-        <button className="flex flex-col items-center gap-1">
-          <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
-            <Eye className="w-7 h-7 text-white" />
-          </div>
-          <span className="text-white text-xs font-medium">Watch</span>
-        </button>
+      {/* Left Side Controls - 3D Neumorphic Buttons */}
+      <div className="absolute left-4 bottom-40 z-20 flex flex-col items-center gap-4">
+        <Neu3DButton 
+          theme={currentTheme}
+          variant="glass"
+          label="Watch"
+        >
+          <Eye className="w-6 h-6" />
+        </Neu3DButton>
 
-        <button onClick={() => setIsMuted(!isMuted)} className="flex flex-col items-center gap-1">
-          <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
-            {isMuted ? (
-              <VolumeX className="w-7 h-7 text-white" />
-            ) : (
-              <Volume2 className="w-7 h-7 text-white" />
-            )}
-          </div>
-        </button>
+        <Neu3DButton 
+          onClick={() => setIsPaused(!isPaused)}
+          theme={currentTheme}
+          variant="glass"
+        >
+          {isPaused ? <Play className="w-6 h-6 ml-0.5" /> : <Pause className="w-6 h-6" />}
+        </Neu3DButton>
 
-        <button onClick={skipVideo} className="flex flex-col items-center gap-1">
-          <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center backdrop-blur-sm">
-            <ChevronUp className="w-7 h-7 text-white" />
-          </div>
-          <span className="text-white text-xs font-medium">Skip</span>
-        </button>
+        <Neu3DButton 
+          onClick={() => setIsMuted(!isMuted)}
+          theme={currentTheme}
+          variant="glass"
+        >
+          {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+        </Neu3DButton>
+
+        <Neu3DButton 
+          onClick={skipVideo}
+          theme={currentTheme}
+          variant="neon"
+          label="Skip"
+        >
+          <ChevronUp className="w-6 h-6" />
+        </Neu3DButton>
       </div>
 
       {/* Bottom Content */}
-      <div className="absolute bottom-24 left-20 right-0 z-10 px-4">
-        <h2 className="text-white text-xl font-bold mb-2">{currentVideo.title}</h2>
-        <p className="text-white/80 text-sm leading-relaxed">{currentVideo.description}</p>
+      <div className="absolute bottom-24 left-20 right-4 z-10">
+        <GlassText theme={currentTheme} variant="3d" size="xl" as="h2" className="mb-2">
+          {currentVideo.title}
+        </GlassText>
+        <p className="text-white/80 text-sm leading-relaxed font-medium drop-shadow-lg">
+          {currentVideo.description}
+        </p>
       </div>
 
       {/* Swipe hint */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-        <p className="text-white/50 text-xs">← Swipe left for main feed</p>
+        <p className="text-white/40 text-xs font-medium">← Swipe left for main feed</p>
       </div>
 
       {/* Video counter */}
       <div className="absolute bottom-6 right-4 z-10">
-        <p className="text-white/50 text-xs">
+        <GlassText theme={currentTheme} variant="glow" size="sm">
           {currentIndex + 1} / {videos.length}
-        </p>
+        </GlassText>
       </div>
     </div>
   );

@@ -33,7 +33,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   onComplete,
 }) => {
   const { user, profile } = useAuth();
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('selfie');
   const [kycData, setKycData] = useState<KycData>({
     selfieUrl: null,
     idFrontUrl: null,

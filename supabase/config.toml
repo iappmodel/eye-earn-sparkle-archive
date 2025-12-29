@@ -52,3 +52,6 @@ verify_jwt = false
 
 [functions.send-notification-email]
 verify_jwt = false
+
+[functions.analyze-video]
+verify_jwt = false

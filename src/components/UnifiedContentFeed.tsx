@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useImportedMediaRealtime } from '@/hooks/useImportedMediaRealtime';
 import { 
   Play, Heart, Share2, ThumbsUp, ThumbsDown, Sparkles, TrendingUp, 
   MapPin, RefreshCw, Instagram, Youtube, Facebook, Music2, Camera, 
-  Tv2, Twitter, ExternalLink, Video, Globe
+  Tv2, Twitter, ExternalLink, Video, Globe, Edit3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 interface NativeFeedItem {
   id: string;
@@ -99,10 +101,32 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
   showOnlyImported = false 
 }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [feed, setFeed] = useState<UnifiedFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<'all' | 'native' | 'imported'>('all');
+
+  // Real-time updates for imported media
+  useImportedMediaRealtime({
+    onInsert: (newMedia) => {
+      setFeed(prev => [{
+        ...newMedia,
+        source: 'imported' as const
+      }, ...prev]);
+      toast.success('New media imported!', { description: newMedia.title || 'Media ready' });
+    },
+    onUpdate: (updatedMedia) => {
+      setFeed(prev => prev.map(item => 
+        item.id === updatedMedia.id 
+          ? { ...updatedMedia, source: 'imported' as const }
+          : item
+      ));
+    },
+    onDelete: (deletedId) => {
+      setFeed(prev => prev.filter(item => item.id !== deletedId));
+    },
+  });
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
@@ -418,18 +442,32 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
             {item.status === 'processed' ? 'Ready' : item.status}
           </Badge>
           
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              window.open(item.original_url, '_blank');
-            }}
-          >
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/studio?importedMediaId=${item.id}`);
+              }}
+            >
+              <Edit3 className="w-3 h-3 mr-1" />
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(item.original_url, '_blank');
+              }}
+            >
             <ExternalLink className="w-3 h-3 mr-1" />
-            View Original
-          </Button>
+              View Original
+            </Button>
+          </div>
         </div>
       </div>
     </div>

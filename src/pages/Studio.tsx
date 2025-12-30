@@ -1,4 +1,4 @@
-import React, { useState, forwardRef, useCallback, useRef, ChangeEvent } from 'react';
+import React, { useState, forwardRef, useCallback, useRef, ChangeEvent, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Wand2, Sparkles, Play, Pause, Undo, Redo, 
@@ -148,6 +148,10 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   
+  // Check for imported media ID from URL params
+  const searchParams = new URLSearchParams(location.search);
+  const importedMediaId = searchParams.get('importedMediaId');
+  
   // Media upload hook
   const { 
     mediaFiles, 
@@ -157,6 +161,58 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
     removeMedia, 
     selectMedia 
   } = useStudioMedia();
+  
+  // Load imported media if ID is provided
+  useEffect(() => {
+    if (importedMediaId && user) {
+      loadImportedMedia(importedMediaId);
+    }
+  }, [importedMediaId, user]);
+  
+  const loadImportedMedia = async (mediaId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('imported_media')
+        .select('*')
+        .eq('id', mediaId)
+        .single();
+      
+      if (error) throw error;
+      
+      if (data) {
+        toast.success('Imported media loaded', { 
+          description: data.title || 'Ready for editing' 
+        });
+        
+        // Set the imported media URL as current media source
+        if (data.thumbnail_url || data.original_url) {
+          // For now, we'll use the thumbnail as preview
+          // In production, you'd download and process the actual video
+          setImportedMediaInfo({
+            id: data.id,
+            title: data.title,
+            description: data.description,
+            platform: data.platform,
+            originalUrl: data.original_url,
+            thumbnailUrl: data.thumbnail_url,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading imported media:', error);
+      toast.error('Failed to load imported media');
+    }
+  };
+  
+  // Imported media state
+  const [importedMediaInfo, setImportedMediaInfo] = useState<{
+    id: string;
+    title: string | null;
+    description: string | null;
+    platform: string;
+    originalUrl: string;
+    thumbnailUrl: string | null;
+  } | null>(null);
   
   // Editor state
   const [editorMode, setEditorMode] = useState<EditorMode>('hybrid');
@@ -778,6 +834,28 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         className="hidden"
       />
 
+      {/* Imported Media Banner */}
+      {importedMediaInfo && (
+        <div className="mx-4 mt-2 p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+              <Video className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">{importedMediaInfo.title || 'Imported Media'}</p>
+              <p className="text-xs text-muted-foreground capitalize">From {importedMediaInfo.platform}</p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.open(importedMediaInfo.originalUrl, '_blank')}
+          >
+            View Original
+          </Button>
+        </div>
+      )}
+
       {/* Media Preview Area */}
       <div 
         className="relative aspect-[9/16] max-h-[50vh] bg-black/80 mx-4 mt-4 rounded-xl overflow-hidden"
@@ -785,7 +863,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         onDragOver={handleDragOver}
       >
         {/* Upload zone when no media */}
-        {!currentMedia ? (
+        {!currentMedia && !importedMediaInfo ? (
           <button
             onClick={handleFileSelect}
             className="absolute inset-0 flex flex-col items-center justify-center hover:bg-muted/10 transition-colors border-2 border-dashed border-muted-foreground/30 rounded-xl"
@@ -807,7 +885,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               </div>
             )}
           </button>
-        ) : (
+        ) : currentMedia ? (
           <>
             {/* Actual media display */}
             {currentMedia.type === 'video' ? (
@@ -901,13 +979,31 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
 
             {/* Remove current media button */}
             <button
-              onClick={() => removeMedia(currentMedia.id)}
+              onClick={() => currentMedia && removeMedia(currentMedia.id)}
               className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center hover:bg-black/80 transition-colors"
             >
               <X className="w-4 h-4 text-white" />
             </button>
           </>
-        )}
+        ) : importedMediaInfo?.thumbnailUrl ? (
+          <>
+            {/* Imported media thumbnail preview */}
+            <img
+              src={importedMediaInfo.thumbnailUrl}
+              alt={importedMediaInfo.title || 'Imported media'}
+              className="absolute inset-0 w-full h-full object-contain"
+            />
+            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center">
+              <p className="text-white text-sm mb-2">Preview from {importedMediaInfo.platform}</p>
+              <Button
+                size="sm"
+                onClick={() => window.open(importedMediaInfo.originalUrl, '_blank')}
+              >
+                Open Original to Download
+              </Button>
+            </div>
+          </>
+        ) : null}
       </div>
 
       {/* Media thumbnails strip */}

@@ -21,6 +21,10 @@ import Install from "./pages/Install";
 import Create from "./pages/Create";
 import Studio from "./pages/Studio";
 import MyPage from "./pages/MyPage";
+import Search from "./pages/Search";
+import Hashtag from "./pages/Hashtag";
+import UserProfile from "./pages/UserProfile";
+import VideoDetail from "./pages/VideoDetail";
 import NotFound from "./pages/NotFound";
 import SocialConnect from "./pages/SocialConnect";
 import { PromotionDetails } from "./components/PromotionDetails";
@@ -90,6 +94,38 @@ const AppContent = () => {
           }
         />
         <Route path="/install" element={<Install />} />
+        <Route
+          path="/search"
+          element={
+            <ProtectedRoute>
+              <Search />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tag/:tag"
+          element={
+            <ProtectedRoute>
+              <Hashtag />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/u/:userId"
+          element={
+            <ProtectedRoute>
+              <UserProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/v/:videoId"
+          element={
+            <ProtectedRoute>
+              <VideoDetail />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/promotion/:id"
           element={

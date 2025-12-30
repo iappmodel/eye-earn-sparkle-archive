@@ -18,6 +18,9 @@ import { FloatingActionMenu } from '@/components/FloatingActionMenu';
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
+import { CommentsPanel } from '@/components/CommentsPanel';
+import { ShareSheet } from '@/components/ShareSheet';
+import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
@@ -29,12 +32,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// Mock data - more realistic content
+// Mock data - more realistic content with video support
 const mockMedia = [
   {
     id: '1',
     type: 'promo' as const,
     src: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
     duration: 8,
     reward: { amount: 50, type: 'vicoin' as const },
     title: 'Holiday Special',
@@ -43,6 +47,7 @@ const mockMedia = [
     id: '2',
     type: 'video' as const,
     src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     duration: 15,
     title: 'Trending Now',
   },
@@ -50,6 +55,7 @@ const mockMedia = [
     id: '3',
     type: 'promo' as const,
     src: 'https://images.unsplash.com/photo-1560472355-536de3962603?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     duration: 10,
     reward: { amount: 1, type: 'icoin' as const },
     title: 'Coffee Shop Reward',
@@ -64,6 +70,7 @@ const mockMedia = [
     id: '5',
     type: 'promo' as const,
     src: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     duration: 12,
     reward: { amount: 25, type: 'vicoin' as const },
     title: 'Sneaker Drop',
@@ -103,6 +110,8 @@ const Index = () => {
   const [showFeed, setShowFeed] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
   const [showThemePresets, setShowThemePresets] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
@@ -336,11 +345,11 @@ const Index = () => {
   }, [profile, currentMedia.id, refreshProfile]);
 
   const handleComment = () => {
-    toast('Comments', { description: 'Comments panel coming soon...' });
+    setShowComments(true);
   };
 
   const handleShare = () => {
-    toast('Share', { description: 'Share options coming soon...' });
+    setShowShare(true);
   };
 
   const handleSettings = () => {
@@ -400,6 +409,7 @@ const Index = () => {
                   key={currentMedia.id}
                   type={currentMedia.type}
                   src={currentMedia.src}
+                  videoSrc={currentMedia.videoSrc}
                   duration={currentMedia.duration}
                   reward={currentMedia.reward}
                   contentId={currentMedia.id}
@@ -525,6 +535,26 @@ const Index = () => {
 
         {/* Floating Action Menu */}
         <FloatingActionMenu onSettingsClick={handleSettings} />
+
+        {/* Comments Panel */}
+        <CommentsPanel
+          isOpen={showComments}
+          onClose={() => setShowComments(false)}
+          contentId={currentMedia.id}
+        />
+
+        {/* Share Sheet */}
+        <ShareSheet
+          isOpen={showShare}
+          onClose={() => setShowShare(false)}
+          title={currentMedia.title || 'Check out this content!'}
+          url={`${window.location.origin}/content/${currentMedia.id}`}
+        />
+
+        {/* Network Status Indicator */}
+        <div className="fixed top-4 right-4 z-50">
+          <NetworkStatusIndicator variant="badge" />
+        </div>
 
         {/* Gesture Tutorial for new users */}
         {showTutorial && (

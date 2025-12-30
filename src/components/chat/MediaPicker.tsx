@@ -1,10 +1,12 @@
 import React, { useRef } from 'react';
-import { Image, Camera, File, X } from 'lucide-react';
+import { Image, Camera, File, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { IMojiPicker, IMoji } from '@/components/imoji';
 
 interface MediaPickerProps {
   onSelect: (file: File) => void;
+  onIMojiSelect?: (imoji: IMoji) => void;
   disabled?: boolean;
 }
 

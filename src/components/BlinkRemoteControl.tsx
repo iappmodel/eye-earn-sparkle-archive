@@ -45,6 +45,8 @@ import {
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { useVoiceFeedback } from '@/hooks/useVoiceFeedback';
 import { EyeBlinkCalibration, CalibrationResult } from '@/components/EyeBlinkCalibration';
+import { EyeMovementTracking, EyeMovementResult } from '@/components/EyeMovementTracking';
+import FacialExpressionScanning, { FacialExpressionResult } from '@/components/FacialExpressionScanning';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -112,6 +114,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showComboGuide, setShowComboGuide] = useState(false);
   const [showDebugOverlay, setShowDebugOverlay] = useState(false);
   const [showBlinkCalibration, setShowBlinkCalibration] = useState(false);
+  const [showEyeMovement, setShowEyeMovement] = useState(false);
+  const [showFacialExpression, setShowFacialExpression] = useState(false);
+  const [blinkCalibrationResult, setBlinkCalibrationResult] = useState<CalibrationResult | null>(null);
+  const [eyeMovementResult, setEyeMovementResult] = useState<EyeMovementResult | null>(null);
   
   // Tutorial hook
   const {
@@ -1091,26 +1097,63 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
         </SheetContent>
       </Sheet>
 
-      {/* New Eye Blink Calibration */}
+      {/* Eye Blink Calibration - Step 1 */}
       <EyeBlinkCalibration
         isOpen={showBlinkCalibration}
         onClose={() => setShowBlinkCalibration(false)}
         onComplete={(result: CalibrationResult) => {
-          console.log('[RemoteControl] Calibration complete:', result);
-          // Save calibration data
+          console.log('[RemoteControl] Blink calibration complete:', result);
+          setBlinkCalibrationResult(result);
+          setShowBlinkCalibration(false);
+          // Proceed to Eye Movement Tracking
+          setShowEyeMovement(true);
+        }}
+        onSkip={() => {
+          setShowBlinkCalibration(false);
+          // Skip to Eye Movement Tracking
+          setShowEyeMovement(true);
+        }}
+      />
+
+      {/* Eye Movement Tracking - Step 2 */}
+      <EyeMovementTracking
+        isOpen={showEyeMovement}
+        onClose={() => setShowEyeMovement(false)}
+        onComplete={(result: EyeMovementResult) => {
+          console.log('[RemoteControl] Eye movement calibration complete:', result);
+          setEyeMovementResult(result);
+          setShowEyeMovement(false);
+          // Proceed to Facial Expression Scanning
+          setShowFacialExpression(true);
+        }}
+        onSkip={() => {
+          setShowEyeMovement(false);
+          // Skip to Facial Expression Scanning
+          setShowFacialExpression(true);
+        }}
+      />
+
+      {/* Facial Expression Scanning - Step 3 */}
+      <FacialExpressionScanning
+        isOpen={showFacialExpression}
+        onClose={() => setShowFacialExpression(false)}
+        onComplete={(result: FacialExpressionResult) => {
+          console.log('[RemoteControl] Facial expression calibration complete:', result);
+          setShowFacialExpression(false);
+          // Save all calibration data
           saveCalibrationData({
             offsetX: 0,
             offsetY: 0,
             scaleX: 1,
             scaleY: 1,
             isCalibrated: true,
-            calibratedAt: result.completedAt,
+            calibratedAt: Date.now(),
             autoCalibrationEnabled: true,
             autoAdjustments: 0,
           });
           haptics.success();
         }}
-        onSkip={() => setShowBlinkCalibration(false)}
+        onSkip={() => setShowFacialExpression(false)}
       />
 
       {/* Tutorial overlay */}

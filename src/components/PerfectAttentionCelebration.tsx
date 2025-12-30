@@ -197,8 +197,17 @@ export const PerfectAttentionCelebration: React.FC<PerfectAttentionCelebrationPr
     }
   };
 
-  const handleToggleMessage = useCallback(() => {
-    setShowMessage(prev => !prev);
+  const handleDismiss = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowMessage(false);
+    haptic.light();
+  }, [haptic]);
+
+  const handleShow = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowMessage(true);
     haptic.light();
   }, [haptic]);
 
@@ -207,12 +216,11 @@ export const PerfectAttentionCelebration: React.FC<PerfectAttentionCelebrationPr
       {/* Particles */}
       {particles.map(renderParticle)}
 
-      {/* Central celebration message - clickable to dismiss/show */}
+      {/* Central celebration message - tap to dismiss */}
       {showMessage && (
         <div 
           className="absolute inset-0 flex items-center justify-center animate-fade-in pointer-events-auto cursor-pointer"
-          onClick={handleToggleMessage}
-          onTouchEnd={handleToggleMessage}
+          onClick={handleDismiss}
         >
           <div className="flex flex-col items-center gap-3">
             <div className="text-5xl animate-bounce">🎯</div>
@@ -233,9 +241,8 @@ export const PerfectAttentionCelebration: React.FC<PerfectAttentionCelebrationPr
       {/* Tap area to bring message back when hidden */}
       {!showMessage && isActive && (
         <div 
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 pointer-events-auto cursor-pointer"
-          onClick={handleToggleMessage}
-          onTouchEnd={handleToggleMessage}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 pointer-events-auto cursor-pointer rounded-full"
+          onClick={handleShow}
         />
       )}
     </div>

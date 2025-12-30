@@ -3,9 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search as SearchIcon, ArrowLeft, User, Video, Hash, TrendingUp, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ListSkeleton } from '@/components/ui/ContentSkeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -220,9 +222,7 @@ const Search = () => {
 
         {/* Loading */}
         {isLoading && (
-          <div className="flex justify-center py-8">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          </div>
+          <ListSkeleton count={5} />
         )}
 
         {/* Results */}
@@ -270,10 +270,11 @@ const Search = () => {
 
         {/* No results */}
         {!isLoading && query && results.length === 0 && (
-          <div className="text-center py-12">
-            <SearchIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No results found for "{query}"</p>
-          </div>
+          <EmptyState 
+            type="search"
+            title="No results found"
+            description={`We couldn't find anything for "${query}". Try different keywords.`}
+          />
         )}
       </div>
     </div>

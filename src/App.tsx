@@ -11,8 +11,10 @@ import { UICustomizationProvider } from "@/contexts/UICustomizationContext";
 import { DragContextProvider } from "@/components/DraggableButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
+import { GlobalNetworkStatus } from "@/components/layout/GlobalNetworkStatus";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { BreadcrumbNavigation } from "@/components/BreadcrumbNavigation";
+import { PageTransition } from "@/components/layout/PageTransition";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -40,10 +42,12 @@ const AppContent = () => {
 
   return (
     <>
+      <GlobalNetworkStatus />
       <SwipeBackIndicator isActive={isSwipingBack} progress={swipeProgress} />
       <BreadcrumbNavigation />
       <OfflineBanner />
-      <Routes>
+      <PageTransition>
+        <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route
           path="/"
@@ -137,6 +141,7 @@ const AppContent = () => {
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </PageTransition>
     </>
   );
 };

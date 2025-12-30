@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins } from 'lucide-react';
+import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
@@ -22,8 +22,23 @@ export const useControlsVisibility = () => {
   return context;
 };
 
-// Storage key for auto-hide preference
+// Storage keys for preferences
 const AUTO_HIDE_STORAGE_KEY = 'visuai-buttons-auto-hide';
+const AUTO_HIDE_DELAY_STORAGE_KEY = 'visuai-buttons-auto-hide-delay';
+const BUTTONS_HIDDEN_STORAGE_KEY = 'visuai-buttons-hidden';
+
+// Available delay options in milliseconds (0 = never)
+export const AUTO_HIDE_DELAY_OPTIONS = [
+  { value: 500, label: '0.5s' },
+  { value: 1000, label: '1s' },
+  { value: 1500, label: '1.5s' },
+  { value: 2000, label: '2s' },
+  { value: 2500, label: '2.5s' },
+  { value: 3000, label: '3s' },
+  { value: 5000, label: '5s' },
+  { value: 10000, label: '10s' },
+  { value: 0, label: 'Never' },
+];
 
 export const getAutoHideEnabled = (): boolean => {
   try {
@@ -42,55 +57,105 @@ export const setAutoHideEnabled = (enabled: boolean) => {
   }
 };
 
+export const getAutoHideDelay = (): number => {
+  try {
+    const saved = localStorage.getItem(AUTO_HIDE_DELAY_STORAGE_KEY);
+    return saved ? parseInt(saved, 10) : 5000;
+  } catch {
+    return 5000;
+  }
+};
+
+export const setAutoHideDelay = (delay: number) => {
+  try {
+    localStorage.setItem(AUTO_HIDE_DELAY_STORAGE_KEY, String(delay));
+  } catch (e) {
+    console.error('Failed to save auto-hide delay:', e);
+  }
+};
+
+export const getButtonsHidden = (): boolean => {
+  try {
+    const saved = localStorage.getItem(BUTTONS_HIDDEN_STORAGE_KEY);
+    return saved === 'true';
+  } catch {
+    return false;
+  }
+};
+
+export const setButtonsHidden = (hidden: boolean) => {
+  try {
+    localStorage.setItem(BUTTONS_HIDDEN_STORAGE_KEY, String(hidden));
+  } catch (e) {
+    console.error('Failed to save buttons hidden state:', e);
+  }
+};
+
 interface ControlsVisibilityProviderProps {
   children: React.ReactNode;
-  autoHideDelay?: number;
 }
 
 export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProps> = ({
   children,
-  autoHideDelay = 5000,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [autoHideEnabled, setAutoHideEnabledState] = useState(() => getAutoHideEnabled());
+  const [autoHideDelay, setAutoHideDelayState] = useState(() => getAutoHideDelay());
+  const [buttonsHidden, setButtonsHiddenState] = useState(() => getButtonsHidden());
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Listen for storage changes to sync auto-hide preference
+  // Listen for storage changes to sync preferences
   useEffect(() => {
     const handleStorage = () => {
       setAutoHideEnabledState(getAutoHideEnabled());
+      setAutoHideDelayState(getAutoHideDelay());
+      setButtonsHiddenState(getButtonsHidden());
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const showControls = useCallback(() => {
+    if (buttonsHidden) return; // Don't show if manually hidden
+    
     setIsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     
-    // Only set hide timer if auto-hide is enabled
-    if (autoHideEnabled) {
+    // Only set hide timer if auto-hide is enabled and delay is not 0 (never)
+    if (autoHideEnabled && autoHideDelay > 0) {
       hideTimerRef.current = setTimeout(() => {
         setIsVisible(false);
       }, autoHideDelay);
     }
-  }, [autoHideDelay, autoHideEnabled]);
+  }, [autoHideDelay, autoHideEnabled, buttonsHidden]);
 
-  // When auto-hide is disabled, ensure controls are always visible
+  // When auto-hide is disabled or buttons manually hidden, update visibility
   useEffect(() => {
-    if (!autoHideEnabled) {
+    if (buttonsHidden) {
+      setIsVisible(false);
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    } else if (!autoHideEnabled || autoHideDelay === 0) {
       setIsVisible(true);
       if (hideTimerRef.current) {
         clearTimeout(hideTimerRef.current);
         hideTimerRef.current = null;
       }
     }
-  }, [autoHideEnabled]);
+  }, [autoHideEnabled, autoHideDelay, buttonsHidden]);
 
   useEffect(() => {
-    showControls();
+    if (!buttonsHidden) {
+      showControls();
+    }
 
-    const onUserActivity = () => showControls();
+    const onUserActivity = () => {
+      if (!buttonsHidden) {
+        showControls();
+      }
+    };
 
     window.addEventListener('pointerdown', onUserActivity, { passive: true });
     window.addEventListener('keydown', onUserActivity);
@@ -100,10 +165,12 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
       window.removeEventListener('keydown', onUserActivity);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [showControls]);
+  }, [showControls, buttonsHidden]);
+
+  const finalVisible = buttonsHidden ? false : (autoHideEnabled && autoHideDelay > 0 ? isVisible : true);
 
   return (
-    <ControlsVisibilityContext.Provider value={{ isVisible: autoHideEnabled ? isVisible : true, showControls }}>
+    <ControlsVisibilityContext.Provider value={{ isVisible: finalVisible, showControls }}>
       {children}
     </ControlsVisibilityContext.Provider>
   );
@@ -368,5 +435,40 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         {secondaryButtons.map(button => renderButton(button, false))}
       </div>
     </>
+  );
+};
+
+// Quick toggle button component
+export const QuickVisibilityToggle: React.FC = () => {
+  const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
+  
+  const toggleVisibility = () => {
+    const newValue = !isHidden;
+    setIsHidden(newValue);
+    setButtonsHidden(newValue);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  return (
+    <button
+      onClick={toggleVisibility}
+      className={cn(
+        'fixed left-4 top-1/2 -translate-y-1/2 z-50',
+        'w-10 h-10 rounded-full',
+        'flex items-center justify-center',
+        'transition-all duration-300',
+        'backdrop-blur-md border',
+        isHidden 
+          ? 'bg-primary/20 border-primary/40 text-primary shadow-[0_0_15px_hsl(var(--primary)/0.3)]'
+          : 'bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50'
+      )}
+      title={isHidden ? 'Show buttons' : 'Hide buttons'}
+    >
+      {isHidden ? (
+        <Eye className="w-5 h-5" />
+      ) : (
+        <EyeOff className="w-5 h-5" />
+      )}
+    </button>
   );
 };

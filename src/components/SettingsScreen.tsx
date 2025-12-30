@@ -17,7 +17,7 @@ import {
   deleteLayoutPreset,
   GROUP_LAYOUT_PRESETS,
 } from './DraggableButton';
-import { getAutoHideEnabled, setAutoHideEnabled } from './FloatingControls';
+import { getAutoHideEnabled, setAutoHideEnabled, getAutoHideDelay, setAutoHideDelay, AUTO_HIDE_DELAY_OPTIONS } from './FloatingControls';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -59,6 +59,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [newPresetName, setNewPresetName] = useState('');
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [autoHideButtons, setAutoHideButtons] = useState(() => getAutoHideEnabled());
+  const [autoHideDelayValue, setAutoHideDelayValue] = useState(() => getAutoHideDelay());
 
   // Update counts when screen opens
   useEffect(() => {
@@ -273,9 +274,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   const newValue = !autoHideButtons;
                   setAutoHideButtons(newValue);
                   setAutoHideEnabled(newValue);
-                  // Trigger storage event for other components
                   window.dispatchEvent(new Event('storage'));
-                  toast.success(newValue ? 'Buttons will auto-hide after 5 seconds' : 'Buttons will always stay visible');
+                  toast.success(newValue ? 'Auto-hide enabled' : 'Auto-hide disabled');
                 }}
                 className="w-full flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all"
               >
@@ -288,7 +288,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <div className="text-left">
                     <span className="font-medium block">Auto-hide Buttons</span>
                     <span className="text-xs text-muted-foreground">
-                      {autoHideButtons ? 'Buttons hide after 5 seconds' : 'Buttons always visible'}
+                      {autoHideButtons ? 'Enabled' : 'Disabled'}
                     </span>
                   </div>
                 </div>
@@ -302,6 +302,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   )} />
                 </div>
               </button>
+
+              {/* Auto-hide Delay Selector */}
+              {autoHideButtons && (
+                <div className="p-3 rounded-xl bg-muted/30">
+                  <label className="text-sm font-medium mb-2 block">Hide after:</label>
+                  <div className="flex flex-wrap gap-2">
+                    {AUTO_HIDE_DELAY_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => {
+                          setAutoHideDelayValue(option.value);
+                          setAutoHideDelay(option.value);
+                          window.dispatchEvent(new Event('storage'));
+                          toast.success(`Buttons will hide after ${option.label}`);
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                          autoHideDelayValue === option.value
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-background/50 text-muted-foreground hover:bg-background/80"
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Stats */}
               <div className="flex justify-between text-sm">

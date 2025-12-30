@@ -20,6 +20,7 @@ import {
   RemoteControlSettings,
   GazeCommand,
   GhostButton,
+  CALIBRATION_TARGETS,
 } from '@/hooks/useBlinkRemoteControl';
 import { GazeDirection } from '@/hooks/useGazeDirection';
 import { 
@@ -80,12 +81,7 @@ const DIRECTION_LABELS: Record<GazeDirection, string> = {
   center: 'Center',
 };
 
-const CALIBRATION_POINTS = [
-  { x: '10%', y: '10%', label: 'Top Left' },
-  { x: '90%', y: '10%', label: 'Top Right' },
-  { x: '10%', y: '90%', label: 'Bottom Left' },
-  { x: '90%', y: '90%', label: 'Bottom Right' },
-];
+// CALIBRATION_TARGETS is now imported from useBlinkRemoteControl
 
 export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   enabled,
@@ -143,18 +139,23 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     isCalibrating,
     currentTarget,
     gazePosition,
+    rawGazePosition,
     pendingBlinkCount,
     lastAction,
     calibrationStep,
     settings,
     gazeCommands,
+    calibration,
     eyeOpenness,
     ghostButtons,
     currentDirection,
+    isCameraActive,
+    calibrationTargets,
     toggleActive,
     startCalibration,
     recordCalibrationPoint,
     cancelCalibration,
+    resetCalibration,
     updateSettings,
     updateGazeCommand,
   } = useBlinkRemoteControl({
@@ -924,21 +925,43 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 <h4 className="font-medium flex items-center gap-2">
                   <Target className="w-4 h-4" />
                   Calibration
+                  {calibration.isCalibrated && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-500">
+                      Calibrated
+                    </span>
+                  )}
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Improve accuracy by calibrating to your eye position
+                  {calibration.isCalibrated 
+                    ? `Last calibrated: ${new Date(calibration.calibratedAt).toLocaleDateString()}`
+                    : 'Improve accuracy by calibrating to your eye position'
+                  }
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setShowSettings(false);
-                    startCalibration();
-                  }}
-                >
-                  <Target className="w-4 h-4 mr-2" />
-                  Start Calibration
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowSettings(false);
+                      startCalibration();
+                    }}
+                  >
+                    <Target className="w-4 h-4 mr-2" />
+                    {calibration.isCalibrated ? 'Recalibrate' : 'Start Calibration'}
+                  </Button>
+                  {calibration.isCalibrated && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        resetCalibration();
+                        haptics.light();
+                      }}
+                    >
+                      Reset
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* Tutorial */}
@@ -982,13 +1005,13 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
       {/* Calibration overlay */}
       {isCalibrating && (
         <div 
-          className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center"
+          className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm"
           onClick={handleCalibrationClick}
         >
           <Button
             variant="ghost"
             size="icon"
-            className="absolute top-4 right-4"
+            className="absolute top-4 right-4 z-10"
             onClick={(e) => {
               e.stopPropagation();
               cancelCalibration();
@@ -997,40 +1020,69 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
             <X className="w-5 h-5" />
           </Button>
 
-          {calibrationStep < 4 && (
+          {/* Current gaze position indicator */}
+          {rawGazePosition && (
             <div
-              className="absolute flex flex-col items-center gap-2"
+              className="absolute w-8 h-8 rounded-full border-2 border-amber-500 bg-amber-500/20 pointer-events-none transition-all duration-75"
               style={{
-                left: CALIBRATION_POINTS[calibrationStep].x,
-                top: CALIBRATION_POINTS[calibrationStep].y,
+                left: rawGazePosition.x,
+                top: rawGazePosition.y,
+                transform: 'translate(-50%, -50%)',
+              }}
+            />
+          )}
+
+          {/* Calibration target */}
+          {calibrationStep < calibrationTargets.length && (
+            <div
+              className="absolute flex flex-col items-center gap-2 pointer-events-none"
+              style={{
+                left: `${calibrationTargets[calibrationStep].x * 100}%`,
+                top: `${calibrationTargets[calibrationStep].y * 100}%`,
                 transform: 'translate(-50%, -50%)',
               }}
             >
-              <div className="w-20 h-20 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center animate-pulse">
-                <Target className="w-10 h-10 text-primary" />
+              <div className="w-24 h-24 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center animate-pulse">
+                <Target className="w-12 h-12 text-primary" />
               </div>
-              <span className="text-sm font-medium">{CALIBRATION_POINTS[calibrationStep].label}</span>
-              <span className="text-xs text-muted-foreground">Look here and tap</span>
+              <span className="text-lg font-medium">{calibrationTargets[calibrationStep].label}</span>
+              <span className="text-sm text-muted-foreground">Look at the target, then tap anywhere</span>
             </div>
           )}
 
+          {/* Progress dots */}
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3">
-            {[0, 1, 2, 3].map((i) => (
+            {calibrationTargets.map((_, i) => (
               <div
                 key={i}
                 className={cn(
                   'w-4 h-4 rounded-full transition-all',
-                  i < calibrationStep ? 'bg-primary scale-110' : 'bg-muted'
+                  i < calibrationStep ? 'bg-primary scale-110' : i === calibrationStep ? 'bg-primary/50 animate-pulse' : 'bg-muted'
                 )}
               />
             ))}
           </div>
 
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-            <h3 className="text-2xl font-bold mb-2">Calibration</h3>
-            <p className="text-muted-foreground">
-              Look at each target and tap to calibrate
+          {/* Instructions */}
+          <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center pointer-events-none">
+            <h3 className="text-2xl font-bold mb-2">Eye Calibration</h3>
+            <p className="text-muted-foreground max-w-md">
+              Look directly at each target and tap the screen. This helps the system understand your eye position.
             </p>
+            <p className="text-sm text-primary mt-2">
+              Step {calibrationStep + 1} of {calibrationTargets.length}
+            </p>
+          </div>
+
+          {/* Camera status indicator */}
+          <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/80">
+            <div className={cn(
+              "w-2 h-2 rounded-full",
+              isCameraActive ? "bg-green-500 animate-pulse" : "bg-red-500"
+            )} />
+            <span className="text-xs">
+              {isCameraActive ? 'Camera Active' : 'Waiting for camera...'}
+            </span>
           </div>
         </div>
       )}

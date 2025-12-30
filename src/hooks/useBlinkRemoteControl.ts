@@ -6,6 +6,7 @@ import { useGazeDirection, GazeDirection } from './useGazeDirection';
 export const BLINK_COMMANDS_KEY = 'app_blink_commands';
 export const GAZE_COMMANDS_KEY = 'app_gaze_commands';
 export const REMOTE_CONTROL_SETTINGS_KEY = 'app_remote_control_settings';
+export const CALIBRATION_DATA_KEY = 'app_remote_control_calibration';
 
 export type BlinkAction = 'click' | 'longPress' | 'toggle' | 'none';
 export type GazeNavigationAction = 'nextVideo' | 'prevVideo' | 'friendsFeed' | 'promoFeed' | 'none';
@@ -21,6 +22,15 @@ export interface GazeCommand {
   direction: GazeDirection;
   action: GazeNavigationAction;
   enabled: boolean;
+}
+
+export interface CalibrationData {
+  offsetX: number;
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+  isCalibrated: boolean;
+  calibratedAt: number;
 }
 
 export interface RemoteControlSettings {
@@ -47,16 +57,26 @@ interface GazeTarget {
   rect: DOMRect;
 }
 
+interface CalibrationPoint {
+  screenX: number;
+  screenY: number;
+  gazeX: number;
+  gazeY: number;
+}
+
 interface RemoteControlState {
   isActive: boolean;
   isCalibrating: boolean;
   currentTarget: GazeTarget | null;
   gazePosition: { x: number; y: number } | null;
+  rawGazePosition: { x: number; y: number } | null;
   pendingBlinkCount: number;
   lastAction: string | null;
   calibrationStep: number;
+  calibrationPoints: CalibrationPoint[];
   ghostButtons: Map<string, GhostButton>;
   lastNavigationAction: GazeNavigationAction | null;
+  isCameraActive: boolean;
 }
 
 interface UseBlinkRemoteControlOptions {
@@ -75,11 +95,29 @@ const DEFAULT_SETTINGS: RemoteControlSettings = {
   rapidMovementEnabled: true,
 };
 
+const DEFAULT_CALIBRATION: CalibrationData = {
+  offsetX: 0,
+  offsetY: 0,
+  scaleX: 1,
+  scaleY: 1,
+  isCalibrated: false,
+  calibratedAt: 0,
+};
+
 const DEFAULT_GAZE_COMMANDS: GazeCommand[] = [
   { direction: 'left', action: 'friendsFeed', enabled: true },
   { direction: 'right', action: 'promoFeed', enabled: true },
   { direction: 'up', action: 'prevVideo', enabled: true },
   { direction: 'down', action: 'nextVideo', enabled: true },
+];
+
+// Calibration point positions (screen corners + center)
+const CALIBRATION_TARGETS = [
+  { x: 0.1, y: 0.15, label: 'Top Left' },
+  { x: 0.9, y: 0.15, label: 'Top Right' },
+  { x: 0.5, y: 0.5, label: 'Center' },
+  { x: 0.1, y: 0.85, label: 'Bottom Left' },
+  { x: 0.9, y: 0.85, label: 'Bottom Right' },
 ];
 
 // Load/save functions
@@ -125,6 +163,19 @@ export const saveRemoteControlSettings = (settings: RemoteControlSettings) => {
   window.dispatchEvent(new CustomEvent('remoteControlSettingsChanged'));
 };
 
+export const loadCalibrationData = (): CalibrationData => {
+  try {
+    const saved = localStorage.getItem(CALIBRATION_DATA_KEY);
+    return saved ? { ...DEFAULT_CALIBRATION, ...JSON.parse(saved) } : DEFAULT_CALIBRATION;
+  } catch {
+    return DEFAULT_CALIBRATION;
+  }
+};
+
+export const saveCalibrationData = (data: CalibrationData) => {
+  localStorage.setItem(CALIBRATION_DATA_KEY, JSON.stringify(data));
+};
+
 export const getBlinkCommand = (buttonId: string): BlinkCommand => {
   const commands = loadBlinkCommands();
   return commands[buttonId] || {
@@ -165,6 +216,8 @@ export const setGazeCommand = (direction: GazeDirection, action: GazeNavigationA
   saveGazeCommands(commands);
 };
 
+export { CALIBRATION_TARGETS };
+
 export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}) {
   const { enabled = false, onAction, onNavigate } = options;
   
@@ -173,25 +226,31 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     isCalibrating: false,
     currentTarget: null,
     gazePosition: null,
+    rawGazePosition: null,
     pendingBlinkCount: 0,
     lastAction: null,
     calibrationStep: 0,
+    calibrationPoints: [],
     ghostButtons: new Map(),
     lastNavigationAction: null,
+    isCameraActive: false,
   });
   
   const [settings, setSettings] = useState<RemoteControlSettings>(loadRemoteControlSettings);
   const [gazeCommands, setGazeCommands] = useState<GazeCommand[]>(loadGazeCommands);
+  const [calibration, setCalibration] = useState<CalibrationData>(loadCalibrationData);
   
   // Refs
   const registeredButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const gazeConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ghostActivationTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const onActionRef = useRef(onAction);
   const onNavigateRef = useRef(onNavigate);
-  const calibrationPointsRef = useRef<{ x: number; y: number }[]>([]);
-  const gazeOffsetRef = useRef({ x: 0, y: 0 });
   const navigationCooldownRef = useRef<number>(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const trackingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const smoothedPositionRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   
   useEffect(() => {
     onActionRef.current = onAction;
@@ -229,7 +288,6 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
         lastAction: `👁 ${direction} → ${command.action}`,
       }));
       
-      // Clear the action display after a moment
       setTimeout(() => {
         setState(prev => ({ ...prev, lastNavigationAction: null }));
       }, 1500);
@@ -276,7 +334,6 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     if (action !== 'none') {
       console.log('[RemoteControl] Executing:', action, 'on', target.buttonId);
       
-      // Execute the action
       executeAction(target.element, action);
       
       onActionRef.current?.(target.buttonId, action, count);
@@ -331,24 +388,61 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     onBlink: handleBlink,
     onBlinkPattern: handleBlinkPattern,
   });
-  
-  // Update gaze from camera
-  const updateGazeFromCamera = useCallback((canvas: HTMLCanvasElement, video: HTMLVideoElement) => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+
+  // Process raw gaze from camera feed and apply calibration
+  const processGazePosition = useCallback((rawX: number, rawY: number) => {
+    // Apply calibration
+    const calibratedX = (rawX - 0.5) * calibration.scaleX + 0.5 + calibration.offsetX;
+    const calibratedY = (rawY - 0.5) * calibration.scaleY + 0.5 + calibration.offsetY;
     
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Apply sensitivity
+    const sensitivity = settings.sensitivity / 5;
+    
+    // Map to screen coordinates
+    const screenX = calibratedX * window.innerWidth * sensitivity + (window.innerWidth * (1 - sensitivity) / 2);
+    const screenY = calibratedY * window.innerHeight * sensitivity + (window.innerHeight * (1 - sensitivity) / 2);
+    
+    // Smooth the position
+    const smoothing = 0.3;
+    smoothedPositionRef.current = {
+      x: smoothedPositionRef.current.x * (1 - smoothing) + screenX * smoothing,
+      y: smoothedPositionRef.current.y * (1 - smoothing) + screenY * smoothing,
+    };
+    
+    const clampedX = Math.max(0, Math.min(window.innerWidth, smoothedPositionRef.current.x));
+    const clampedY = Math.max(0, Math.min(window.innerHeight, smoothedPositionRef.current.y));
+    
+    // Update gaze direction tracking
+    updateGazeDir(clampedX, clampedY);
+    
+    setState(prev => ({
+      ...prev,
+      rawGazePosition: { x: rawX * window.innerWidth, y: rawY * window.innerHeight },
+      gazePosition: { x: clampedX, y: clampedY },
+    }));
+    
+    return { x: clampedX, y: clampedY };
+  }, [calibration, settings.sensitivity, updateGazeDir]);
+
+  // Extract face/eye position from camera frame
+  const detectFacePosition = useCallback((imageData: ImageData): { x: number; y: number } | null => {
     const data = imageData.data;
+    const width = imageData.width;
+    const height = imageData.height;
     
     let sumX = 0, sumY = 0, count = 0;
     
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const i = (y * canvas.width + x) * 4;
+    // Detect skin-tone pixels (simple face detection)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
         const r = data[i], g = data[i + 1], b = data[i + 2];
         
-        if (r > 60 && g > 40 && b > 20 && r > g && r > b) {
+        // Basic skin tone detection
+        if (r > 60 && g > 40 && b > 20 && 
+            r > g && r > b && 
+            Math.abs(r - g) > 15 &&
+            r - b > 15) {
           sumX += x;
           sumY += y;
           count++;
@@ -356,27 +450,90 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       }
     }
     
-    if (count > 100) {
-      const faceCenterX = sumX / count / canvas.width;
-      const faceCenterY = sumY / count / canvas.height;
+    if (count < 500) return null; // Not enough skin pixels
+    
+    // Normalize to 0-1
+    const faceCenterX = sumX / count / width;
+    const faceCenterY = sumY / count / height;
+    
+    // Mirror X axis (camera is mirrored)
+    return { x: 1 - faceCenterX, y: faceCenterY };
+  }, []);
+
+  // Start camera for gaze tracking
+  const startCamera = useCallback(async () => {
+    if (streamRef.current) return;
+    
+    try {
+      console.log('[RemoteControl] Starting camera...');
       
-      const sensitivity = settings.sensitivity / 5;
-      const screenX = window.innerWidth * (1 - faceCenterX) * sensitivity + gazeOffsetRef.current.x;
-      const screenY = window.innerHeight * faceCenterY * sensitivity + gazeOffsetRef.current.y;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 320, height: 240 }
+      });
       
-      const clampedX = Math.max(0, Math.min(window.innerWidth, screenX));
-      const clampedY = Math.max(0, Math.min(window.innerHeight, screenY));
+      streamRef.current = stream;
       
-      // Update gaze direction tracking
-      updateGazeDir(clampedX, clampedY);
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = true;
+      videoRef.current = video;
       
-      setState(prev => ({
-        ...prev,
-        gazePosition: { x: clampedX, y: clampedY },
-      }));
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 240;
+      canvasRef.current = canvas;
+      
+      await video.play();
+      
+      setState(prev => ({ ...prev, isCameraActive: true }));
+      
+      console.log('[RemoteControl] Camera started');
+      
+      // Start tracking loop
+      trackingIntervalRef.current = setInterval(() => {
+        if (!videoRef.current || !canvasRef.current) return;
+        
+        const ctx = canvasRef.current.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.drawImage(videoRef.current, 0, 0, 320, 240);
+        const imageData = ctx.getImageData(0, 0, 320, 240);
+        
+        const facePos = detectFacePosition(imageData);
+        if (facePos) {
+          processGazePosition(facePos.x, facePos.y);
+        }
+      }, 50); // 20fps
+      
+    } catch (error) {
+      console.error('[RemoteControl] Camera error:', error);
     }
-  }, [settings.sensitivity, updateGazeDir]);
-  
+  }, [detectFacePosition, processGazePosition]);
+
+  // Stop camera
+  const stopCamera = useCallback(() => {
+    console.log('[RemoteControl] Stopping camera...');
+    
+    if (trackingIntervalRef.current) {
+      clearInterval(trackingIntervalRef.current);
+      trackingIntervalRef.current = null;
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+      videoRef.current = null;
+    }
+    
+    setState(prev => ({ ...prev, isCameraActive: false }));
+  }, []);
+
   // Find button at gaze position
   const findButtonAtPosition = useCallback((x: number, y: number): GazeTarget | null => {
     for (const [buttonId, element] of registeredButtonsRef.current) {
@@ -412,9 +569,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       const existingGhost = state.ghostButtons.get(buttonId);
       
       if (isNear) {
-        // Start or continue ghost activation
         if (!ghostActivationTimersRef.current.has(buttonId)) {
-          // Start activation timer
           const timer = setTimeout(() => {
             setState(prev => {
               const updated = new Map(prev.ghostButtons);
@@ -438,7 +593,6 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
           isGhost: existingGhost?.isGhost || false,
         });
       } else {
-        // Clear activation timer if looking away
         const timer = ghostActivationTimersRef.current.get(buttonId);
         if (timer) {
           clearTimeout(timer);
@@ -468,12 +622,13 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   
   // Activate/deactivate remote control
   const activate = useCallback(() => {
+    startCamera();
     setState(prev => ({ ...prev, isActive: true }));
     saveRemoteControlSettings({ ...settings, enabled: true });
-  }, [settings]);
+  }, [settings, startCamera]);
   
   const deactivate = useCallback(() => {
-    // Clear all ghost timers
+    stopCamera();
     ghostActivationTimersRef.current.forEach(timer => clearTimeout(timer));
     ghostActivationTimersRef.current.clear();
     
@@ -486,7 +641,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       ghostButtons: new Map(),
     }));
     saveRemoteControlSettings({ ...settings, enabled: false });
-  }, [settings]);
+  }, [settings, stopCamera]);
   
   const toggleActive = useCallback(() => {
     if (state.isActive) {
@@ -496,33 +651,101 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     }
   }, [state.isActive, activate, deactivate]);
   
-  // Calibration
-  const startCalibration = useCallback(() => {
-    calibrationPointsRef.current = [];
-    setState(prev => ({ ...prev, isCalibrating: true, calibrationStep: 0 }));
-  }, []);
+  // Calibration functions
+  const startCalibration = useCallback(async () => {
+    // Ensure camera is running
+    if (!streamRef.current) {
+      await startCamera();
+    }
+    
+    setState(prev => ({ 
+      ...prev, 
+      isCalibrating: true, 
+      calibrationStep: 0,
+      calibrationPoints: [],
+    }));
+  }, [startCamera]);
   
   const recordCalibrationPoint = useCallback((screenX: number, screenY: number) => {
-    if (state.gazePosition) {
-      calibrationPointsRef.current.push({
-        x: screenX - state.gazePosition.x,
-        y: screenY - state.gazePosition.y,
-      });
-      
-      if (calibrationPointsRef.current.length >= 4) {
-        const avgX = calibrationPointsRef.current.reduce((a, b) => a + b.x, 0) / calibrationPointsRef.current.length;
-        const avgY = calibrationPointsRef.current.reduce((a, b) => a + b.y, 0) / calibrationPointsRef.current.length;
-        gazeOffsetRef.current = { x: avgX, y: avgY };
-        
-        setState(prev => ({ ...prev, isCalibrating: false, calibrationStep: 0 }));
-      } else {
-        setState(prev => ({ ...prev, calibrationStep: prev.calibrationStep + 1 }));
-      }
+    const currentStep = state.calibrationStep;
+    const target = CALIBRATION_TARGETS[currentStep];
+    
+    if (!target || !state.rawGazePosition) {
+      console.log('[RemoteControl] No target or gaze position for calibration');
+      return;
     }
-  }, [state.gazePosition]);
+    
+    const newPoint: CalibrationPoint = {
+      screenX: target.x,
+      screenY: target.y,
+      gazeX: state.rawGazePosition.x / window.innerWidth,
+      gazeY: state.rawGazePosition.y / window.innerHeight,
+    };
+    
+    const newPoints = [...state.calibrationPoints, newPoint];
+    
+    console.log('[RemoteControl] Calibration point recorded:', currentStep, newPoint);
+    
+    if (currentStep >= CALIBRATION_TARGETS.length - 1) {
+      // Complete calibration - calculate offsets and scales
+      const avgGazeX = newPoints.reduce((a, p) => a + p.gazeX, 0) / newPoints.length;
+      const avgGazeY = newPoints.reduce((a, p) => a + p.gazeY, 0) / newPoints.length;
+      const avgScreenX = newPoints.reduce((a, p) => a + p.screenX, 0) / newPoints.length;
+      const avgScreenY = newPoints.reduce((a, p) => a + p.screenY, 0) / newPoints.length;
+      
+      // Calculate scale factors
+      let scaleX = 1, scaleY = 1;
+      const gazeRangeX = Math.max(...newPoints.map(p => p.gazeX)) - Math.min(...newPoints.map(p => p.gazeX));
+      const gazeRangeY = Math.max(...newPoints.map(p => p.gazeY)) - Math.min(...newPoints.map(p => p.gazeY));
+      const screenRangeX = Math.max(...newPoints.map(p => p.screenX)) - Math.min(...newPoints.map(p => p.screenX));
+      const screenRangeY = Math.max(...newPoints.map(p => p.screenY)) - Math.min(...newPoints.map(p => p.screenY));
+      
+      if (gazeRangeX > 0.1) scaleX = screenRangeX / gazeRangeX;
+      if (gazeRangeY > 0.1) scaleY = screenRangeY / gazeRangeY;
+      
+      const newCalibration: CalibrationData = {
+        offsetX: avgScreenX - avgGazeX,
+        offsetY: avgScreenY - avgGazeY,
+        scaleX: Math.max(0.5, Math.min(2, scaleX)),
+        scaleY: Math.max(0.5, Math.min(2, scaleY)),
+        isCalibrated: true,
+        calibratedAt: Date.now(),
+      };
+      
+      console.log('[RemoteControl] Calibration complete:', newCalibration);
+      
+      setCalibration(newCalibration);
+      saveCalibrationData(newCalibration);
+      
+      setState(prev => ({ 
+        ...prev, 
+        isCalibrating: false, 
+        calibrationStep: 0,
+        calibrationPoints: [],
+        lastAction: 'Calibration complete!',
+      }));
+    } else {
+      setState(prev => ({ 
+        ...prev, 
+        calibrationStep: prev.calibrationStep + 1,
+        calibrationPoints: newPoints,
+      }));
+    }
+  }, [state.calibrationStep, state.rawGazePosition, state.calibrationPoints]);
   
   const cancelCalibration = useCallback(() => {
-    setState(prev => ({ ...prev, isCalibrating: false, calibrationStep: 0 }));
+    setState(prev => ({ 
+      ...prev, 
+      isCalibrating: false, 
+      calibrationStep: 0,
+      calibrationPoints: [],
+    }));
+  }, []);
+
+  const resetCalibration = useCallback(() => {
+    setCalibration(DEFAULT_CALIBRATION);
+    saveCalibrationData(DEFAULT_CALIBRATION);
+    setState(prev => ({ ...prev, lastAction: 'Calibration reset' }));
   }, []);
   
   // Update settings
@@ -537,19 +760,38 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     setGazeCommand(direction, action, enabled);
   }, []);
   
+  // Auto-start camera when enabled
+  useEffect(() => {
+    if (enabled && settings.enabled && !streamRef.current) {
+      startCamera();
+    } else if ((!enabled || !settings.enabled) && streamRef.current) {
+      stopCamera();
+    }
+  }, [enabled, settings.enabled, startCamera, stopCamera]);
+  
   // Sync active state with detection
   useEffect(() => {
-    setState(prev => ({ ...prev, isActive: isDetecting }));
-  }, [isDetecting]);
+    setState(prev => ({ ...prev, isActive: isDetecting || state.isCameraActive }));
+  }, [isDetecting, state.isCameraActive]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera();
+      ghostActivationTimersRef.current.forEach(timer => clearTimeout(timer));
+    };
+  }, [stopCamera]);
   
   return {
     ...state,
     settings,
     gazeCommands,
+    calibration,
     eyeOpenness,
     blinkCount,
     currentDirection,
     normalizedPosition,
+    calibrationTargets: CALIBRATION_TARGETS,
     registerButton,
     unregisterButton,
     activate,
@@ -558,6 +800,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     startCalibration,
     recordCalibrationPoint,
     cancelCalibration,
+    resetCalibration,
     updateSettings,
     updateGazeCommand,
   };

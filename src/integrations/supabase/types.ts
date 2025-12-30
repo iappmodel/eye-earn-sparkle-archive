@@ -260,6 +260,39 @@ export type Database = {
         }
         Relationships: []
       }
+      coin_gifts: {
+        Row: {
+          amount: number
+          coin_type: string
+          created_at: string
+          id: string
+          message: string | null
+          recipient_id: string
+          sender_id: string
+          status: string
+        }
+        Insert: {
+          amount: number
+          coin_type: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          recipient_id: string
+          sender_id: string
+          status?: string
+        }
+        Update: {
+          amount?: number
+          coin_type?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          recipient_id?: string
+          sender_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       content_flags: {
         Row: {
           action_taken: string | null
@@ -541,6 +574,54 @@ export type Database = {
         }
         Relationships: []
       }
+      earning_goals: {
+        Row: {
+          achieved: boolean | null
+          achieved_at: string | null
+          coin_type: string
+          created_at: string
+          current_progress: number | null
+          goal_type: string
+          id: string
+          is_active: boolean | null
+          period_end: string
+          period_start: string
+          target_amount: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          achieved?: boolean | null
+          achieved_at?: string | null
+          coin_type?: string
+          created_at?: string
+          current_progress?: number | null
+          goal_type: string
+          id?: string
+          is_active?: boolean | null
+          period_end: string
+          period_start: string
+          target_amount: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          achieved?: boolean | null
+          achieved_at?: string | null
+          coin_type?: string
+          created_at?: string
+          current_progress?: number | null
+          goal_type?: string
+          id?: string
+          is_active?: boolean | null
+          period_end?: string
+          period_start?: string
+          target_amount?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       error_logs: {
         Row: {
           app_version: string | null
@@ -804,6 +885,98 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      payment_methods: {
+        Row: {
+          created_at: string
+          details: Json
+          id: string
+          is_default: boolean | null
+          method_type: string
+          nickname: string | null
+          updated_at: string
+          user_id: string
+          verified: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          id?: string
+          is_default?: boolean | null
+          method_type: string
+          nickname?: string | null
+          updated_at?: string
+          user_id: string
+          verified?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          id?: string
+          is_default?: boolean | null
+          method_type?: string
+          nickname?: string | null
+          updated_at?: string
+          user_id?: string
+          verified?: boolean | null
+        }
+        Relationships: []
+      }
+      payout_requests: {
+        Row: {
+          amount: number
+          coin_type: string
+          created_at: string
+          failure_reason: string | null
+          fee: number | null
+          id: string
+          net_amount: number | null
+          payment_method_id: string | null
+          processed_at: string | null
+          reference_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          coin_type: string
+          created_at?: string
+          failure_reason?: string | null
+          fee?: number | null
+          id?: string
+          net_amount?: number | null
+          payment_method_id?: string | null
+          processed_at?: string | null
+          reference_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          coin_type?: string
+          created_at?: string
+          failure_reason?: string | null
+          fee?: number | null
+          id?: string
+          net_amount?: number | null
+          payment_method_id?: string | null
+          processed_at?: string | null
+          reference_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payout_requests_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       privacy_consents: {
         Row: {

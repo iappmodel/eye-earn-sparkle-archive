@@ -11,6 +11,7 @@ import {
   Minus,
   Plus,
   Eye,
+  EyeOff,
   AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ const STORAGE_KEYS = {
   SOUND_EFFECTS: 'visuai-sound-effects',
   EYE_INDICATOR_POSITION: 'visuai-eye-indicator-position',
   ATTENTION_THRESHOLD: 'visuai-attention-threshold',
+  EYE_TRACKING_ENABLED: 'visuai-eye-tracking-enabled',
 };
 
 const FONT_SIZE_OPTIONS = [
@@ -67,7 +69,11 @@ export const MediaSettings: React.FC = () => {
     return saved ? parseInt(saved, 10) : 10;
   });
 
-  // Persist settings
+  const [eyeTrackingEnabled, setEyeTrackingEnabled] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.EYE_TRACKING_ENABLED);
+    return saved !== 'false'; // Default to true
+  });
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.LOW_DATA_MODE, String(lowDataMode));
   }, [lowDataMode]);
@@ -87,6 +93,10 @@ export const MediaSettings: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ATTENTION_THRESHOLD, String(attentionThreshold));
   }, [attentionThreshold]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.EYE_TRACKING_ENABLED, String(eyeTrackingEnabled));
+  }, [eyeTrackingEnabled]);
 
   const currentFontIndex = FONT_SIZE_OPTIONS.findIndex(opt => opt.value === fontSize);
   const currentFontLabel = FONT_SIZE_OPTIONS.find(opt => opt.value === fontSize)?.label || 'Default';
@@ -163,8 +173,37 @@ export const MediaSettings: React.FC = () => {
         </div>
       </div>
 
+      {/* Eye Tracking Toggle */}
+      <button
+        onClick={() => setEyeTrackingEnabled(!eyeTrackingEnabled)}
+        className="w-full flex items-center justify-between p-4 rounded-xl neu-inset hover:bg-muted/50 transition-all"
+      >
+        <div className="flex items-center gap-3">
+          {eyeTrackingEnabled ? (
+            <Eye className="w-5 h-5 text-primary" />
+          ) : (
+            <EyeOff className="w-5 h-5 text-muted-foreground" />
+          )}
+          <div className="text-left">
+            <span className="font-medium block">Eye Tracking</span>
+            <span className="text-xs text-muted-foreground">
+              {eyeTrackingEnabled ? 'Track attention for promo rewards' : 'Disabled - No attention tracking'}
+            </span>
+          </div>
+        </div>
+        <div className={cn(
+          "w-12 h-7 rounded-full p-1 transition-all",
+          eyeTrackingEnabled ? "bg-primary" : "bg-muted"
+        )}>
+          <div className={cn(
+            "w-5 h-5 rounded-full bg-background shadow-md transition-transform",
+            eyeTrackingEnabled && "translate-x-5"
+          )} />
+        </div>
+      </button>
+
       {/* Eye Indicator Position */}
-      <div className="neu-inset rounded-xl p-4">
+      <div className={cn("neu-inset rounded-xl p-4 transition-opacity", !eyeTrackingEnabled && "opacity-50 pointer-events-none")}>
         <div className="flex items-center gap-3 mb-4">
           <Eye className="w-5 h-5 text-primary" />
           <div>
@@ -369,6 +408,7 @@ export const useMediaSettings = () => {
     soundEffects: localStorage.getItem(STORAGE_KEYS.SOUND_EFFECTS) !== 'false',
     eyeIndicatorPosition: (localStorage.getItem(STORAGE_KEYS.EYE_INDICATOR_POSITION) as EyeIndicatorPosition) || 'top-center',
     attentionThreshold: parseInt(localStorage.getItem(STORAGE_KEYS.ATTENTION_THRESHOLD) || '10', 10),
+    eyeTrackingEnabled: localStorage.getItem(STORAGE_KEYS.EYE_TRACKING_ENABLED) !== 'false',
   });
 
   useEffect(() => {
@@ -379,6 +419,7 @@ export const useMediaSettings = () => {
         soundEffects: localStorage.getItem(STORAGE_KEYS.SOUND_EFFECTS) !== 'false',
         eyeIndicatorPosition: (localStorage.getItem(STORAGE_KEYS.EYE_INDICATOR_POSITION) as EyeIndicatorPosition) || 'top-center',
         attentionThreshold: parseInt(localStorage.getItem(STORAGE_KEYS.ATTENTION_THRESHOLD) || '10', 10),
+        eyeTrackingEnabled: localStorage.getItem(STORAGE_KEYS.EYE_TRACKING_ENABLED) !== 'false',
       });
     };
 

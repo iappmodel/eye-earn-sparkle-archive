@@ -3,8 +3,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { PROMOTION_CATEGORIES, getCategoryInfo } from './PromotionCategories';
 
 interface MapFilters {
   distance: number; // in miles
@@ -21,14 +21,6 @@ interface MapFilterSheetProps {
   onApply: () => void;
   onReset: () => void;
 }
-
-const CATEGORIES = [
-  'Food & Drink',
-  'Shopping',
-  'Entertainment',
-  'Health',
-  'Services',
-];
 
 const REWARD_TYPES: { id: 'vicoin' | 'icoin' | 'both'; label: string; color: string }[] = [
   { id: 'vicoin', label: 'Vicoin', color: 'bg-violet-500' },
@@ -109,28 +101,31 @@ export const MapFilterSheet: React.FC<MapFilterSheetProps> = ({
             </div>
           </div>
 
-          {/* Category Filter */}
+          {/* Category Filter with Icons */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Categories</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {CATEGORIES.map((category) => (
-                <div
-                  key={category}
-                  className={cn(
-                    'flex items-center space-x-3 p-3 rounded-xl border transition-all cursor-pointer',
-                    filters.categories.includes(category)
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border bg-muted/30 hover:border-primary/50'
-                  )}
-                  onClick={() => toggleCategory(category)}
-                >
-                  <Checkbox
-                    checked={filters.categories.includes(category)}
-                    onCheckedChange={() => toggleCategory(category)}
-                  />
-                  <span className="text-sm">{category}</span>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
+              {PROMOTION_CATEGORIES.slice(0, 10).map((category) => {
+                const Icon = category.icon;
+                const isSelected = filters.categories.includes(category.id);
+                return (
+                  <button
+                    key={category.id}
+                    onClick={() => toggleCategory(category.id)}
+                    className={cn(
+                      'flex items-center gap-2 p-3 rounded-xl border transition-all text-left',
+                      isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-muted/30 hover:border-primary/50'
+                    )}
+                  >
+                    <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center', category.bgColor)}>
+                      <Icon className={cn('w-4 h-4', category.color)} />
+                    </div>
+                    <span className="text-sm font-medium truncate">{category.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

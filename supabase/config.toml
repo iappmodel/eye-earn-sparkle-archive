@@ -78,3 +78,6 @@ verify_jwt = false
 
 [functions.validate-attention]
 verify_jwt = false
+
+[functions.verify-checkin]
+verify_jwt = false

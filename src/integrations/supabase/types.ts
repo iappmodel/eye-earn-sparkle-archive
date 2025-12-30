@@ -1139,6 +1139,71 @@ export type Database = {
         }
         Relationships: []
       }
+      promotion_checkins: {
+        Row: {
+          business_name: string
+          checked_in_at: string
+          created_at: string
+          distance_meters: number
+          id: string
+          latitude: number
+          longitude: number
+          promotion_id: string | null
+          reward_amount: number | null
+          reward_claimed: boolean
+          reward_claimed_at: string | null
+          reward_type: string | null
+          status: string
+          user_id: string
+          user_latitude: number
+          user_longitude: number
+        }
+        Insert: {
+          business_name: string
+          checked_in_at?: string
+          created_at?: string
+          distance_meters: number
+          id?: string
+          latitude: number
+          longitude: number
+          promotion_id?: string | null
+          reward_amount?: number | null
+          reward_claimed?: boolean
+          reward_claimed_at?: string | null
+          reward_type?: string | null
+          status?: string
+          user_id: string
+          user_latitude: number
+          user_longitude: number
+        }
+        Update: {
+          business_name?: string
+          checked_in_at?: string
+          created_at?: string
+          distance_meters?: number
+          id?: string
+          latitude?: number
+          longitude?: number
+          promotion_id?: string | null
+          reward_amount?: number | null
+          reward_claimed?: boolean
+          reward_claimed_at?: string | null
+          reward_type?: string | null
+          status?: string
+          user_id?: string
+          user_latitude?: number
+          user_longitude?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promotion_checkins_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       promotion_claims: {
         Row: {
           claimed_at: string

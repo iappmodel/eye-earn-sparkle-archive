@@ -19,6 +19,26 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+// Streak bonus percentages
+const STREAK_BONUSES: { [key: number]: number } = {
+  2: 5,
+  3: 10,
+  5: 15,
+  7: 25,
+  14: 35,
+  30: 50,
+};
+
+function getStreakBonus(streakDays: number): number {
+  let bonus = 0;
+  for (const [days, bonusPercent] of Object.entries(STREAK_BONUSES)) {
+    if (streakDays >= parseInt(days)) {
+      bonus = bonusPercent;
+    }
+  }
+  return bonus;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -92,7 +112,7 @@ serve(async (req) => {
     const isWithinRange = distance <= maxDistanceMeters;
     const status = isWithinRange ? 'verified' : 'failed';
 
-    // Check for existing check-in in last 24 hours
+    // Check for existing check-in in last 24 hours at this location
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: existingCheckin } = await supabase
       .from('promotion_checkins')
@@ -114,7 +134,62 @@ serve(async (req) => {
       );
     }
 
-    // Create check-in record
+    // Get or create user_levels for streak tracking
+    let { data: userLevel } = await supabase
+      .from('user_levels')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!userLevel) {
+      // Create user_levels record if doesn't exist
+      const { data: newLevel } = await supabase
+        .from('user_levels')
+        .insert({ user_id: user.id, streak_days: 0, longest_streak: 0, level: 1, current_xp: 0, total_xp: 0 })
+        .select()
+        .single();
+      userLevel = newLevel;
+    }
+
+    // Calculate streak
+    let newStreakDays = 1;
+    let newLongestStreak = userLevel?.longest_streak || 0;
+    const today = new Date().toISOString().split('T')[0];
+    const lastActiveDate = userLevel?.last_active_date;
+
+    if (lastActiveDate) {
+      const lastActive = new Date(lastActiveDate);
+      const todayDate = new Date(today);
+      const diffDays = Math.floor((todayDate.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 1) {
+        // Consecutive day - increment streak
+        newStreakDays = (userLevel?.streak_days || 0) + 1;
+      } else if (diffDays === 0) {
+        // Same day - keep current streak
+        newStreakDays = userLevel?.streak_days || 1;
+      }
+      // If more than 1 day gap, streak resets to 1
+    }
+
+    if (newStreakDays > newLongestStreak) {
+      newLongestStreak = newStreakDays;
+    }
+
+    // Calculate streak bonus
+    const streakBonus = getStreakBonus(newStreakDays);
+    const bonusAmount = Math.floor((rewardAmount || 0) * streakBonus / 100);
+    const totalReward = (rewardAmount || 0) + bonusAmount;
+
+    console.log('[verify-checkin] Streak info:', { 
+      newStreakDays, 
+      newLongestStreak, 
+      streakBonus, 
+      bonusAmount,
+      totalReward 
+    });
+
+    // Create check-in record with streak info
     const { data: checkin, error: insertError } = await supabase
       .from('promotion_checkins')
       .insert({
@@ -127,8 +202,10 @@ serve(async (req) => {
         user_longitude: userLng,
         distance_meters: distance,
         status,
-        reward_amount: isWithinRange ? rewardAmount : null,
+        reward_amount: isWithinRange ? totalReward : null,
         reward_type: isWithinRange ? rewardType : null,
+        streak_bonus: isWithinRange ? bonusAmount : 0,
+        streak_day: newStreakDays,
       })
       .select()
       .single();
@@ -141,8 +218,8 @@ serve(async (req) => {
       );
     }
 
-    // If verified, also update user's coin balance
-    if (isWithinRange && rewardAmount && rewardType) {
+    // If verified, update user's coin balance and streak
+    if (isWithinRange && totalReward && rewardType) {
       const balanceField = rewardType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
       
       // Get current balance
@@ -156,23 +233,45 @@ serve(async (req) => {
         const currentBalance = (rewardType === 'vicoin' ? profile.vicoin_balance : profile.icoin_balance) || 0;
         await supabase
           .from('profiles')
-          .update({ [balanceField]: currentBalance + rewardAmount })
+          .update({ [balanceField]: currentBalance + totalReward })
           .eq('user_id', user.id);
 
-        console.log('[verify-checkin] Updated balance:', { balanceField, newBalance: currentBalance + rewardAmount });
+        console.log('[verify-checkin] Updated balance:', { balanceField, newBalance: currentBalance + totalReward });
       }
+
+      // Update streak in user_levels
+      await supabase
+        .from('user_levels')
+        .update({ 
+          streak_days: newStreakDays,
+          longest_streak: newLongestStreak,
+          last_active_date: today,
+        })
+        .eq('user_id', user.id);
 
       // Mark reward as claimed
       await supabase
         .from('promotion_checkins')
         .update({ reward_claimed: true, reward_claimed_at: new Date().toISOString() })
         .eq('id', checkin.id);
+
+      // Add XP for check-in
+      const xpReward = 25 + (newStreakDays >= 7 ? 10 : 0);
+      await supabase
+        .from('user_levels')
+        .update({ 
+          current_xp: (userLevel?.current_xp || 0) + xpReward,
+          total_xp: (userLevel?.total_xp || 0) + xpReward,
+        })
+        .eq('user_id', user.id);
     }
 
     console.log('[verify-checkin] Success:', { 
       status, 
       distance: Math.round(distance), 
-      isWithinRange 
+      isWithinRange,
+      streak: newStreakDays,
+      bonusAmount,
     });
 
     return new Response(
@@ -182,8 +281,20 @@ serve(async (req) => {
         status,
         distance: Math.round(distance),
         maxDistance: maxDistanceMeters,
+        streak: {
+          current: newStreakDays,
+          longest: newLongestStreak,
+          bonus: streakBonus,
+          bonusAmount,
+        },
+        reward: {
+          base: rewardAmount,
+          bonus: bonusAmount,
+          total: totalReward,
+          type: rewardType,
+        },
         message: isWithinRange 
-          ? `Check-in successful! You earned ${rewardAmount} ${rewardType}!` 
+          ? `Check-in successful! You earned ${totalReward} ${rewardType}${bonusAmount > 0 ? ` (+${bonusAmount} streak bonus!)` : ''}!` 
           : `Too far from location. You are ${Math.round(distance)}m away (max ${maxDistanceMeters}m)`,
         checkin,
       }),

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Check, Loader2, AlertCircle, Navigation2 } from 'lucide-react';
+import { MapPin, Check, Loader2, AlertCircle, Navigation2, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ConfettiCelebration } from './ConfettiCelebration';
+import { notificationSoundService } from '@/services/notificationSound.service';
 
 interface CheckInButtonProps {
   promotion: {
@@ -31,6 +32,7 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [showConfetti, setShowConfetti] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
+  const [streakInfo, setStreakInfo] = useState<{ current: number; bonus: number; bonusAmount: number } | null>(null);
 
   const handleCheckIn = async () => {
     if (!user) {
@@ -85,8 +87,25 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
       if (data.success) {
         setCheckInStatus('success');
         setShowConfetti(true);
-        toast.success(data.message, {
-          description: `You earned ${promotion.reward_amount} ${promotion.reward_type}!`,
+        
+        // Store streak info for display
+        if (data.streak) {
+          setStreakInfo({
+            current: data.streak.current,
+            bonus: data.streak.bonus,
+            bonusAmount: data.streak.bonusAmount,
+          });
+        }
+
+        // Play reward sound
+        notificationSoundService.playReward();
+
+        const bonusText = data.streak?.bonusAmount > 0 
+          ? ` (+${data.streak.bonusAmount} streak bonus!)` 
+          : '';
+        
+        toast.success('Check-in successful!', {
+          description: `You earned ${data.reward?.total || promotion.reward_amount} ${promotion.reward_type}${bonusText}`,
         });
         onSuccess?.();
 
@@ -139,6 +158,12 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
           <>
             <Check className="w-4 h-4" />
             <span>Checked In!</span>
+            {streakInfo && streakInfo.current > 1 && (
+              <span className="flex items-center gap-1 ml-1 text-orange-300">
+                <Flame className="w-3 h-3" />
+                {streakInfo.current}
+              </span>
+            )}
           </>
         );
       case 'error':

@@ -132,11 +132,39 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isClaimingReward, setIsClaimingReward] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const watchStartTime = useRef<number | null>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentVideo = videos[currentIndex];
   const currentTheme = currentVideo.theme;
+
+  // Auto-hide controls after 3s
+  const resetControlsTimeout = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
+  }, []);
+
+  const handleScreenTap = useCallback(() => {
+    setShowControls(prev => !prev);
+    if (!showControls) {
+      resetControlsTimeout();
+    }
+  }, [showControls, resetControlsTimeout]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Start/stop watching when screen becomes active
   useEffect(() => {
@@ -251,7 +279,10 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   };
 
   return (
-    <div className="h-full w-full bg-background relative overflow-hidden">
+    <div 
+      className="h-full w-full bg-background relative overflow-hidden"
+      onClick={handleScreenTap}
+    >
       {/* Video/Image Background */}
       <div className="absolute inset-0">
         <img
@@ -393,41 +424,51 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
         </div>
       )}
 
-      {/* Left Side Controls - 3D Neumorphic Buttons */}
-      <div className="absolute left-4 bottom-40 z-20 flex flex-col items-center gap-4">
-        <Neu3DButton 
-          theme={currentTheme}
-          variant="glass"
-          label="Watch"
+      {/* Center Controls - appear on tap, auto-hide after 3s */}
+      {showControls && (
+        <div 
+          className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in"
+          onClick={(e) => e.stopPropagation()}
         >
-          <Eye className="w-6 h-6" />
-        </Neu3DButton>
+          <div className="flex items-center gap-6">
+            {/* Play/Pause - large center button */}
+            <Neu3DButton 
+              onClick={() => {
+                setIsPaused(!isPaused);
+                resetControlsTimeout();
+              }}
+              theme={currentTheme}
+              variant="glass"
+              size="lg"
+            >
+              {isPaused ? <Play className="w-8 h-8 ml-1" /> : <Pause className="w-8 h-8" />}
+            </Neu3DButton>
 
-        <Neu3DButton 
-          onClick={() => setIsPaused(!isPaused)}
-          theme={currentTheme}
-          variant="glass"
-        >
-          {isPaused ? <Play className="w-6 h-6 ml-0.5" /> : <Pause className="w-6 h-6" />}
-        </Neu3DButton>
+            {/* Volume */}
+            <Neu3DButton 
+              onClick={() => {
+                setIsMuted(!isMuted);
+                resetControlsTimeout();
+              }}
+              theme={currentTheme}
+              variant="glass"
+            >
+              {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
+            </Neu3DButton>
 
-        <Neu3DButton 
-          onClick={() => setIsMuted(!isMuted)}
-          theme={currentTheme}
-          variant="glass"
-        >
-          {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
-        </Neu3DButton>
-
-        <Neu3DButton 
-          onClick={skipVideo}
-          theme={currentTheme}
-          variant="neon"
-          label="Skip"
-        >
-          <ChevronUp className="w-6 h-6" />
-        </Neu3DButton>
-      </div>
+            {/* Skip/Next */}
+            <Neu3DButton 
+              onClick={() => {
+                skipVideo();
+              }}
+              theme={currentTheme}
+              variant="neon"
+            >
+              <ChevronUp className="w-6 h-6" />
+            </Neu3DButton>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Content */}
       <div className="absolute bottom-24 left-20 right-4 z-10">

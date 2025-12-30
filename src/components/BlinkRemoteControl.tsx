@@ -3,7 +3,8 @@ import {
   Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight, 
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
   ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video,
-  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock, Volume2, VolumeX, Film
+  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock, Volume2, VolumeX, Film,
+  Activity
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,7 @@ import { GestureComboBuilder } from '@/components/GestureComboBuilder';
 import { GestureComboImportExport } from '@/components/GestureComboImportExport';
 import { ComboPracticeMode } from '@/components/ComboPracticeMode';
 import ComboGuideOverlay from '@/components/ComboGuideOverlay';
+import RemoteControlDebugOverlay from '@/components/RemoteControlDebugOverlay';
 import { 
   RemoteControlTutorial, 
   useRemoteControlTutorial 
@@ -96,6 +98,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showComboBuilder, setShowComboBuilder] = useState(false);
   const [practiceMode, setPracticeMode] = useState(false);
   const [showComboGuide, setShowComboGuide] = useState(false);
+  const [showDebugOverlay, setShowDebugOverlay] = useState(false);
   
   // Tutorial hook
   const {
@@ -151,6 +154,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     currentDirection,
     isCameraActive,
     calibrationTargets,
+    blinkCount,
     toggleActive,
     startCalibration,
     recordCalibrationPoint,
@@ -158,11 +162,20 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     resetCalibration,
     updateSettings,
     updateGazeCommand,
+    toggleAutoCalibration,
+    recordInteractionForAutoCalibration,
   } = useBlinkRemoteControl({
     enabled,
     onAction: (buttonId, action, count) => {
       haptics.medium();
       console.log('[RemoteControl] Action executed:', buttonId, action, count);
+      // Record for auto-calibration when user interacts with a button
+      if (currentTarget) {
+        recordInteractionForAutoCalibration(
+          currentTarget.rect.left + currentTarget.rect.width / 2,
+          currentTarget.rect.top + currentTarget.rect.height / 2
+        );
+      }
     },
     onNavigate: (action, direction) => {
       haptics.success();
@@ -190,6 +203,26 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
 
   return (
     <>
+      {/* Debug Overlay */}
+      <RemoteControlDebugOverlay
+        isOpen={showDebugOverlay}
+        onClose={() => setShowDebugOverlay(false)}
+        gazePosition={gazePosition}
+        rawGazePosition={rawGazePosition}
+        calibration={calibration}
+        currentDirection={currentDirection}
+        eyeOpenness={eyeOpenness}
+        isCameraActive={isCameraActive}
+        settings={{
+          sensitivity: settings.sensitivity,
+          gazeHoldTime: settings.gazeHoldTime,
+          edgeThreshold: settings.edgeThreshold,
+        }}
+        blinkCount={blinkCount}
+        autoCalibrationEnabled={calibration.autoCalibrationEnabled}
+        onToggleAutoCalibration={toggleAutoCalibration}
+      />
+
       {/* Ghost button overlays */}
       {isActive && Array.from(ghostButtons.values()).map((ghost) => (
         <div
@@ -962,6 +995,46 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     </Button>
                   )}
                 </div>
+                
+                {/* Auto-calibration toggle */}
+                <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
+                  <div>
+                    <span className="text-sm font-medium">Auto-Calibration</span>
+                    <p className="text-xs text-muted-foreground">
+                      Gradually improves accuracy based on your interactions
+                    </p>
+                  </div>
+                  <Switch
+                    checked={calibration.autoCalibrationEnabled}
+                    onCheckedChange={toggleAutoCalibration}
+                  />
+                </div>
+                {calibration.autoAdjustments > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {calibration.autoAdjustments} automatic adjustments made
+                  </p>
+                )}
+              </div>
+
+              {/* Debug Overlay */}
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Activity className="w-4 h-4" />
+                  Debug Tools
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  View real-time tracking statistics and gaze position
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowDebugOverlay(true);
+                  }}
+                >
+                  <Activity className="w-4 h-4 mr-2" />
+                  Open Debug Overlay
+                </Button>
               </div>
 
               {/* Tutorial */}

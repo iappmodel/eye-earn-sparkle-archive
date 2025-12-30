@@ -31,6 +31,13 @@ export interface CalibrationData {
   scaleY: number;
   isCalibrated: boolean;
   calibratedAt: number;
+  autoCalibrationEnabled: boolean;
+  autoAdjustments: number;
+}
+
+export interface AutoCalibrationState {
+  clickHistory: { gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[];
+  lastAdjustment: number;
 }
 
 export interface RemoteControlSettings {
@@ -102,7 +109,11 @@ const DEFAULT_CALIBRATION: CalibrationData = {
   scaleY: 1,
   isCalibrated: false,
   calibratedAt: 0,
+  autoCalibrationEnabled: true,
+  autoAdjustments: 0,
 };
+
+const AUTO_CALIBRATION_STORAGE_KEY = 'app_remote_control_auto_calibration';
 
 const DEFAULT_GAZE_COMMANDS: GazeCommand[] = [
   { direction: 'left', action: 'friendsFeed', enabled: true },
@@ -251,6 +262,8 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const trackingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const smoothedPositionRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const autoCalibrationHistoryRef = useRef<{ gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[]>([]);
+  const lastAutoAdjustmentRef = useRef<number>(0);
   
   useEffect(() => {
     onActionRef.current = onAction;
@@ -710,6 +723,8 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
         scaleY: Math.max(0.5, Math.min(2, scaleY)),
         isCalibrated: true,
         calibratedAt: Date.now(),
+        autoCalibrationEnabled: calibration.autoCalibrationEnabled,
+        autoAdjustments: calibration.autoAdjustments,
       };
       
       console.log('[RemoteControl] Calibration complete:', newCalibration);
@@ -745,8 +760,83 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const resetCalibration = useCallback(() => {
     setCalibration(DEFAULT_CALIBRATION);
     saveCalibrationData(DEFAULT_CALIBRATION);
+    autoCalibrationHistoryRef.current = [];
     setState(prev => ({ ...prev, lastAction: 'Calibration reset' }));
   }, []);
+
+  // Toggle auto-calibration
+  const toggleAutoCalibration = useCallback(() => {
+    const newCalibration = {
+      ...calibration,
+      autoCalibrationEnabled: !calibration.autoCalibrationEnabled,
+    };
+    setCalibration(newCalibration);
+    saveCalibrationData(newCalibration);
+    console.log('[RemoteControl] Auto-calibration:', !calibration.autoCalibrationEnabled ? 'enabled' : 'disabled');
+  }, [calibration]);
+
+  // Record interaction for auto-calibration
+  const recordInteractionForAutoCalibration = useCallback((targetX: number, targetY: number) => {
+    if (!calibration.autoCalibrationEnabled || !state.gazePosition) return;
+    
+    const now = Date.now();
+    
+    // Add to history
+    autoCalibrationHistoryRef.current.push({
+      gazeX: state.gazePosition.x / window.innerWidth,
+      gazeY: state.gazePosition.y / window.innerHeight,
+      targetX: targetX / window.innerWidth,
+      targetY: targetY / window.innerHeight,
+      timestamp: now,
+    });
+    
+    // Keep only last 20 interactions within 5 minutes
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    autoCalibrationHistoryRef.current = autoCalibrationHistoryRef.current
+      .filter(p => p.timestamp > fiveMinutesAgo)
+      .slice(-20);
+    
+    // Only adjust every 10 seconds with at least 5 data points
+    if (now - lastAutoAdjustmentRef.current < 10000 || autoCalibrationHistoryRef.current.length < 5) {
+      return;
+    }
+    
+    const history = autoCalibrationHistoryRef.current;
+    
+    // Calculate average offset error
+    const avgGazeX = history.reduce((a, p) => a + p.gazeX, 0) / history.length;
+    const avgGazeY = history.reduce((a, p) => a + p.gazeY, 0) / history.length;
+    const avgTargetX = history.reduce((a, p) => a + p.targetX, 0) / history.length;
+    const avgTargetY = history.reduce((a, p) => a + p.targetY, 0) / history.length;
+    
+    const errorX = avgTargetX - avgGazeX;
+    const errorY = avgTargetY - avgGazeY;
+    
+    // Only adjust if error is significant (> 5%)
+    if (Math.abs(errorX) < 0.05 && Math.abs(errorY) < 0.05) {
+      return;
+    }
+    
+    // Apply gradual adjustment (20% of error)
+    const adjustmentFactor = 0.2;
+    const newCalibration: CalibrationData = {
+      ...calibration,
+      offsetX: calibration.offsetX + errorX * adjustmentFactor,
+      offsetY: calibration.offsetY + errorY * adjustmentFactor,
+      autoAdjustments: calibration.autoAdjustments + 1,
+    };
+    
+    console.log('[RemoteControl] Auto-calibration adjustment:', {
+      errorX: errorX.toFixed(3),
+      errorY: errorY.toFixed(3),
+      newOffsetX: newCalibration.offsetX.toFixed(3),
+      newOffsetY: newCalibration.offsetY.toFixed(3),
+    });
+    
+    setCalibration(newCalibration);
+    saveCalibrationData(newCalibration);
+    lastAutoAdjustmentRef.current = now;
+  }, [calibration, state.gazePosition]);
   
   // Update settings
   const updateSettings = useCallback((newSettings: Partial<RemoteControlSettings>) => {
@@ -754,7 +844,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     setSettings(updated);
     saveRemoteControlSettings(updated);
   }, [settings]);
-  
+
   // Update gaze command
   const updateGazeCommand = useCallback((direction: GazeDirection, action: GazeNavigationAction, enabled: boolean) => {
     setGazeCommand(direction, action, enabled);
@@ -803,5 +893,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     resetCalibration,
     updateSettings,
     updateGazeCommand,
+    toggleAutoCalibration,
+    recordInteractionForAutoCalibration,
   };
 }

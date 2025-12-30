@@ -6,43 +6,47 @@ import { useToast } from '@/hooks/use-toast';
 
 export function useRealtimeRewards(onRewardUpdate?: (reward: any) => void) {
   const { user } = useAuth();
-  const { toast } = useToast();
+  // Toast notifications temporarily disabled
+  // const { toast } = useToast();
 
   useEffect(() => {
     if (!user?.id) return;
 
     const unsubscribe = realtimeService.subscribeToRewards(user.id, (payload) => {
-      if (payload.eventType === 'INSERT') {
-        toast({
-          title: '🎉 New Reward!',
-          description: `You earned a new reward!`,
-        });
-      }
+      // Toast temporarily disabled
+      // if (payload.eventType === 'INSERT') {
+      //   toast({
+      //     title: '🎉 New Reward!',
+      //     description: `You earned a new reward!`,
+      //   });
+      // }
       onRewardUpdate?.(payload);
     });
 
     return unsubscribe;
-  }, [user?.id, onRewardUpdate, toast]);
+  }, [user?.id, onRewardUpdate]);
 }
 
 export function useRealtimeNotifications(onNotification?: (notification: any) => void) {
   const { user } = useAuth();
-  const { toast } = useToast();
+  // Toast notifications temporarily disabled
+  // const { toast } = useToast();
 
   useEffect(() => {
     if (!user?.id) return;
 
     const unsubscribe = realtimeService.subscribeToNotifications(user.id, (payload) => {
-      const notification = payload.new;
-      toast({
-        title: notification?.title || 'New Notification',
-        description: notification?.message || '',
-      });
+      // Toast temporarily disabled
+      // const notification = payload.new;
+      // toast({
+      //   title: notification?.title || 'New Notification',
+      //   description: notification?.message || '',
+      // });
       onNotification?.(payload);
     });
 
     return unsubscribe;
-  }, [user?.id, onNotification, toast]);
+  }, [user?.id, onNotification]);
 }
 
 export function useRealtimeBalance(onBalanceUpdate?: (balance: any) => void) {

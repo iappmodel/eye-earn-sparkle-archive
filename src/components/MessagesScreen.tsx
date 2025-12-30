@@ -163,10 +163,10 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({ isOpen, onClose 
   }, [user]);
 
   useEffect(() => {
-    if (isOpen && user) {
+    if (isOpen) {
       loadConversations();
     }
-  }, [isOpen, user, loadConversations]);
+  }, [isOpen, loadConversations]);
 
   // Real-time subscription for new messages
   useEffect(() => {

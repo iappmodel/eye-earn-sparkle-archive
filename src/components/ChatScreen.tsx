@@ -93,7 +93,82 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
     }
   };
 
+  // Mock messages for testing
+  const getMockMessages = (): Message[] => {
+    const now = Date.now();
+    const otherId = conversation.other_user?.id || 'other-user';
+    return [
+      {
+        id: 'mock-msg-1',
+        conversation_id: conversation.id,
+        sender_id: otherId,
+        content: 'Hey! Have you tried the new iMoji feature? 🎨',
+        type: 'text',
+        media_url: null,
+        is_ai_generated: false,
+        read_by: [],
+        created_at: new Date(now - 3600000).toISOString(),
+        reactions: [{ emoji: '❤️', count: 1, userReacted: false }],
+      },
+      {
+        id: 'mock-msg-2',
+        conversation_id: conversation.id,
+        sender_id: 'current-user',
+        content: 'Not yet! What is it?',
+        type: 'text',
+        media_url: null,
+        is_ai_generated: false,
+        read_by: [otherId],
+        created_at: new Date(now - 3500000).toISOString(),
+        reactions: [],
+      },
+      {
+        id: 'mock-msg-3',
+        conversation_id: conversation.id,
+        sender_id: otherId,
+        content: 'You can create personalized emojis from your face! Try the + button and select iMoji 😎',
+        type: 'text',
+        media_url: null,
+        is_ai_generated: false,
+        read_by: [],
+        created_at: new Date(now - 3400000).toISOString(),
+        reactions: [],
+      },
+      {
+        id: 'mock-msg-4',
+        conversation_id: conversation.id,
+        sender_id: otherId,
+        content: 'You can choose different styles like manga, Disney, cartoon and more!',
+        type: 'text',
+        media_url: null,
+        is_ai_generated: false,
+        read_by: [],
+        created_at: new Date(now - 3300000).toISOString(),
+        reactions: [{ emoji: '🔥', count: 2, userReacted: true }],
+      },
+      {
+        id: 'mock-msg-5',
+        conversation_id: conversation.id,
+        sender_id: 'current-user',
+        content: 'That sounds awesome! Let me try it now 🚀',
+        type: 'text',
+        media_url: null,
+        is_ai_generated: false,
+        read_by: [otherId],
+        created_at: new Date(now - 60000).toISOString(),
+        reactions: [],
+      },
+    ];
+  };
+
   const loadMessages = useCallback(async () => {
+    // Check if this is a mock conversation
+    if (conversation.id.startsWith('mock-')) {
+      setMessages(getMockMessages());
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -131,7 +206,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
         })
       );
 
-      setMessages(messagesWithReactions);
+      // Use mock messages if no real messages exist
+      setMessages(messagesWithReactions.length > 0 ? messagesWithReactions : getMockMessages());
 
       // Mark messages as read
       if (user) {
@@ -143,6 +219,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
       }
     } catch (error) {
       console.error('Error loading messages:', error);
+      // Fallback to mock messages on error
+      setMessages(getMockMessages());
     } finally {
       setLoading(false);
     }

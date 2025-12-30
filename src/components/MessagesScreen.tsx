@@ -28,6 +28,52 @@ interface MessagesScreenProps {
   onClose: () => void;
 }
 
+// Mock conversations for testing
+const mockConversations: Conversation[] = [
+  {
+    id: 'mock-1',
+    type: 'direct',
+    name: null,
+    last_message: 'Hey! Check out this new iMoji feature 🎨',
+    last_message_at: new Date().toISOString(),
+    unread_count: 2,
+    other_user: {
+      id: 'user-1',
+      username: 'sarah_creates',
+      display_name: 'Sarah Chen',
+      avatar_url: null,
+    },
+  },
+  {
+    id: 'mock-2',
+    type: 'direct',
+    name: null,
+    last_message: 'That video was amazing! 🔥',
+    last_message_at: new Date(Date.now() - 3600000).toISOString(),
+    unread_count: 0,
+    other_user: {
+      id: 'user-2',
+      username: 'alex_music',
+      display_name: 'Alex Rivera',
+      avatar_url: null,
+    },
+  },
+  {
+    id: 'mock-3',
+    type: 'direct',
+    name: null,
+    last_message: 'Can you send me the link?',
+    last_message_at: new Date(Date.now() - 86400000).toISOString(),
+    unread_count: 1,
+    other_user: {
+      id: 'user-3',
+      username: 'maya_art',
+      display_name: 'Maya Thompson',
+      avatar_url: null,
+    },
+  },
+];
+
 export const MessagesScreen: React.FC<MessagesScreenProps> = ({ isOpen, onClose }) => {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -36,7 +82,12 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({ isOpen, onClose 
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   const loadConversations = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      // Use mock data when not logged in
+      setConversations(mockConversations);
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
@@ -99,9 +150,13 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({ isOpen, onClose 
         })
       );
 
-      setConversations(conversationsWithUsers.filter(Boolean) as Conversation[]);
+      const realConvos = conversationsWithUsers.filter(Boolean) as Conversation[];
+      // If no real conversations, use mock data
+      setConversations(realConvos.length > 0 ? realConvos : mockConversations);
     } catch (error) {
       console.error('Error loading conversations:', error);
+      // Fallback to mock data on error
+      setConversations(mockConversations);
     } finally {
       setLoading(false);
     }

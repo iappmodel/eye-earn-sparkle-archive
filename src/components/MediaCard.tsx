@@ -4,6 +4,7 @@ import { Play, Pause, Volume2, VolumeX, SkipForward } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
 import { EyeTrackingIndicator } from './EyeTrackingIndicator';
 import { useEyeTracking } from '@/hooks/useEyeTracking';
+import { useMediaSettings } from './MediaSettings';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -45,6 +46,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const startTimeRef = useRef<number>(0);
+
+  const { attentionThreshold } = useMediaSettings();
 
   // Eye tracking for promo content
   const isPromoContent = type === 'promo' && !!reward;
@@ -349,6 +352,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           onAttentionLostTooLong={handleAttentionLostTooLong}
           videoDuration={videoDuration}
           currentTime={currentTime}
+          attentionThreshold={attentionThreshold}
         />
       )}
 

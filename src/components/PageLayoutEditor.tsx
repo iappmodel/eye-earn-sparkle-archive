@@ -1,13 +1,13 @@
 // Page Layout Editor - Multi-directional navigation design with per-page themes
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
-  Plus, X, Move, RotateCcw, ChevronUp, ChevronDown, 
+  Plus, X, RotateCcw, ChevronUp, ChevronDown, 
   ChevronLeft, ChevronRight, Palette, GripVertical,
   Users, Video, Compass, Gift, Heart, Star, Home,
   MessageCircle, Wallet, Settings, Check, Trash2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useUICustomization, PageSlot, PageDirection, ThemeSettings } from '@/contexts/UICustomizationContext';
+import { useUICustomization, PageSlot, PageDirection } from '@/contexts/UICustomizationContext';
 import { 
   Select,
   SelectContent,
@@ -60,25 +60,20 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
     resetPageLayout 
   } = useUICustomization();
   
-  const [selectedDirection, setSelectedDirection] = useState<PageDirection>('center');
   const [editingPage, setEditingPage] = useState<string | null>(null);
+  const [draggedPage, setDraggedPage] = useState<PageSlot | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragDirection = useRef<PageDirection | null>(null);
 
   // Get pages by direction
   const getPagesByDirection = (direction: PageDirection) => {
-    return pageLayout.pages.filter(p => p.direction === direction);
+    return pageLayout.pages
+      .filter(p => p.direction === direction)
+      .sort((a, b) => a.order - b.order);
   };
 
   // Get current center page
   const centerPage = pageLayout.pages.find(p => p.direction === 'center');
-
-  // Direction labels
-  const directionLabels: Record<PageDirection, string> = {
-    center: 'Main',
-    up: 'Swipe Up',
-    down: 'Swipe Down',
-    left: 'Swipe Left',
-    right: 'Swipe Right',
-  };
 
   // Handle add page
   const handleAddPage = (direction: PageDirection) => {
@@ -99,29 +94,79 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
     });
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, page: PageSlot) => {
+    setDraggedPage(page);
+    dragDirection.current = page.direction;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', page.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number, direction: PageDirection) => {
+    e.preventDefault();
+    // Only allow dropping within same direction
+    if (dragDirection.current === direction) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (draggedPage && dragOverIndex !== null && dragDirection.current) {
+      const pagesInDirection = getPagesByDirection(dragDirection.current);
+      const fromIndex = pagesInDirection.findIndex(p => p.id === draggedPage.id);
+      if (fromIndex !== -1 && fromIndex !== dragOverIndex) {
+        reorderPages(dragDirection.current, fromIndex, dragOverIndex);
+      }
+    }
+    setDraggedPage(null);
+    setDragOverIndex(null);
+    dragDirection.current = null;
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
   // Render a page card
-  const renderPageCard = (page: PageSlot, isCenter = false) => {
+  const renderPageCard = (page: PageSlot, index: number, isCenter = false) => {
     const contentType = pageContentTypes.find(t => t.id === page.contentType);
     const Icon = contentType?.icon || Home;
     const theme = pageThemes.find(t => t.id === page.theme);
     const glowColor = page.customColors?.primary || theme?.colors.primary || contentType?.color || '270 95% 65%';
+    const isDragging = draggedPage?.id === page.id;
+    const isDragOver = dragOverIndex === index && dragDirection.current === page.direction;
     
     return (
       <div
         key={page.id}
+        draggable={!isCenter}
+        onDragStart={(e) => handleDragStart(e, page)}
+        onDragOver={(e) => handleDragOver(e, index, page.direction)}
+        onDragEnd={handleDragEnd}
+        onDragLeave={handleDragLeave}
         className={cn(
           'relative group rounded-2xl border transition-all duration-300',
-          'bg-card/80 backdrop-blur-sm',
+          'bg-card/80 backdrop-blur-sm cursor-pointer',
           isCenter 
             ? 'w-24 h-40 border-primary shadow-[0_0_25px_hsl(var(--primary)/0.4)]' 
             : 'w-20 h-32 border-border/50 hover:border-primary/50',
-          editingPage === page.id && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+          editingPage === page.id && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+          isDragging && 'opacity-50 scale-95',
+          isDragOver && 'ring-2 ring-accent ring-offset-1 scale-105',
+          !isCenter && 'cursor-grab active:cursor-grabbing'
         )}
         onClick={() => setEditingPage(page.id)}
         style={{
           boxShadow: isCenter ? undefined : `0 0 15px hsl(${glowColor} / 0.2)`
         }}
       >
+        {/* Drag handle indicator for non-center pages */}
+        {!isCenter && (
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <GripVertical className="w-3 h-3 text-muted-foreground/50" />
+          </div>
+        )}
+
         {/* Gradient overlay */}
         <div 
           className="absolute inset-0 rounded-2xl opacity-30"
@@ -149,6 +194,12 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
           )}>
             {page.label}
           </span>
+          {/* Order indicator for multi-page directions */}
+          {!isCenter && getPagesByDirection(page.direction).length > 1 && (
+            <span className="absolute bottom-1 right-1 text-[8px] text-muted-foreground/70 font-mono">
+              {index + 1}
+            </span>
+          )}
         </div>
         
         {/* Delete button (not for center) */}
@@ -173,7 +224,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
         {/* Theme indicator */}
         {page.theme !== 'inherit' && (
           <div 
-            className="absolute bottom-1 right-1 w-3 h-3 rounded-full border border-white/50"
+            className="absolute bottom-1 left-1 w-3 h-3 rounded-full border border-white/50"
             style={{ background: `hsl(${theme?.colors.primary || glowColor})` }}
           />
         )}
@@ -214,6 +265,21 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
     );
   };
 
+  // Render page stack for a direction
+  const renderPageStack = (direction: PageDirection, reverse = false) => {
+    const pages = getPagesByDirection(direction);
+    const orderedPages = reverse ? [...pages].reverse() : pages;
+    
+    return (
+      <div className={cn(
+        'flex items-center gap-2',
+        (direction === 'up' || direction === 'down') && 'flex-col'
+      )}>
+        {orderedPages.map((page, index) => renderPageCard(page, reverse ? pages.length - 1 - index : index))}
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
   const leftPages = getPagesByDirection('left');
@@ -230,7 +296,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
             Page Layout
           </h3>
           <p className="text-xs text-muted-foreground/70 mt-1">
-            Design your multi-directional navigation
+            Design your navigation • Drag to reorder
           </p>
         </div>
         <button
@@ -247,11 +313,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
         <div className="flex flex-col items-center gap-2">
           {/* Up section */}
           <div className="flex flex-col items-center gap-2">
-            {upPages.length > 0 && (
-              <div className="flex gap-2">
-                {upPages.map(page => renderPageCard(page))}
-              </div>
-            )}
+            {upPages.length > 0 && renderPageStack('up', true)}
             {renderAddButton('up')}
             {renderDirectionArrow('up')}
           </div>
@@ -261,13 +323,13 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
             {/* Left section */}
             <div className="flex items-center gap-2">
               {renderAddButton('left')}
-              {leftPages.slice().reverse().map(page => renderPageCard(page))}
+              {renderPageStack('left', true)}
               {renderDirectionArrow('left')}
             </div>
 
             {/* Center (Main page) */}
             <div className="relative">
-              {centerPage && renderPageCard(centerPage, true)}
+              {centerPage && renderPageCard(centerPage, 0, true)}
               {/* Phone frame effect */}
               <div className="absolute inset-0 rounded-2xl border-2 border-foreground/10 pointer-events-none" />
             </div>
@@ -275,7 +337,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
             {/* Right section */}
             <div className="flex items-center gap-2">
               {renderDirectionArrow('right')}
-              {rightPages.map(page => renderPageCard(page))}
+              {renderPageStack('right')}
               {renderAddButton('right')}
             </div>
           </div>
@@ -283,11 +345,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
           {/* Down section */}
           <div className="flex flex-col items-center gap-2">
             {renderDirectionArrow('down')}
-            {downPages.length > 0 && (
-              <div className="flex gap-2">
-                {downPages.map(page => renderPageCard(page))}
-              </div>
-            )}
+            {downPages.length > 0 && renderPageStack('down')}
             {renderAddButton('down')}
           </div>
         </div>
@@ -297,10 +355,9 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
       {editingPage && (() => {
         const page = pageLayout.pages.find(p => p.id === editingPage);
         if (!page) return null;
-        const contentType = pageContentTypes.find(t => t.id === page.contentType);
         
         return (
-          <div className="p-4 rounded-2xl bg-muted/20 border border-border/30 space-y-4">
+          <div className="p-4 rounded-2xl bg-muted/20 border border-border/30 space-y-4 animate-fade-in">
             <div className="flex items-center justify-between">
               <h4 className="font-semibold flex items-center gap-2">
                 <Palette className="w-4 h-4 text-primary" />
@@ -370,7 +427,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
                       customColors: theme.id !== 'inherit' ? theme.colors : undefined
                     })}
                     className={cn(
-                      'flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
+                      'relative flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
                       page.theme === theme.id
                         ? 'border-primary bg-primary/10'
                         : 'border-border/30 hover:border-border'

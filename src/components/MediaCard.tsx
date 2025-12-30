@@ -9,7 +9,6 @@ import { useEyeTracking } from '@/hooks/useEyeTracking';
 import { useMediaSettings } from './MediaSettings';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { notificationSoundService } from '@/services/notificationSound.service';
-import { useControlsVisibility } from './FloatingControls';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -61,7 +60,6 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const lastAttentionCheckRef = useRef(Date.now());
 
   const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
-  const { isVisible: controlsVisible } = useControlsVisibility();
   const haptic = useHapticFeedback();
 
   // Eye tracking for promo content
@@ -133,10 +131,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
 
     const totalWatchedTime = currentTime * 1000;
-    if (totalWatchedTime > 0) {
+    // Only check after at least 5 seconds of watch time to prevent early triggering
+    if (totalWatchedTime > 5000) {
       const lostPercentage = (attentionLostTimeRef.current / totalWatchedTime) * 100;
       
-      if (lostPercentage > attentionThreshold && !isAttentive) {
+      // Use a much higher threshold (50%) and require significant lost time
+      if (lostPercentage > 50 && attentionLostTimeRef.current > 8000 && !isAttentive) {
         handleAttentionLostTooLong();
       }
     }
@@ -455,63 +455,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Bottom gradient for controls visibility */}
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
-      {/* Eye tracking indicator - right side, matching FloatingControls visibility */}
+      {/* Eye tracking indicator - top center edge, minimal design */}
       {isPromoContent && (isPlaying || attentionPaused) && eyeTrackingEnabled && (
-        <div 
-          className={cn(
-            'fixed right-4 z-40 transition-all duration-500 ease-out',
-            controlsVisible 
-              ? 'opacity-100 translate-x-0' 
-              : 'opacity-0 translate-x-12 pointer-events-none'
-          )}
-          style={{ top: 'calc(50% + 180px)' }}
-        >
-          <div className="flex flex-col items-center gap-1">
-            {/* Eye indicator button - matching NeuButton style */}
-            <div className={cn(
-              'w-12 h-12 rounded-2xl',
-              'bg-gradient-to-b from-muted/90 to-muted',
-              'border border-border/50',
-              'flex items-center justify-center',
-              'shadow-[0_4px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)]',
-              'backdrop-blur-sm'
-            )}>
-              {/* Animated eye SVG */}
-              <div className="relative w-8 h-8 flex items-center justify-center">
-                <svg
-                  viewBox="0 0 40 40"
-                  className={cn(
-                    'absolute inset-0 w-full h-full transition-all duration-300',
-                    attentionScore >= 80 ? 'stroke-green-500' : 
-                    attentionScore >= 50 ? 'stroke-yellow-500' : 
-                    attentionScore >= 30 ? 'stroke-orange-500' : 'stroke-red-500'
-                  )}
-                  fill="none"
-                  strokeWidth="1.5"
-                >
-                  <circle cx="20" cy="20" r="15" />
-                  <circle cx="20" cy="20" r="8" />
-                </svg>
-                <div className={cn(
-                  'absolute w-2.5 h-2.5 rounded-full',
-                  attentionScore >= 80 ? 'bg-green-500' : 
-                  attentionScore >= 50 ? 'bg-yellow-500' : 
-                  attentionScore >= 30 ? 'bg-orange-500' : 'bg-red-500',
-                  !isFaceDetected && 'animate-pulse'
-                )} />
-              </div>
-            </div>
-            {/* Attention percentage label */}
-            <span className={cn(
-              'text-[10px] font-medium tabular-nums transition-colors',
-              attentionScore >= 80 ? 'text-green-500' : 
-              attentionScore >= 50 ? 'text-yellow-500' : 
-              attentionScore >= 30 ? 'text-orange-500' : 'text-red-500'
-            )}>
-              {Math.round(attentionScore)}%
-            </span>
-          </div>
-        </div>
+        <EyeTrackingIndicator
+          isTracking={isTracking}
+          isFaceDetected={isFaceDetected}
+          attentionScore={attentionScore}
+          position="top-center"
+        />
       )}
 
       {/* Focus Challenge Mini-Game overlay */}
@@ -528,25 +479,22 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         <div className="absolute inset-0 bg-destructive/10 pointer-events-none z-10 animate-pulse" />
       )}
 
-      {/* Attention pause overlay - requires user to look back */}
+      {/* Attention pause state - subtle indicator without blocking overlay */}
       {attentionPaused && (
         <div 
-          className="absolute inset-0 bg-background/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 cursor-pointer animate-fade-in"
+          className="absolute inset-x-0 top-16 z-30 flex justify-center animate-fade-in"
           onClick={handleResumeFromAttentionPause}
         >
-          <div className="w-20 h-20 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
-            <svg viewBox="0 0 40 40" className="w-16 h-16 stroke-red-500" fill="none" strokeWidth="1.5">
-              <circle cx="20" cy="20" r="18" />
-              <circle cx="20" cy="20" r="10" />
-            </svg>
-            <div className="absolute w-4 h-4 rounded-full bg-red-500" />
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/20 backdrop-blur-sm border border-red-500/40 cursor-pointer hover:bg-red-500/30 transition-colors">
+            <div className="w-8 h-8 rounded-full bg-red-500/30 flex items-center justify-center">
+              <svg viewBox="0 0 40 40" className="w-5 h-5 stroke-red-500" fill="none" strokeWidth="2">
+                <circle cx="20" cy="20" r="14" />
+                <circle cx="20" cy="20" r="7" />
+              </svg>
+              <div className="absolute w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            </div>
+            <span className="text-sm text-red-400 font-medium">Tap to resume</span>
           </div>
-          <p className="text-foreground text-lg font-medium text-center px-8">
-            Look at the screen to continue
-          </p>
-          <p className="text-muted-foreground text-sm">
-            Tap anywhere to resume
-          </p>
         </div>
       )}
 

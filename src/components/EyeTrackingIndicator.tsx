@@ -9,16 +9,12 @@ interface EyeTrackingIndicatorProps {
   attentionScore: number;
   position?: EyeIndicatorPosition;
   className?: string;
-  onAttentionLostTooLong?: () => void;
-  videoDuration?: number;
-  currentTime?: number;
-  attentionThreshold?: number;
 }
 
 const positionClasses: Record<EyeIndicatorPosition, string> = {
-  'top-left': 'top-0 left-4',
-  'top-center': 'top-0 left-1/2 -translate-x-1/2',
-  'top-right': 'top-0 right-4',
+  'top-left': 'top-2 left-4',
+  'top-center': 'top-2 left-1/2 -translate-x-1/2',
+  'top-right': 'top-2 right-4',
   'bottom-left': 'bottom-20 left-4',
   'bottom-right': 'bottom-20 right-4',
 };
@@ -29,57 +25,59 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
   attentionScore,
   position = 'top-center',
   className,
-  onAttentionLostTooLong,
-  videoDuration = 0,
-  currentTime = 0,
-  attentionThreshold = 10,
 }) => {
-  const [isHidden, setIsHidden] = useState(false);
+  const [visibility, setVisibility] = useState<'full' | 'iris-only' | 'hidden'>('full');
   const [irisOffset, setIrisOffset] = useState({ x: 0, y: 0 });
-  const attentionLostTimeRef = useRef(0);
-  const lastCheckRef = useRef(Date.now());
+  const goodAttentionStartRef = useRef<number | null>(null);
   
   const isAttentive = isFaceDetected && attentionScore >= 50;
   
-  // Hide indicator when attention is above 33%
+  // Progressive hiding: full eye -> iris only -> completely hidden
+  // When attention is lost: immediately show full eye (red)
   useEffect(() => {
-    if (attentionScore >= 33 && isAttentive) {
-      const timer = setTimeout(() => setIsHidden(true), 500);
-      return () => clearTimeout(timer);
-    } else {
-      setIsHidden(false);
-    }
-  }, [attentionScore, isAttentive]);
-
-  // Track attention lost time and trigger auto-pause if > threshold %
-  useEffect(() => {
-    if (!isTracking || videoDuration <= 0) return;
-
-    const now = Date.now();
-    const elapsed = now - lastCheckRef.current;
-    lastCheckRef.current = now;
-
     if (!isAttentive) {
-      attentionLostTimeRef.current += elapsed;
+      // Attention lost - show full eye immediately
+      setVisibility('full');
+      goodAttentionStartRef.current = null;
+      return;
     }
 
-    const totalWatchedTime = currentTime * 1000; // convert to ms
-    if (totalWatchedTime > 0) {
-      const lostPercentage = (attentionLostTimeRef.current / totalWatchedTime) * 100;
-      
-      if (lostPercentage > attentionThreshold && !isAttentive) {
-        onAttentionLostTooLong?.();
-      }
+    // Start tracking good attention time
+    if (goodAttentionStartRef.current === null) {
+      goodAttentionStartRef.current = Date.now();
     }
-  }, [isTracking, isAttentive, videoDuration, currentTime, onAttentionLostTooLong, attentionThreshold]);
 
-  // Reset attention lost time when tracking starts fresh
+    const elapsed = Date.now() - goodAttentionStartRef.current;
+    
+    // After 2s of good attention: hide outer circle (show iris only)
+    // After 4s of good attention: hide everything
+    if (elapsed >= 4000) {
+      setVisibility('hidden');
+    } else if (elapsed >= 2000) {
+      setVisibility('iris-only');
+    } else {
+      setVisibility('full');
+    }
+  }, [isAttentive, attentionScore]);
+
+  // Update visibility on interval when attentive
   useEffect(() => {
-    if (isTracking) {
-      attentionLostTimeRef.current = 0;
-      lastCheckRef.current = Date.now();
-    }
-  }, [isTracking]);
+    if (!isAttentive) return;
+
+    const interval = setInterval(() => {
+      if (goodAttentionStartRef.current === null) return;
+      
+      const elapsed = Date.now() - goodAttentionStartRef.current;
+      
+      if (elapsed >= 4000) {
+        setVisibility('hidden');
+      } else if (elapsed >= 2000) {
+        setVisibility('iris-only');
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [isAttentive]);
 
   // Subtle iris movement when tracking is active
   useEffect(() => {
@@ -109,36 +107,35 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
     if (!isAttentive) {
       return {
         stroke: 'stroke-red-500',
-        fill: 'fill-red-500',
         bg: 'bg-red-500',
-        glow: 'shadow-red-500/40',
+        shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.6)]',
       };
     }
     if (attentionScore >= 80) {
       return {
         stroke: 'stroke-green-500',
-        fill: 'fill-green-500',
         bg: 'bg-green-500',
-        glow: 'shadow-green-500/40',
+        shadow: 'shadow-[0_0_10px_rgba(34,197,94,0.4)]',
       };
     }
     if (attentionScore >= 50) {
       return {
         stroke: 'stroke-yellow-500',
-        fill: 'fill-yellow-500',
         bg: 'bg-yellow-500',
-        glow: 'shadow-yellow-500/40',
+        shadow: 'shadow-[0_0_10px_rgba(234,179,8,0.4)]',
       };
     }
     return {
       stroke: 'stroke-orange-500',
-      fill: 'fill-orange-500',
       bg: 'bg-orange-500',
-      glow: 'shadow-orange-500/40',
+      shadow: 'shadow-[0_0_10px_rgba(249,115,22,0.4)]',
     };
   };
 
   const colors = getEyeColor();
+  const showOuterCircle = visibility === 'full';
+  const showIris = visibility === 'full' || visibility === 'iris-only';
+  const isHidden = visibility === 'hidden';
 
   return (
     <div 
@@ -149,27 +146,33 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
         className
       )}
     >
-      {/* Eye container - circular design like reference */}
-      <div className="relative w-10 h-10 flex items-center justify-center">
-        {/* Outer circle (eye outline) */}
+      {/* Eye container - minimal circular design matching reference */}
+      <div className={cn(
+        'relative w-12 h-12 flex items-center justify-center rounded-full transition-all duration-300',
+        'bg-muted/60 backdrop-blur-sm border border-border/30',
+        colors.shadow
+      )}>
+        {/* Outer circle (eye outline) - fades out first */}
         <svg
           viewBox="0 0 40 40"
           className={cn(
-            'absolute inset-0 w-full h-full transition-all duration-300',
-            colors.stroke
+            'absolute inset-0 w-full h-full transition-all duration-500',
+            colors.stroke,
+            showOuterCircle ? 'opacity-100' : 'opacity-0'
           )}
           fill="none"
           strokeWidth="1.5"
         >
-          <circle cx="20" cy="20" r="18" className="transition-colors duration-300" />
+          <circle cx="20" cy="20" r="16" className="transition-colors duration-300" />
         </svg>
         
-        {/* Middle circle (iris outline) */}
+        {/* Middle circle (iris outline) - fades out second */}
         <svg
           viewBox="0 0 40 40"
           className={cn(
-            'absolute inset-0 w-full h-full transition-all duration-300',
-            colors.stroke
+            'absolute inset-0 w-full h-full transition-all duration-500',
+            colors.stroke,
+            showIris ? 'opacity-100' : 'opacity-0'
           )}
           fill="none"
           strokeWidth="1"
@@ -177,8 +180,8 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
           <circle 
             cx="20" 
             cy="20" 
-            r="10" 
-            className="transition-colors duration-300"
+            r="9" 
+            className="transition-all duration-300"
             style={{
               transform: `translate(${irisOffset.x}px, ${irisOffset.y}px)`,
               transformOrigin: 'center',
@@ -186,26 +189,25 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
           />
         </svg>
         
-        {/* Inner pupil dot */}
+        {/* Inner pupil dot - always visible when indicator shown */}
         <div
           className={cn(
-            'absolute w-3 h-3 rounded-full transition-all duration-300',
+            'absolute w-3.5 h-3.5 rounded-full transition-all duration-300',
             colors.bg,
-            colors.glow,
-            'shadow-md'
+            showIris ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
           )}
           style={{
             transform: `translate(${irisOffset.x}px, ${irisOffset.y}px)`,
           }}
         >
           {/* Highlight */}
-          <div className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-white/50" />
+          <div className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-white/60" />
         </div>
 
-        {/* Pulse effect when not attentive */}
+        {/* Pulse effect when attention is lost */}
         {!isAttentive && (
           <div 
-            className="absolute inset-0 rounded-full border-2 border-red-500 animate-ping"
+            className="absolute inset-0 rounded-full border-2 border-red-500/60 animate-ping"
             style={{ animationDuration: '1.5s' }}
           />
         )}

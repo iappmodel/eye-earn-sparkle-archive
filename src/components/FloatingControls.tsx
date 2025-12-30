@@ -4,7 +4,7 @@ import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
-import { LongPressButtonWrapper } from './LongPressButtonWrapper';
+import { LongPressButtonWrapper, getHiddenButtons } from './LongPressButtonWrapper';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
 
@@ -302,7 +302,18 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     return new Set(Object.keys(saved));
   });
   
-  const visibleButtons = getVisibleButtons();
+  const [hiddenButtons, setHiddenButtonsState] = useState<string[]>(() => getHiddenButtons());
+  
+  // Listen for hidden buttons changes
+  useEffect(() => {
+    const handleHiddenChange = (e: CustomEvent) => {
+      setHiddenButtonsState(e.detail);
+    };
+    window.addEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
+    return () => window.removeEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
+  }, []);
+  
+  const visibleButtons = getVisibleButtons().filter(b => !hiddenButtons.includes(b.id));
 
   // Format large numbers
   const formatCount = (count: number): string => {

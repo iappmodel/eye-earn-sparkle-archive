@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -438,11 +438,15 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   );
 };
 
-// Quick toggle button component
+// Quick toggle button component with animation
 export const QuickVisibilityToggle: React.FC = () => {
   const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
+  const [isAnimating, setIsAnimating] = useState(false);
   
   const toggleVisibility = () => {
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 300);
+    
     const newValue = !isHidden;
     setIsHidden(newValue);
     setButtonsHidden(newValue);
@@ -458,17 +462,73 @@ export const QuickVisibilityToggle: React.FC = () => {
         'flex items-center justify-center',
         'transition-all duration-300',
         'backdrop-blur-md border',
+        'active:scale-90',
+        isAnimating && 'scale-110',
         isHidden 
-          ? 'bg-primary/20 border-primary/40 text-primary shadow-[0_0_15px_hsl(var(--primary)/0.3)]'
+          ? 'bg-primary/20 border-primary/40 text-primary shadow-[0_0_20px_hsl(var(--primary)/0.4)]'
           : 'bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50'
       )}
-      title={isHidden ? 'Show buttons' : 'Hide buttons'}
+      title={isHidden ? 'Show buttons (or double-tap screen)' : 'Hide buttons (or double-tap screen)'}
     >
-      {isHidden ? (
-        <Eye className="w-5 h-5" />
-      ) : (
-        <EyeOff className="w-5 h-5" />
-      )}
+      <span className={cn(
+        'transition-all duration-300',
+        isAnimating && 'rotate-180 scale-110'
+      )}>
+        {isHidden ? (
+          <Eye className="w-5 h-5" />
+        ) : (
+          <EyeOff className="w-5 h-5" />
+        )}
+      </span>
     </button>
+  );
+};
+
+// Double-tap gesture detector component
+export const DoubleTapGestureDetector: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const lastTapRef = useRef<number>(0);
+  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const handleTap = useCallback((e: React.PointerEvent) => {
+    // Ignore taps on interactive elements
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('button') ||
+      target.closest('a') ||
+      target.closest('input') ||
+      target.closest('[role="button"]') ||
+      target.closest('[data-draggable]')
+    ) {
+      return;
+    }
+    
+    const now = Date.now();
+    const timeSinceLastTap = now - lastTapRef.current;
+    
+    if (timeSinceLastTap < 300 && timeSinceLastTap > 50) {
+      // Double tap detected
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+      
+      const currentHidden = getButtonsHidden();
+      setButtonsHidden(!currentHidden);
+      window.dispatchEvent(new Event('storage'));
+      
+      // Prevent default to avoid text selection
+      e.preventDefault();
+    }
+    
+    lastTapRef.current = now;
+  }, []);
+
+  return (
+    <div 
+      onPointerDown={handleTap}
+      className="contents"
+    >
+      {children}
+    </div>
   );
 };

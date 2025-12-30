@@ -59,6 +59,45 @@ export type Database = {
         }
         Relationships: []
       }
+      account_activity_logs: {
+        Row: {
+          activity_type: string
+          created_at: string
+          details: Json | null
+          device_info: Json | null
+          id: string
+          ip_address: string | null
+          location: string | null
+          status: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string
+          details?: Json | null
+          device_info?: Json | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          status?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string
+          details?: Json | null
+          device_info?: Json | null
+          id?: string
+          ip_address?: string | null
+          location?: string | null
+          status?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       account_deletion_requests: {
         Row: {
           cancelled_at: string | null
@@ -191,6 +230,33 @@ export type Database = {
           release_notes?: string | null
           released_at?: string | null
           version?: string
+        }
+        Relationships: []
+      }
+      blocked_users: {
+        Row: {
+          block_type: string
+          blocked_user_id: string
+          created_at: string
+          id: string
+          reason: string | null
+          user_id: string
+        }
+        Insert: {
+          block_type?: string
+          blocked_user_id: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          user_id: string
+        }
+        Update: {
+          block_type?: string
+          blocked_user_id?: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -785,6 +851,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           bio: string | null
+          cover_photo_url: string | null
           created_at: string
           display_name: string | null
           followers_count: number | null
@@ -796,6 +863,7 @@ export type Database = {
           phone_number: string | null
           phone_verified: boolean | null
           referred_by: string | null
+          social_links: Json | null
           total_likes: number | null
           total_views: number | null
           updated_at: string
@@ -806,6 +874,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           bio?: string | null
+          cover_photo_url?: string | null
           created_at?: string
           display_name?: string | null
           followers_count?: number | null
@@ -817,6 +886,7 @@ export type Database = {
           phone_number?: string | null
           phone_verified?: boolean | null
           referred_by?: string | null
+          social_links?: Json | null
           total_likes?: number | null
           total_views?: number | null
           updated_at?: string
@@ -827,6 +897,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           bio?: string | null
+          cover_photo_url?: string | null
           created_at?: string
           display_name?: string | null
           followers_count?: number | null
@@ -838,6 +909,7 @@ export type Database = {
           phone_number?: string | null
           phone_verified?: boolean | null
           referred_by?: string | null
+          social_links?: Json | null
           total_likes?: number | null
           total_views?: number | null
           updated_at?: string

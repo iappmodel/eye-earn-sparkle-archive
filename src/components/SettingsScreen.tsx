@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
-import { clearAllPositions, getRepositionedCount } from './DraggableButton';
+import { 
+  clearAllPositions, 
+  getRepositionedCount, 
+  useDragContext, 
+  loadButtonGroups,
+  loadMagneticSnapPoints,
+  clearAllMagneticSnapPoints,
+} from './DraggableButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -35,15 +42,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 }) => {
   const { t, localeConfig, formatCurrency, isRTL } = useLocalization();
   const { themePack, setThemePack } = useAccessibility();
+  const { setGroupingMode, setSnapPointMode } = useDragContext();
   const [isDarkMode, setIsDarkMode] = useState(() => 
     document.documentElement.classList.contains('dark')
   );
   const [repositionedCount, setRepositionedCount] = useState(0);
+  const [groupCount, setGroupCount] = useState(0);
+  const [snapPointCount, setSnapPointCount] = useState(0);
 
-  // Update count when screen opens
+  // Update counts when screen opens
   useEffect(() => {
     if (isOpen) {
       setRepositionedCount(getRepositionedCount());
+      setGroupCount(loadButtonGroups().length);
+      setSnapPointCount(loadMagneticSnapPoints().length);
     }
   }, [isOpen]);
 
@@ -63,9 +75,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const handleResetButtonPositions = () => {
     clearAllPositions();
     setRepositionedCount(0);
-    toast.success('All button positions reset');
-    // Trigger a page reload to apply changes
+    setGroupCount(0);
+    toast.success('All button positions and groups reset');
     window.location.reload();
+  };
+
+  const handleStartGrouping = () => {
+    onClose();
+    setGroupingMode(true);
+    toast.info('Tap buttons to select them for grouping');
+  };
+
+  const handleStartSnapPointMode = () => {
+    onClose();
+    setSnapPointMode(true);
+    toast.info('Tap anywhere on screen to add snap points');
+  };
+
+  const handleClearSnapPoints = () => {
+    clearAllMagneticSnapPoints();
+    setSnapPointCount(0);
+    toast.success('All snap points cleared');
   };
 
   return (
@@ -195,33 +225,89 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </button>
           </section>
 
-          {/* Button Layout Reset */}
+          {/* Button Layout & Grouping */}
           <section>
             <div className="flex items-center gap-2 mb-4">
               <Move className="w-5 h-5 text-primary" />
-              <h2 className="font-display text-lg font-semibold">Button Positions</h2>
+              <h2 className="font-display text-lg font-semibold">Button Layout</h2>
             </div>
-            <div className="neu-inset rounded-xl p-4 space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {repositionedCount > 0 
-                  ? `${repositionedCount} button${repositionedCount > 1 ? 's' : ''} repositioned`
-                  : 'No buttons have been repositioned'}
-              </p>
+            <div className="neu-inset rounded-xl p-4 space-y-4">
+              {/* Stats */}
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Repositioned buttons:</span>
+                <span className="font-medium">{repositionedCount}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Button groups:</span>
+                <span className="font-medium">{groupCount}</span>
+              </div>
+              
+              {/* Grouping Mode Button */}
+              <button
+                onClick={handleStartGrouping}
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-accent/10 text-accent-foreground border border-accent/30 hover:bg-accent/20 transition-all"
+              >
+                <Link2 className="w-4 h-4" />
+                <span className="font-medium">Create Button Group</span>
+              </button>
+              
+              {/* Reset Button */}
               <button
                 onClick={handleResetButtonPositions}
-                disabled={repositionedCount === 0}
+                disabled={repositionedCount === 0 && groupCount === 0}
                 className={cn(
                   'w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-all',
-                  repositionedCount > 0
+                  (repositionedCount > 0 || groupCount > 0)
                     ? 'bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20'
                     : 'bg-muted/30 text-muted-foreground cursor-not-allowed'
                 )}
               >
                 <RotateCcw className="w-4 h-4" />
-                <span className="font-medium">Reset All Positions</span>
+                <span className="font-medium">Reset All</span>
               </button>
+              
               <p className="text-xs text-muted-foreground/70 text-center">
                 Hold any button for 2 seconds to drag it
+              </p>
+            </div>
+          </section>
+
+          {/* Magnetic Snap Points */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Magnet className="w-5 h-5 text-accent" />
+              <h2 className="font-display text-lg font-semibold">Snap Points</h2>
+            </div>
+            <div className="neu-inset rounded-xl p-4 space-y-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Custom snap points:</span>
+                <span className="font-medium">{snapPointCount}</span>
+              </div>
+              
+              <button
+                onClick={handleStartSnapPointMode}
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all"
+              >
+                <Magnet className="w-4 h-4" />
+                <span className="font-medium">Add Snap Points</span>
+              </button>
+              
+              <button
+                onClick={handleClearSnapPoints}
+                disabled={snapPointCount === 0}
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-all',
+                  snapPointCount > 0
+                    ? 'bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20'
+                    : 'bg-muted/30 text-muted-foreground cursor-not-allowed'
+                )}
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span className="font-medium">Clear Snap Points</span>
+              </button>
+              
+              <p className="text-xs text-muted-foreground/70 text-center">
+                Buttons will magnetically snap to these points when dragged nearby
               </p>
             </div>
           </section>

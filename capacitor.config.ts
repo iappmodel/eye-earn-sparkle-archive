@@ -11,6 +11,9 @@ const config: CapacitorConfig = {
   plugins: {
     NativeBiometric: {
       faceIdDescription: 'Use Face ID to sign in quickly and securely'
+    },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert']
     }
   }
 };

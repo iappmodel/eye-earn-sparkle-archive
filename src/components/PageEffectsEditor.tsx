@@ -25,7 +25,7 @@ const defaultEffects: PageEffects = {
 export const PageEffectsEditor: React.FC<PageEffectsEditorProps> = ({
   effects = defaultEffects,
   transitionSpeed,
-  globalAnimationSpeed,
+  globalAnimationSpeed = 1,
   onChange,
   onTransitionSpeedChange,
 }) => {

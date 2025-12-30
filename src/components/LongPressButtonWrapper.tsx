@@ -173,7 +173,61 @@ export interface ButtonUIGroup {
   buttonIds: string[];
   isCollapsed: boolean;
   icon?: string;
+  hoverEffect?: ButtonHoverEffect;
 }
+
+// Group Templates for quick setup
+export interface GroupTemplate {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  buttonIds: string[];
+  suggestedHover: ButtonHoverEffect;
+}
+
+export const GROUP_TEMPLATES: GroupTemplate[] = [
+  {
+    id: 'social-actions',
+    name: 'Social Actions',
+    description: 'Like, comment, share, and follow',
+    icon: 'heart',
+    buttonIds: ['like-button', 'comment-button', 'share-button', 'follow-button'],
+    suggestedHover: 'scale',
+  },
+  {
+    id: 'media-controls',
+    name: 'Media Controls',
+    description: 'Playback and media actions',
+    icon: 'video',
+    buttonIds: ['save-button', 'mute-button'],
+    suggestedHover: 'glow',
+  },
+  {
+    id: 'navigation',
+    name: 'Navigation',
+    description: 'Profile, wallet, and settings',
+    icon: 'compass',
+    buttonIds: ['wallet-button', 'profile-button', 'settings-button'],
+    suggestedHover: 'lift',
+  },
+  {
+    id: 'engagement',
+    name: 'Engagement',
+    description: 'Tips, gifts, and rewards',
+    icon: 'gift',
+    buttonIds: ['tip-button', 'like-button'],
+    suggestedHover: 'scale-rotate',
+  },
+  {
+    id: 'moderation',
+    name: 'Moderation',
+    description: 'Report and mute controls',
+    icon: 'shield',
+    buttonIds: ['report-button', 'mute-button'],
+    suggestedHover: 'none',
+  },
+];
 
 // Load/save button settings
 export const loadButtonSettings = (): Record<string, ButtonSettings> => {
@@ -591,6 +645,43 @@ export const removeButtonFromUIGroup = (groupId: string, buttonId: string) => {
 export const getButtonUIGroup = (buttonId: string): ButtonUIGroup | undefined => {
   const groups = loadButtonUIGroups();
   return groups.find(g => g.buttonIds.includes(buttonId));
+};
+
+export const setGroupHoverEffect = (groupId: string, hoverEffect: ButtonHoverEffect) => {
+  const groups = loadButtonUIGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (group) {
+    group.hoverEffect = hoverEffect;
+    saveButtonUIGroups(groups);
+  }
+};
+
+export const getGroupHoverEffect = (groupId: string): ButtonHoverEffect | undefined => {
+  const groups = loadButtonUIGroups();
+  const group = groups.find(g => g.id === groupId);
+  return group?.hoverEffect;
+};
+
+export const createGroupFromTemplate = (templateId: string, availableButtonIds: string[]): ButtonUIGroup | null => {
+  const template = GROUP_TEMPLATES.find(t => t.id === templateId);
+  if (!template) return null;
+  
+  // Only include buttons that are actually available
+  const matchingButtonIds = template.buttonIds.filter(id => availableButtonIds.includes(id));
+  if (matchingButtonIds.length === 0) return null;
+  
+  const groups = loadButtonUIGroups();
+  const newGroup: ButtonUIGroup = {
+    id: `ui-group-${Date.now()}`,
+    name: template.name,
+    buttonIds: matchingButtonIds,
+    isCollapsed: false,
+    icon: template.icon,
+    hoverEffect: template.suggestedHover,
+  };
+  groups.push(newGroup);
+  saveButtonUIGroups(groups);
+  return newGroup;
 };
 
 // Snap position to grid

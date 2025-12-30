@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { MediaSettings } from './MediaSettings';
 import { SecurityPrivacySettings } from './SecurityPrivacySettings';
+import { HiddenButtonsManager } from './HiddenButtonsManager';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
 import { 
@@ -374,9 +375,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </button>
               
               <p className="text-xs text-muted-foreground/70 text-center">
-                Hold any button for 2 seconds to drag it
+                Hold any button for 1 second to customize it
               </p>
             </div>
+          </section>
+
+          {/* Hidden Buttons Manager */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <EyeOff className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Hidden Buttons</h2>
+            </div>
+            <HiddenButtonsManager />
           </section>
 
           {/* Layout Presets */}

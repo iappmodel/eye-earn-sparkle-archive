@@ -1,6 +1,6 @@
 // Long Press Button Wrapper - Enables editing and repositioning any button via 1s long-press
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw, Grid3X3, Zap } from 'lucide-react';
+import { Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw, Grid3X3, Zap, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { loadSavedPositions, savePositions, clearAllPositions } from './DraggableButton';
@@ -38,10 +38,19 @@ const AUTO_HIDE_DELAY_KEY = 'visuai-auto-hide-delay';
 const GRID_SNAP_KEY = 'visuai-grid-snap-enabled';
 const HIDDEN_BUTTONS_KEY = 'visuai-hidden-buttons';
 const BUTTON_ACTIONS_KEY = 'visuai-button-actions';
+const BUTTON_SIZES_KEY = 'visuai-button-sizes';
 
 // Grid snap configuration
 const GRID_SIZE = 40;
 const EDGE_PADDING = 16;
+
+// Button size options
+export type ButtonSizeOption = 'sm' | 'md' | 'lg';
+export const BUTTON_SIZE_OPTIONS: { value: ButtonSizeOption; label: string }[] = [
+  { value: 'sm', label: 'Small' },
+  { value: 'md', label: 'Medium' },
+  { value: 'lg', label: 'Large' },
+];
 
 // Load/save button settings
 export const loadButtonSettings = (): Record<string, ButtonSettings> => {
@@ -158,6 +167,32 @@ export const getButtonAction = (buttonId: string, defaultAction: string): string
   return actions[buttonId] || defaultAction;
 };
 
+// Button sizes management
+export const getButtonSizes = (): Record<string, ButtonSizeOption> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_SIZES_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonSize = (buttonId: string, size: ButtonSizeOption) => {
+  try {
+    const sizes = getButtonSizes();
+    sizes[buttonId] = size;
+    localStorage.setItem(BUTTON_SIZES_KEY, JSON.stringify(sizes));
+    window.dispatchEvent(new CustomEvent('buttonSizesChanged', { detail: sizes }));
+  } catch (e) {
+    console.error('Failed to save button size:', e);
+  }
+};
+
+export const getButtonSize = (buttonId: string, defaultSize: ButtonSizeOption = 'md'): ButtonSizeOption => {
+  const sizes = getButtonSizes();
+  return sizes[buttonId] || defaultSize;
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {
@@ -223,10 +258,13 @@ const ButtonSettingsPopover: React.FC<{
   showAutoHideSettings?: boolean;
   showVisibilityToggle?: boolean;
   showActionSelector?: boolean;
+  showSizeSelector?: boolean;
   currentAction?: string;
+  currentSize?: ButtonSizeOption;
   availableActions?: { value: string; label: string }[];
   onActionChange?: (action: string) => void;
   onVisibilityChange?: (visible: boolean) => void;
+  onSizeChange?: (size: ButtonSizeOption) => void;
   onDragMode: (snapEnabled: boolean) => void;
 }> = ({ 
   buttonId, 
@@ -237,10 +275,13 @@ const ButtonSettingsPopover: React.FC<{
   showAutoHideSettings, 
   showVisibilityToggle = true,
   showActionSelector = true,
+  showSizeSelector = true,
   currentAction,
+  currentSize = 'md',
   availableActions = ALL_BUTTON_ACTIONS,
   onActionChange,
   onVisibilityChange,
+  onSizeChange,
   onDragMode 
 }) => {
   const { light, success } = useHapticFeedback();
@@ -248,6 +289,7 @@ const ButtonSettingsPopover: React.FC<{
   const [gridSnapEnabled, setGridSnap] = useState(getGridSnapEnabled());
   const [isHidden, setIsHidden] = useState(() => isButtonHidden(buttonId));
   const [selectedAction, setSelectedAction] = useState(currentAction || 'none');
+  const [selectedSize, setSelectedSize] = useState<ButtonSizeOption>(() => getButtonSize(buttonId, currentSize));
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -284,6 +326,13 @@ const ButtonSettingsPopover: React.FC<{
     setSelectedAction(action);
     setButtonAction(buttonId, action);
     onActionChange?.(action);
+  };
+
+  const handleSizeChange = (size: ButtonSizeOption) => {
+    light();
+    setSelectedSize(size);
+    setButtonSize(buttonId, size);
+    onSizeChange?.(size);
   };
 
   const handleResetPosition = () => {
@@ -367,6 +416,32 @@ const ButtonSettingsPopover: React.FC<{
                 )} />
               </div>
             </button>
+          )}
+
+          {/* Size Selector */}
+          {showSizeSelector && !showAutoHideSettings && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Button Size</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {BUTTON_SIZE_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleSizeChange(option.value)}
+                    className={cn(
+                      'px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                      selectedSize === option.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Action Selector */}

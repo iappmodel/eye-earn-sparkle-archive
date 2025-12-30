@@ -33,7 +33,7 @@ interface TutorialStep {
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to Eye Remote Control',
+    title: 'Welcome to Remote Control',
     description: 'Control the app hands-free using just your eyes and blinks. This tutorial will guide you through the setup.',
     icon: <Eye className="w-12 h-12 text-primary" />,
     animation: 'animate-pulse',
@@ -131,7 +131,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'ready',
     title: "You're Ready!",
-    description: 'The eye remote control is now set up. Tap the remote control button in the sidebar to activate it anytime. Enjoy hands-free browsing!',
+    description: 'The Remote Control is now set up. Tap the remote control button in the sidebar to activate it anytime. Enjoy hands-free browsing!',
     icon: <Sparkles className="w-12 h-12 text-amber-500" />,
     animation: 'animate-bounce',
   },

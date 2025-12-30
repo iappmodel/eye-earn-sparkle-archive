@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy, Layers, Radio } from 'lucide-react';
+import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
-import { DraggableButton, loadSavedPositions } from './DraggableButton';
-import { LongPressButtonWrapper, getHiddenButtons, loadButtonUIGroups, toggleUIGroupCollapse, ButtonUIGroup } from './LongPressButtonWrapper';
-import { ButtonPresetManager } from './ButtonPresetManager';
-import { ButtonGroupManager } from './ButtonGroupManager';
+import { LongPressButtonWrapper } from './LongPressButtonWrapper';
 import { BlinkRemoteControl } from './BlinkRemoteControl';
 import { cn } from '@/lib/utils';
-import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 // Context for sharing visibility state across components
 interface ControlsVisibilityContextType {
@@ -121,12 +118,11 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
   }, []);
 
   const showControls = useCallback(() => {
-    if (buttonsHidden) return; // Don't show if manually hidden
+    if (buttonsHidden) return;
     
     setIsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     
-    // Only set hide timer if auto-hide is enabled and delay is not 0 (never)
     if (autoHideEnabled && autoHideDelay > 0) {
       hideTimerRef.current = setTimeout(() => {
         setIsVisible(false);
@@ -134,7 +130,6 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
     }
   }, [autoHideDelay, autoHideEnabled, buttonsHidden]);
 
-  // When auto-hide is disabled or buttons manually hidden, update visibility
   useEffect(() => {
     if (buttonsHidden) {
       setIsVisible(false);
@@ -204,13 +199,104 @@ interface FloatingControlsProps {
   achievementsCount?: number;
 }
 
-// Visibility Toggle Button - integrated into right side column
+// Profile Preview Sheet Component
+const ProfilePreviewSheet: React.FC<{ onFullProfileClick: () => void }> = ({ onFullProfileClick }) => {
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startYRef = useRef(0);
+  
+  const handleDragStart = (e: React.TouchEvent | React.MouseEvent) => {
+    setIsDragging(true);
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    startYRef.current = clientY;
+  };
+  
+  const handleDragMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!isDragging) return;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const delta = startYRef.current - clientY;
+    setDragY(Math.max(-100, Math.min(100, delta)));
+  };
+  
+  const handleDragEnd = () => {
+    if (dragY < -50) {
+      // Dragged down - close sheet (handled by Sheet component)
+    } else if (dragY > 50) {
+      // Dragged up - open full profile
+      onFullProfileClick();
+    }
+    setIsDragging(false);
+    setDragY(0);
+  };
+
+  return (
+    <div 
+      className="h-full flex flex-col"
+      onTouchStart={handleDragStart}
+      onTouchMove={handleDragMove}
+      onTouchEnd={handleDragEnd}
+      onMouseDown={handleDragStart}
+      onMouseMove={handleDragMove}
+      onMouseUp={handleDragEnd}
+      onMouseLeave={handleDragEnd}
+    >
+      {/* Drag indicator */}
+      <div className="flex justify-center py-3">
+        <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+      </div>
+      
+      {/* Swipe hint */}
+      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-4">
+        <ChevronDown className="w-4 h-4 animate-bounce" />
+        <span>Swipe up to view full profile</span>
+      </div>
+      
+      {/* Profile preview content */}
+      <div className="flex-1 px-4 space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center">
+            <User className="w-8 h-8 text-foreground/70" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">Your Profile</h3>
+            <p className="text-sm text-muted-foreground">View your content and stats</p>
+          </div>
+        </div>
+        
+        {/* Quick stats preview */}
+        <div className="grid grid-cols-3 gap-4 py-4 border-t border-border/50">
+          <div className="text-center">
+            <div className="text-lg font-bold text-foreground">0</div>
+            <div className="text-xs text-muted-foreground">Posts</div>
+          </div>
+          <div className="text-center">
+            <div className="text-lg font-bold text-foreground">0</div>
+            <div className="text-xs text-muted-foreground">Followers</div>
+          </div>
+          <div className="text-center">
+            <div className="text-lg font-bold text-foreground">0</div>
+            <div className="text-xs text-muted-foreground">Following</div>
+          </div>
+        </div>
+        
+        {/* View full profile button */}
+        <button 
+          onClick={onFullProfileClick}
+          className="w-full py-3 bg-primary/20 hover:bg-primary/30 rounded-xl text-primary font-medium transition-colors"
+        >
+          View Full Profile
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Visibility Toggle Button
 const VisibilityToggleButton: React.FC = () => {
   const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
   const [isAnimating, setIsAnimating] = useState(false);
   const { medium } = useHapticFeedback();
   
-  // Sync with storage changes
   useEffect(() => {
     const handleStorage = () => setIsHidden(getButtonsHidden());
     window.addEventListener('storage', handleStorage);
@@ -218,7 +304,7 @@ const VisibilityToggleButton: React.FC = () => {
   }, []);
   
   const toggleVisibility = () => {
-    medium(); // Haptic feedback on toggle
+    medium();
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 300);
     
@@ -230,28 +316,15 @@ const VisibilityToggleButton: React.FC = () => {
 
   return (
     <>
-      {/* Separator line */}
       <div className="w-6 h-px bg-white/20 my-0.5" />
-      
-      <LongPressButtonWrapper
-        buttonId="visibility-toggle"
-        buttonLabel="Visibility Toggle"
-        showAutoHideSettings={true}
-      >
+      <LongPressButtonWrapper buttonId="visibility-toggle" buttonLabel="Visibility Toggle" showAutoHideSettings={true}>
         <NeuButton 
           onClick={toggleVisibility}
           variant={isHidden ? 'accent' : 'default'}
           tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
         >
-          <span className={cn(
-            'transition-all duration-300',
-            isAnimating && 'rotate-180 scale-110'
-          )}>
-            {isHidden ? (
-              <Eye className="w-4 h-4" />
-            ) : (
-              <EyeOff className="w-4 h-4" />
-            )}
+          <span className={cn('transition-all duration-300', isAnimating && 'rotate-180 scale-110')}>
+            {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </span>
         </NeuButton>
       </LongPressButtonWrapper>
@@ -259,195 +332,40 @@ const VisibilityToggleButton: React.FC = () => {
   );
 };
 
-// Icon mapping for button actions
-const actionIcons: Record<ButtonAction | 'achievements', React.ReactNode> = {
-  like: <Heart />,
-  comment: <MessageCircle />,
-  share: <Share2 />,
-  follow: <UserPlus />,
-  wallet: <Wallet />,
-  profile: <User />,
-  settings: <Settings />,
-  tip: <Coins />,
-  save: <Bookmark />,
-  report: <Flag />,
-  mute: <VolumeX />,
-  achievements: <Trophy className="text-amber-500" />,
-  none: null,
-};
-
 export const FloatingControls: React.FC<FloatingControlsProps> = ({
-  onWalletClick,
   onProfileClick,
   onLikeClick,
   onCommentClick,
   onShareClick,
   onSettingsClick,
-  onFollowClick,
   onTip,
-  onSaveClick,
-  onReportClick,
-  onMuteClick,
-  onAchievementsClick,
   isLiked = false,
-  isFollowing = false,
-  isSaved = false,
   likeCount = 0,
-  commentCount = 0,
-  creatorName,
-  showAchievements = false,
-  achievementsCount = 0,
 }) => {
   const { isVisible } = useControlsVisibility();
-  const { getVisibleButtons, advancedSettings } = useUICustomization();
-  const [repositionedButtons, setRepositionedButtons] = useState<Set<string>>(() => {
-    const saved = loadSavedPositions();
-    return new Set(Object.keys(saved));
-  });
-  
-  const [hiddenButtons, setHiddenButtonsState] = useState<string[]>(() => getHiddenButtons());
-  const [showPresetManager, setShowPresetManager] = useState(false);
-  const [showGroupManager, setShowGroupManager] = useState(false);
-  const [buttonGroups, setButtonGroups] = useState<ButtonUIGroup[]>(() => loadButtonUIGroups());
   const [remoteControlEnabled, setRemoteControlEnabled] = useState(false);
+  const [showRemoteSettings, setShowRemoteSettings] = useState(false);
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   
-  // Listen for hidden buttons changes
-  useEffect(() => {
-    const handleHiddenChange = (e: CustomEvent) => {
-      setHiddenButtonsState(e.detail);
-    };
-    const handleOpenPresets = () => setShowPresetManager(true);
-    const handleOpenGroups = () => setShowGroupManager(true);
-    const handleGroupsChange = () => setButtonGroups(loadButtonUIGroups());
-    
-    window.addEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
-    window.addEventListener('openButtonPresets', handleOpenPresets);
-    window.addEventListener('openButtonGroups', handleOpenGroups);
-    window.addEventListener('buttonUIGroupsChanged', handleGroupsChange);
-    return () => {
-      window.removeEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
-      window.removeEventListener('openButtonPresets', handleOpenPresets);
-      window.removeEventListener('openButtonGroups', handleOpenGroups);
-      window.removeEventListener('buttonUIGroupsChanged', handleGroupsChange);
-    };
-  }, []);
-  
-  const visibleButtons = getVisibleButtons().filter(b => !hiddenButtons.includes(b.id));
-
-  // Format large numbers
-  const formatCount = (count: number): string => {
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
-    return count.toString();
+  const handleFullProfileClick = () => {
+    setProfileSheetOpen(false);
+    onProfileClick();
   };
 
-  // Action handlers mapping
-  const actionHandlers: Record<ButtonAction, (() => void) | undefined> = {
-    like: onLikeClick,
-    comment: onCommentClick,
-    share: onShareClick,
-    follow: onFollowClick,
-    wallet: onWalletClick,
-    profile: onProfileClick,
-    settings: onSettingsClick,
-    tip: () => onTip?.('vicoin', 10),
-    save: onSaveClick,
-    report: onReportClick,
-    mute: onMuteClick,
-    none: undefined,
-  };
-
-  // Get button state (pressed/variant) based on action
-  const getButtonState = (action: ButtonAction): { variant?: 'default' | 'accent' | 'gold'; isPressed?: boolean } => {
-    switch (action) {
-      case 'like':
-        return { variant: isLiked ? 'accent' : 'default', isPressed: isLiked };
-      case 'follow':
-        return { variant: isFollowing ? 'accent' : 'default', isPressed: isFollowing };
-      case 'save':
-        return { variant: isSaved ? 'gold' : 'default', isPressed: isSaved };
-      case 'wallet':
-        return { variant: 'accent' };
-      default:
-        return {};
-    }
-  };
-
-  // Get tooltip for action
-  const getTooltip = (action: ButtonAction): string => {
-    const tooltips: Record<ButtonAction, string> = {
-      like: isLiked ? 'Unlike' : 'Like',
-      comment: 'View comments',
-      share: 'Share',
-      follow: isFollowing ? 'Following' : `Follow ${creatorName || 'creator'}`,
-      wallet: 'Your wallet',
-      profile: 'Your profile',
-      settings: 'Settings',
-      tip: 'Send tip',
-      save: isSaved ? 'Unsave' : 'Save',
-      report: 'Report',
-      mute: 'Mute',
-      none: '',
-    };
-    return tooltips[action];
-  };
-
-  // Get count for action (if applicable)
-  const getCount = (action: ButtonAction): number | null => {
-    switch (action) {
-      case 'like':
-        return likeCount;
-      case 'comment':
-        return commentCount;
-      default:
-        return null;
-    }
-  };
-
-  // Handle position change (button was repositioned)
-  const handlePositionChange = useCallback((id: string) => {
-    setRepositionedButtons(prev => new Set([...prev, id]));
-  }, []);
-
-  // Get button label for settings
-  const getButtonLabel = (action: ButtonAction): string => {
-    const labels: Record<ButtonAction, string> = {
-      like: 'Like Button',
-      comment: 'Comments',
-      share: 'Share',
-      follow: 'Follow',
-      wallet: 'Wallet',
-      profile: 'Profile',
-      settings: 'Settings',
-      tip: 'Tip',
-      save: 'Save',
-      report: 'Report',
-      mute: 'Mute',
-      none: '',
-    };
-    return labels[action];
-  };
-
-  // Render a button based on its configuration
-  const renderButton = (button: ButtonPosition, isRepositioned: boolean = false) => {
-    const { id, action, size } = button;
-    const handler = actionHandlers[action];
-    const icon = actionIcons[action];
-    const state = getButtonState(action);
-    const tooltip = getTooltip(action);
-    const count = getCount(action);
-    const buttonLabel = getButtonLabel(action);
-
-    if (action === 'none' || !icon) return null;
-    if (!handler) return null;
-
-    // Special rendering for like button with morphing behavior
-    if (action === 'like') {
-      const likeButton = (
-        <LongPressButtonWrapper
-          buttonId={id}
-          buttonLabel={buttonLabel}
-        >
+  return (
+    <>
+      {/* Right side button stack - thumb zone optimized, bottom to top order */}
+      <div 
+        className={cn(
+          'fixed right-3 z-40',
+          'flex flex-col-reverse items-center gap-1.5',
+          'transition-all duration-500 ease-out',
+          isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12 pointer-events-none'
+        )}
+        style={{ bottom: '100px' }}
+      >
+        {/* 1st from bottom: Like (Heart) with MorphingLikeButton */}
+        <LongPressButtonWrapper buttonId="like-button" buttonLabel="Like">
           <MorphingLikeButton
             isLiked={isLiked}
             likeCount={likeCount}
@@ -455,195 +373,92 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
             onTip={onTip}
           />
         </LongPressButtonWrapper>
-      );
-      
-      // Wrap in draggable if not already repositioned in the flow
-      if (!isRepositioned) {
-        return (
-          <DraggableButton 
-            key={id} 
-            id={id}
-            onPositionChange={handlePositionChange}
-          >
-            {likeButton}
-          </DraggableButton>
-        );
-      }
-      return <React.Fragment key={id}>{likeButton}</React.Fragment>;
-    }
 
-    const buttonElement = (
-      <NeuButton 
-        onClick={handler}
-        variant={state.variant}
-        isPressed={state.isPressed}
-        tooltip={tooltip}
-        size={size}
-      >
-        {icon}
-      </NeuButton>
-    );
+        {/* 2nd from bottom: V button (vCoin) - handled by MorphingLikeButton */}
+        {/* 3rd from bottom: I button (iCoin) - handled by MorphingLikeButton */}
+        {/* Note: V and I buttons are part of MorphingLikeButton's stacked design */}
 
-    // Wrap with LongPressButtonWrapper
-    const buttonWithLongPress = (
-      <LongPressButtonWrapper
-        buttonId={id}
-        buttonLabel={buttonLabel}
-      >
-        {buttonElement}
-      </LongPressButtonWrapper>
-    );
+        {/* 4th from bottom: Messages */}
+        <LongPressButtonWrapper buttonId="messages-button" buttonLabel="Messages">
+          <NeuButton onClick={onCommentClick} tooltip="Messages">
+            <MessageCircle className="w-4 h-4" />
+          </NeuButton>
+        </LongPressButtonWrapper>
 
-    // Wrap with count if applicable
-    const buttonWithCount = count !== null ? (
-      <div className="flex flex-col items-center gap-1">
-        {buttonWithLongPress}
-        <span 
-          className="text-xs font-medium text-foreground/70"
-          style={{ fontSize: `${Math.max(10, advancedSettings.fontSize - 2)}px` }}
-        >
-          {formatCount(count)}
-        </span>
-      </div>
-    ) : buttonWithLongPress;
+        {/* 5th from bottom: Settings */}
+        <LongPressButtonWrapper buttonId="settings-button" buttonLabel="Settings">
+          <NeuButton onClick={onSettingsClick} tooltip="Settings">
+            <Settings className="w-4 h-4" />
+          </NeuButton>
+        </LongPressButtonWrapper>
 
-    // Wrap in draggable if not already repositioned
-    if (!isRepositioned) {
-      return (
-        <DraggableButton 
-          key={id} 
-          id={id}
-          onPositionChange={handlePositionChange}
-        >
-          {buttonWithCount}
-        </DraggableButton>
-      );
-    }
+        {/* 6th from bottom: Share */}
+        <LongPressButtonWrapper buttonId="share-button" buttonLabel="Share">
+          <NeuButton onClick={onShareClick} tooltip="Share">
+            <Share2 className="w-4 h-4" />
+          </NeuButton>
+        </LongPressButtonWrapper>
 
-    return <React.Fragment key={id}>{buttonWithCount}</React.Fragment>;
-  };
-
-  // Split buttons into primary and secondary groups
-  const primaryActions: ButtonAction[] = ['like', 'comment', 'share', 'follow'];
-  const secondaryActions: ButtonAction[] = ['wallet', 'profile', 'settings', 'tip', 'save', 'report', 'mute'];
-
-  // Filter out repositioned buttons from the main flow
-  const primaryButtons = visibleButtons.filter(b => primaryActions.includes(b.action) && !repositionedButtons.has(b.id));
-  const secondaryButtons = visibleButtons.filter(b => secondaryActions.includes(b.action) && !repositionedButtons.has(b.id));
-  
-  // Get repositioned buttons to render separately
-  const repositionedButtonsList = visibleButtons.filter(b => repositionedButtons.has(b.id));
-
-  return (
-    <>
-      {/* Repositioned buttons - render as fixed positioned */}
-      {repositionedButtonsList.map(button => renderButton(button, true))}
-      
-      {/* Right side 3D button stack - thumb zone optimized */}
-      <div 
-        className={cn(
-          'fixed right-3 top-[25%] bottom-[25%] z-40',
-          'flex flex-col items-center justify-center gap-1.5',
-          'transition-all duration-500 ease-out',
-          isVisible 
-            ? 'opacity-100 translate-x-0' 
-            : 'opacity-0 translate-x-12 pointer-events-none'
-        )}
-      >
-        {/* Primary action buttons */}
-        {primaryButtons.map(button => renderButton(button, false))}
-
-        {/* Achievements button - show when enabled */}
-        {showAchievements && onAchievementsClick && (
-          <LongPressButtonWrapper
-            buttonId="achievements-button"
-            buttonLabel="Achievements"
-          >
-            <div className="relative">
-              <NeuButton onClick={onAchievementsClick} tooltip="Achievements">
-                <Trophy className="w-4 h-4 text-amber-500" />
-              </NeuButton>
-              {achievementsCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
-                  {achievementsCount}
-                </span>
-              )}
+        {/* 7th from bottom: Profile Preview Sheet */}
+        <Sheet open={profileSheetOpen} onOpenChange={setProfileSheetOpen}>
+          <SheetTrigger asChild>
+            <div>
+              <LongPressButtonWrapper buttonId="profile-preview-button" buttonLabel="Profile Preview">
+                <NeuButton tooltip="Profile Preview">
+                  <User className="w-4 h-4" />
+                </NeuButton>
+              </LongPressButtonWrapper>
             </div>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="h-[50vh] rounded-t-3xl">
+            <ProfilePreviewSheet onFullProfileClick={handleFullProfileClick} />
+          </SheetContent>
+        </Sheet>
+
+        {/* 8th from bottom: Remote Control with settings engine icon */}
+        <div className="relative">
+          <LongPressButtonWrapper buttonId="remote-control-button" buttonLabel="Remote Control">
+            <NeuButton 
+              onClick={() => setRemoteControlEnabled(!remoteControlEnabled)}
+              variant={remoteControlEnabled ? 'accent' : 'default'}
+              tooltip="Remote Control"
+            >
+              <Radio className={cn("w-4 h-4 transition-all", remoteControlEnabled && "animate-pulse")} />
+            </NeuButton>
           </LongPressButtonWrapper>
-        )}
+          
+          {/* Engine settings icon - appears after clicking */}
+          {remoteControlEnabled && (
+            <button
+              onClick={() => setShowRemoteSettings(true)}
+              className="absolute -top-2 -right-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow-lg animate-fade-in hover:scale-110 transition-transform"
+            >
+              <Cog className="w-3 h-3 text-primary-foreground" />
+            </button>
+          )}
+        </div>
 
-        {/* Separator - only show if we have both groups */}
-        {primaryButtons.length > 0 && secondaryButtons.length > 0 && (
-          <div className="w-7 h-px bg-gradient-to-r from-transparent via-border to-transparent my-0.5" />
-        )}
-
-        {/* Secondary action buttons */}
-        {secondaryButtons.map(button => renderButton(button, false))}
-
-        {/* Visibility Toggle - integrated at the bottom */}
+        {/* Visibility Toggle */}
         <VisibilityToggleButton />
-        
-        {/* Button Groups Toggle */}
-        <LongPressButtonWrapper
-          buttonId="group-manager-toggle"
-          buttonLabel="Button Groups"
-        >
-          <NeuButton 
-            onClick={() => setShowGroupManager(true)}
-            tooltip="Organize buttons into groups"
-          >
-            <Layers className="w-4 h-4" />
-          </NeuButton>
-        </LongPressButtonWrapper>
-        
-        {/* Blink Remote Control Toggle */}
-        <LongPressButtonWrapper
-          buttonId="blink-remote-toggle"
-          buttonLabel="Blink Remote"
-        >
-          <NeuButton 
-            onClick={() => setRemoteControlEnabled(!remoteControlEnabled)}
-            variant={remoteControlEnabled ? 'accent' : 'default'}
-            tooltip="Blink remote control"
-          >
-            <Radio className={cn(
-              "w-4 h-4 transition-all",
-              remoteControlEnabled && "animate-pulse"
-            )} />
-          </NeuButton>
-        </LongPressButtonWrapper>
       </div>
       
-      {/* Blink Remote Control - integrated with navigation */}
+      {/* Remote Control Component */}
       <BlinkRemoteControl
         enabled={remoteControlEnabled}
         onToggle={setRemoteControlEnabled}
         onNavigate={(action, direction) => {
-          console.log('[FloatingControls] Gaze navigation:', action, direction);
-          // Navigation actions can be handled by parent components
+          console.log('[FloatingControls] Remote Control navigation:', action, direction);
           window.dispatchEvent(new CustomEvent('gazeNavigate', { detail: { action, direction } }));
         }}
+        showSettings={showRemoteSettings}
+        onCloseSettings={() => setShowRemoteSettings(false)}
         className="left-4 top-20"
-      />
-      
-      {/* Button Preset Manager Modal */}
-      <ButtonPresetManager 
-        isOpen={showPresetManager} 
-        onClose={() => setShowPresetManager(false)} 
-      />
-      
-      {/* Button Group Manager Modal */}
-      <ButtonGroupManager
-        isOpen={showGroupManager}
-        onClose={() => setShowGroupManager(false)}
-        availableButtonIds={visibleButtons.map(b => b.id)}
-        buttonLabels={Object.fromEntries(visibleButtons.map(b => [b.id, getButtonLabel(b.action)]))}
       />
     </>
   );
 };
 
-// Quick toggle button component with animation
+// Quick toggle button component
 export const QuickVisibilityToggle: React.FC = () => {
   const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
   const [isAnimating, setIsAnimating] = useState(false);
@@ -675,21 +490,14 @@ export const QuickVisibilityToggle: React.FC = () => {
       )}
       title={isHidden ? 'Show buttons (or double-tap screen)' : 'Hide buttons (or double-tap screen)'}
     >
-      <span className={cn(
-        'transition-all duration-300',
-        isAnimating && 'rotate-180 scale-110'
-      )}>
-        {isHidden ? (
-          <Eye className="w-4 h-4" />
-        ) : (
-          <EyeOff className="w-4 h-4" />
-        )}
+      <span className={cn('transition-all duration-300', isAnimating && 'rotate-180 scale-110')}>
+        {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
       </span>
     </button>
   );
 };
 
-// Multi-tap gesture detector component (double-tap = toggle visibility, triple-tap = settings)
+// Multi-tap gesture detector
 interface GestureDetectorProps {
   children: React.ReactNode;
   onTripleTap?: () => void;
@@ -700,7 +508,6 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
   const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleTap = useCallback((e: React.PointerEvent) => {
-    // Ignore taps on interactive elements
     const target = e.target as HTMLElement;
     if (
       target.closest('button') ||
@@ -713,26 +520,20 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
     }
     
     const now = Date.now();
-    
-    // Filter out old taps (older than 500ms)
     tapTimesRef.current = tapTimesRef.current.filter(t => now - t < 500);
     tapTimesRef.current.push(now);
     
-    // Clear any pending timeout
     if (tapTimeoutRef.current) {
       clearTimeout(tapTimeoutRef.current);
     }
     
-    // Wait a bit to see if more taps are coming
     tapTimeoutRef.current = setTimeout(() => {
       const recentTaps = tapTimesRef.current.filter(t => now - t < 500);
       
       if (recentTaps.length >= 3) {
-        // Triple tap - open settings
         onTripleTap?.();
         tapTimesRef.current = [];
       } else if (recentTaps.length === 2) {
-        // Double tap - toggle visibility
         const currentHidden = getButtonsHidden();
         setButtonsHidden(!currentHidden);
         window.dispatchEvent(new Event('storage'));
@@ -744,10 +545,7 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
   }, [onTripleTap]);
 
   return (
-    <div 
-      onPointerDown={handleTap}
-      className="contents"
-    >
+    <div onPointerDown={handleTap} className="contents">
       {children}
     </div>
   );

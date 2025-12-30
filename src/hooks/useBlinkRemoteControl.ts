@@ -122,13 +122,17 @@ const DEFAULT_GAZE_COMMANDS: GazeCommand[] = [
   { direction: 'down', action: 'nextVideo', enabled: true },
 ];
 
-// Calibration point positions (screen corners + center)
+// Calibration point positions (9 positions in specified order)
 const CALIBRATION_TARGETS = [
-  { x: 0.1, y: 0.15, label: 'Top Left' },
-  { x: 0.9, y: 0.15, label: 'Top Right' },
+  { x: 0.1, y: 0.1, label: 'Top Left' },
+  { x: 0.9, y: 0.1, label: 'Top Right' },
+  { x: 0.1, y: 0.5, label: 'Middle Left' },
+  { x: 0.9, y: 0.5, label: 'Middle Right' },
+  { x: 0.1, y: 0.9, label: 'Bottom Left' },
+  { x: 0.9, y: 0.9, label: 'Bottom Right' },
+  { x: 0.5, y: 0.1, label: 'Top Middle' },
   { x: 0.5, y: 0.5, label: 'Center' },
-  { x: 0.1, y: 0.85, label: 'Bottom Left' },
-  { x: 0.9, y: 0.85, label: 'Bottom Right' },
+  { x: 0.5, y: 0.9, label: 'Bottom Middle' },
 ];
 
 // Load/save functions

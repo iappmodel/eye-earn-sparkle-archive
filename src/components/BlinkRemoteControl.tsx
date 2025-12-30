@@ -22,6 +22,7 @@ import {
   GazeCommand,
   GhostButton,
   CALIBRATION_TARGETS,
+  saveCalibrationData,
 } from '@/hooks/useBlinkRemoteControl';
 import { GazeDirection } from '@/hooks/useGazeDirection';
 import { 
@@ -43,6 +44,7 @@ import {
 } from '@/components/RemoteControlTutorial';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { useVoiceFeedback } from '@/hooks/useVoiceFeedback';
+import { EyeBlinkCalibration, CalibrationResult } from '@/components/EyeBlinkCalibration';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -109,6 +111,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [practiceMode, setPracticeMode] = useState(false);
   const [showComboGuide, setShowComboGuide] = useState(false);
   const [showDebugOverlay, setShowDebugOverlay] = useState(false);
+  const [showBlinkCalibration, setShowBlinkCalibration] = useState(false);
   
   // Tutorial hook
   const {
@@ -989,7 +992,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     size="sm"
                     onClick={() => {
                       setShowSettings(false);
-                      startCalibration();
+                      setShowBlinkCalibration(true);
                     }}
                   >
                     <Target className="w-4 h-4 mr-2" />
@@ -1088,90 +1091,27 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
         </SheetContent>
       </Sheet>
 
-      {/* Calibration overlay */}
-      {isCalibrating && (
-        <div 
-          className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm"
-          onClick={handleCalibrationClick}
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-4 right-4 z-10"
-            onClick={(e) => {
-              e.stopPropagation();
-              cancelCalibration();
-            }}
-          >
-            <X className="w-5 h-5" />
-          </Button>
-
-          {/* Current gaze position indicator */}
-          {rawGazePosition && (
-            <div
-              className="absolute w-8 h-8 rounded-full border-2 border-amber-500 bg-amber-500/20 pointer-events-none transition-all duration-75"
-              style={{
-                left: rawGazePosition.x,
-                top: rawGazePosition.y,
-                transform: 'translate(-50%, -50%)',
-              }}
-            />
-          )}
-
-          {/* Calibration target */}
-          {calibrationStep < calibrationTargets.length && (
-            <div
-              className="absolute flex flex-col items-center gap-2 pointer-events-none"
-              style={{
-                left: `${calibrationTargets[calibrationStep].x * 100}%`,
-                top: `${calibrationTargets[calibrationStep].y * 100}%`,
-                transform: 'translate(-50%, -50%)',
-              }}
-            >
-              <div className="w-24 h-24 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center animate-pulse">
-                <Target className="w-12 h-12 text-primary" />
-              </div>
-              <span className="text-lg font-medium">{calibrationTargets[calibrationStep].label}</span>
-              <span className="text-sm text-muted-foreground">Look at the target, then tap anywhere</span>
-            </div>
-          )}
-
-          {/* Progress dots */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3">
-            {calibrationTargets.map((_, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'w-4 h-4 rounded-full transition-all',
-                  i < calibrationStep ? 'bg-primary scale-110' : i === calibrationStep ? 'bg-primary/50 animate-pulse' : 'bg-muted'
-                )}
-              />
-            ))}
-          </div>
-
-          {/* Instructions */}
-          <div className="absolute top-12 left-1/2 -translate-x-1/2 text-center pointer-events-none">
-            <h3 className="text-2xl font-bold mb-2">Eye Calibration</h3>
-            <p className="text-muted-foreground max-w-md">
-              Look directly at each target and tap the screen. This helps the system understand your eye position.
-            </p>
-            <p className="text-sm text-primary mt-2">
-              Step {calibrationStep + 1} of {calibrationTargets.length}
-            </p>
-          </div>
-
-          {/* Camera status indicator */}
-          <div className="absolute top-4 left-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/80">
-            <div className={cn(
-              "w-2 h-2 rounded-full",
-              isCameraActive ? "bg-green-500 animate-pulse" : "bg-red-500"
-            )} />
-            <span className="text-xs">
-              {isCameraActive ? 'Camera Active' : 'Waiting for camera...'}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* New Eye Blink Calibration */}
+      <EyeBlinkCalibration
+        isOpen={showBlinkCalibration}
+        onClose={() => setShowBlinkCalibration(false)}
+        onComplete={(result: CalibrationResult) => {
+          console.log('[RemoteControl] Calibration complete:', result);
+          // Save calibration data
+          saveCalibrationData({
+            offsetX: 0,
+            offsetY: 0,
+            scaleX: 1,
+            scaleY: 1,
+            isCalibrated: true,
+            calibratedAt: result.completedAt,
+            autoCalibrationEnabled: true,
+            autoAdjustments: 0,
+          });
+          haptics.success();
+        }}
+        onSkip={() => setShowBlinkCalibration(false)}
+      />
 
       {/* Tutorial overlay */}
       <RemoteControlTutorial

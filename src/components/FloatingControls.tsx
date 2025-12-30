@@ -231,7 +231,7 @@ const VisibilityToggleButton: React.FC = () => {
   return (
     <>
       {/* Separator line */}
-      <div className="w-8 h-px bg-white/20 my-1" />
+      <div className="w-6 h-px bg-white/20 my-0.5" />
       
       <LongPressButtonWrapper
         buttonId="visibility-toggle"
@@ -248,9 +248,9 @@ const VisibilityToggleButton: React.FC = () => {
             isAnimating && 'rotate-180 scale-110'
           )}>
             {isHidden ? (
-              <Eye className="w-6 h-6" />
+              <Eye className="w-4 h-4" />
             ) : (
-              <EyeOff className="w-6 h-6" />
+              <EyeOff className="w-4 h-4" />
             )}
           </span>
         </NeuButton>
@@ -542,14 +542,13 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       {/* Right side 3D button stack - thumb zone optimized */}
       <div 
         className={cn(
-          'fixed right-4 top-1/2 -translate-y-1/2 z-40',
-          'flex flex-col items-center',
+          'fixed right-3 top-[35%] -translate-y-1/2 z-40',
+          'flex flex-col items-center gap-1.5',
           'transition-all duration-500 ease-out',
           isVisible 
             ? 'opacity-100 translate-x-0' 
             : 'opacity-0 translate-x-12 pointer-events-none'
         )}
-        style={{ gap: `${advancedSettings.buttonSpacing}px` }}
       >
         {/* Primary action buttons */}
         {primaryButtons.map(button => renderButton(button, false))}
@@ -562,7 +561,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           >
             <div className="relative">
               <NeuButton onClick={onAchievementsClick} tooltip="Achievements">
-                <Trophy className="w-6 h-6 text-amber-500" />
+                <Trophy className="w-4 h-4 text-amber-500" />
               </NeuButton>
               {achievementsCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
@@ -575,7 +574,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
         {/* Separator - only show if we have both groups */}
         {primaryButtons.length > 0 && secondaryButtons.length > 0 && (
-          <div className="w-10 h-px bg-gradient-to-r from-transparent via-border to-transparent my-1" />
+          <div className="w-7 h-px bg-gradient-to-r from-transparent via-border to-transparent my-0.5" />
         )}
 
         {/* Secondary action buttons */}
@@ -593,7 +592,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
             onClick={() => setShowGroupManager(true)}
             tooltip="Organize buttons into groups"
           >
-            <Layers className="w-5 h-5" />
+            <Layers className="w-4 h-4" />
           </NeuButton>
         </LongPressButtonWrapper>
         
@@ -608,7 +607,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
             tooltip="Blink remote control"
           >
             <Radio className={cn(
-              "w-5 h-5 transition-all",
+              "w-4 h-4 transition-all",
               remoteControlEnabled && "animate-pulse"
             )} />
           </NeuButton>
@@ -663,8 +662,8 @@ export const QuickVisibilityToggle: React.FC = () => {
     <button
       onClick={toggleVisibility}
       className={cn(
-        'fixed left-4 top-1/2 -translate-y-1/2 z-50',
-        'w-10 h-10 rounded-full',
+        'fixed left-3 top-[35%] -translate-y-1/2 z-50',
+        'w-8 h-8 rounded-full',
         'flex items-center justify-center',
         'transition-all duration-300',
         'backdrop-blur-md border',
@@ -681,9 +680,9 @@ export const QuickVisibilityToggle: React.FC = () => {
         isAnimating && 'rotate-180 scale-110'
       )}>
         {isHidden ? (
-          <Eye className="w-5 h-5" />
+          <Eye className="w-4 h-4" />
         ) : (
-          <EyeOff className="w-5 h-5" />
+          <EyeOff className="w-4 h-4" />
         )}
       </span>
     </button>

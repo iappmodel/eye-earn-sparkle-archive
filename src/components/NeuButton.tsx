@@ -15,15 +15,15 @@ interface NeuButtonProps {
 }
 
 const sizeClasses = {
-  sm: 'w-12 h-12',
-  md: 'w-14 h-14',
-  lg: 'w-18 h-18',
+  sm: 'w-8 h-8',
+  md: 'w-10 h-10',
+  lg: 'w-12 h-12',
 };
 
 const iconSizeClasses = {
-  sm: '[&>svg]:w-5 [&>svg]:h-5',
-  md: '[&>svg]:w-6 [&>svg]:h-6',
-  lg: '[&>svg]:w-7 [&>svg]:h-7',
+  sm: '[&>svg]:w-3.5 [&>svg]:h-3.5',
+  md: '[&>svg]:w-4 [&>svg]:h-4',
+  lg: '[&>svg]:w-5 [&>svg]:h-5',
 };
 
 export const NeuButton: React.FC<NeuButtonProps> = ({

@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
+import { clearAllPositions, getRepositionedCount } from './DraggableButton';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface SettingsScreenProps {
   isOpen: boolean;
@@ -36,6 +38,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [isDarkMode, setIsDarkMode] = useState(() => 
     document.documentElement.classList.contains('dark')
   );
+  const [repositionedCount, setRepositionedCount] = useState(0);
+
+  // Update count when screen opens
+  useEffect(() => {
+    if (isOpen) {
+      setRepositionedCount(getRepositionedCount());
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -48,6 +58,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       document.documentElement.classList.remove('dark');
     }
     localStorage.setItem('theme', newMode ? 'dark' : 'light');
+  };
+
+  const handleResetButtonPositions = () => {
+    clearAllPositions();
+    setRepositionedCount(0);
+    toast.success('All button positions reset');
+    // Trigger a page reload to apply changes
+    window.location.reload();
   };
 
   return (
@@ -175,6 +193,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 )} />
               </div>
             </button>
+          </section>
+
+          {/* Button Layout Reset */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Move className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Button Positions</h2>
+            </div>
+            <div className="neu-inset rounded-xl p-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {repositionedCount > 0 
+                  ? `${repositionedCount} button${repositionedCount > 1 ? 's' : ''} repositioned`
+                  : 'No buttons have been repositioned'}
+              </p>
+              <button
+                onClick={handleResetButtonPositions}
+                disabled={repositionedCount === 0}
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 p-3 rounded-xl transition-all',
+                  repositionedCount > 0
+                    ? 'bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20'
+                    : 'bg-muted/30 text-muted-foreground cursor-not-allowed'
+                )}
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span className="font-medium">Reset All Positions</span>
+              </button>
+              <p className="text-xs text-muted-foreground/70 text-center">
+                Hold any button for 2 seconds to drag it
+              </p>
+            </div>
           </section>
 
           {/* RTL Indicator (for RTL languages) */}

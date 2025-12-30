@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, Target, Check, X, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Eye, Target, Check, X, Volume2, VolumeX, Loader2, RotateCcw, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
-// 9 calibration positions in the specified order
-const CALIBRATION_POSITIONS = [
+// 9 calibration positions in the specified order (portrait mode)
+const CALIBRATION_POSITIONS_PORTRAIT = [
   { x: 0.1, y: 0.1, label: 'Top Left' },
   { x: 0.9, y: 0.1, label: 'Top Right' },
   { x: 0.1, y: 0.5, label: 'Middle Left' },
@@ -18,6 +18,19 @@ const CALIBRATION_POSITIONS = [
   { x: 0.5, y: 0.9, label: 'Bottom Middle' },
 ];
 
+// 9 calibration positions for landscape/panorama mode
+const CALIBRATION_POSITIONS_LANDSCAPE = [
+  { x: 0.08, y: 0.15, label: 'Top Left' },
+  { x: 0.92, y: 0.15, label: 'Top Right' },
+  { x: 0.08, y: 0.5, label: 'Middle Left' },
+  { x: 0.92, y: 0.5, label: 'Middle Right' },
+  { x: 0.08, y: 0.85, label: 'Bottom Left' },
+  { x: 0.92, y: 0.85, label: 'Bottom Right' },
+  { x: 0.5, y: 0.15, label: 'Top Middle' },
+  { x: 0.5, y: 0.5, label: 'Center' },
+  { x: 0.5, y: 0.85, label: 'Bottom Middle' },
+];
+
 // Blink requirements per position (cycles through 1, 2, 3)
 const getBlinkRequirement = (positionIndex: number): number => {
   return (positionIndex % 3) + 1;
@@ -25,6 +38,14 @@ const getBlinkRequirement = (positionIndex: number): number => {
 
 export interface CalibrationResult {
   positions: Array<{
+    position: { x: number; y: number };
+    blinkData: {
+      requiredBlinks: number;
+      actualBlinks: number;
+      timing: number[];
+    };
+  }>;
+  landscapePositions?: Array<{
     position: { x: number; y: number };
     blinkData: {
       requiredBlinks: number;
@@ -46,7 +67,8 @@ interface EyeBlinkCalibrationProps {
   onSkip?: () => void;
 }
 
-type CalibrationStep = 'intro' | 'eye-frame' | 'blink-calibration' | 'complete';
+type CalibrationStep = 'intro' | 'eye-frame' | 'blink-calibration' | 'rotate-prompt' | 'landscape-calibration' | 'complete';
+type OrientationMode = 'portrait' | 'landscape';
 
 export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
   isOpen,
@@ -65,6 +87,10 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
+  // Orientation mode
+  const [orientationMode, setOrientationMode] = useState<OrientationMode>('portrait');
+  const [landscapeCalibrationData, setLandscapeCalibrationData] = useState<CalibrationResult['positions']>([]);
+  
   // Blink calibration step
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [currentBlinkCount, setCurrentBlinkCount] = useState(0);
@@ -73,6 +99,11 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
   const [blinkTimings, setBlinkTimings] = useState<number[]>([]);
   const [targetVisible, setTargetVisible] = useState(false);
   const [instruction, setInstruction] = useState('');
+  
+  // Get current positions based on orientation
+  const CALIBRATION_POSITIONS = orientationMode === 'portrait' 
+    ? CALIBRATION_POSITIONS_PORTRAIT 
+    : CALIBRATION_POSITIONS_LANDSCAPE;
   
   // Blink detection refs
   const lastBlinkTimeRef = useRef<number>(0);
@@ -285,9 +316,9 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
     return () => clearInterval(checkEyeFrame);
   }, [step, isOpen, detectEyes, eyeFrameMatched, haptics, playSound]);
 
-  // Blink calibration step
+  // Blink calibration step (works for both portrait and landscape)
   useEffect(() => {
-    if (step !== 'blink-calibration' || !isOpen || !targetVisible) return;
+    if ((step !== 'blink-calibration' && step !== 'landscape-calibration') || !isOpen || !targetVisible) return;
     
     const requiredBlinks = getBlinkRequirement(currentPositionIndex);
     const position = CALIBRATION_POSITIONS[currentPositionIndex];
@@ -333,10 +364,15 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
                   setTargetVisible(true);
                 }, 500);
               } else {
-                // Calibration complete
+                // Portrait calibration complete - move to landscape prompt
                 playSound('success');
                 haptics.success();
-                setStep('complete');
+                if (orientationMode === 'portrait') {
+                  setStep('rotate-prompt');
+                } else {
+                  // Landscape complete - all done
+                  setStep('complete');
+                }
               }
             }, 300);
           }
@@ -376,13 +412,28 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
       setCalibrationData([]);
       setBlinkTimings([]);
       setTargetVisible(false);
+      setOrientationMode('portrait');
+      setLandscapeCalibrationData([]);
       stopCamera();
     }
   }, [isOpen, stopCamera]);
 
+  // Handle starting landscape calibration
+  const handleStartLandscapeCalibration = () => {
+    setOrientationMode('landscape');
+    setLandscapeCalibrationData(calibrationData);
+    setCalibrationData([]);
+    setCurrentPositionIndex(0);
+    setCurrentBlinkCount(0);
+    setBlinkTimings([]);
+    setStep('landscape-calibration');
+    setTargetVisible(true);
+  };
+
   const handleComplete = () => {
     const result: CalibrationResult = {
-      positions: calibrationData,
+      positions: orientationMode === 'landscape' ? landscapeCalibrationData : calibrationData,
+      landscapePositions: orientationMode === 'landscape' ? calibrationData : undefined,
       eyeFrameData: {
         captured: eyeFrameMatched,
         timestamp: Date.now(),
@@ -726,6 +777,171 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
           </motion.div>
         )}
 
+        {/* Rotate Prompt Step - Ask user to rotate to landscape */}
+        {step === 'rotate-prompt' && (
+          <motion.div
+            key="rotate-prompt"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="flex-1 flex flex-col items-center justify-center px-8 text-center"
+          >
+            <motion.div
+              animate={{ rotate: [0, 90, 90, 0] }}
+              transition={{ repeat: Infinity, duration: 3, times: [0, 0.3, 0.7, 1] }}
+              className="w-24 h-24 rounded-2xl bg-primary/20 flex items-center justify-center mb-8"
+            >
+              <Smartphone className="w-12 h-12 text-primary" />
+            </motion.div>
+            
+            <h1 className="text-2xl font-bold text-white mb-4">
+              Portrait Mode Complete!
+            </h1>
+            
+            <p className="text-white/70 mb-6 max-w-sm">
+              Great job! Now rotate your phone to <span className="text-primary font-bold">landscape mode</span> to calibrate for horizontal viewing.
+            </p>
+            
+            <div className="flex items-center gap-3 text-white/60 mb-8">
+              <RotateCcw className="w-5 h-5" />
+              <span>Turn your phone sideways</span>
+            </div>
+            
+            <div className="flex gap-3 mb-4">
+              <div className="p-3 rounded-lg bg-green-500/20 border border-green-500/30">
+                <Check className="w-6 h-6 text-green-500" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-white font-medium">Portrait calibration</span>
+                <span className="text-white/50 text-sm">9 positions completed</span>
+              </div>
+            </div>
+            
+            <Button
+              size="lg"
+              onClick={handleStartLandscapeCalibration}
+              className="w-full max-w-xs"
+            >
+              Start Landscape Calibration
+            </Button>
+          </motion.div>
+        )}
+
+        {/* Landscape Calibration Step */}
+        {step === 'landscape-calibration' && (
+          <motion.div
+            key="landscape-calibration"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 relative"
+          >
+            {/* Landscape indicator */}
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30">
+              <RotateCcw className="w-4 h-4 text-primary" />
+              <span className="text-primary text-sm font-medium">Landscape Mode</span>
+            </div>
+            
+            {/* Progress indicator */}
+            <div className="absolute top-28 left-1/2 -translate-x-1/2 flex gap-1">
+              {CALIBRATION_POSITIONS.map((_, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'w-2 h-2 rounded-full transition-all',
+                    i < currentPositionIndex 
+                      ? 'bg-green-500' 
+                      : i === currentPositionIndex 
+                        ? 'bg-primary scale-125' 
+                        : 'bg-white/30'
+                  )}
+                />
+              ))}
+            </div>
+
+            {/* Target dot */}
+            <AnimatePresence>
+              {targetVisible && CALIBRATION_POSITIONS[currentPositionIndex] && (
+                <motion.div
+                  key={`landscape-target-${currentPositionIndex}`}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  className="absolute"
+                  style={{
+                    left: `${CALIBRATION_POSITIONS[currentPositionIndex].x * 100}%`,
+                    top: `${CALIBRATION_POSITIONS[currentPositionIndex].y * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                >
+                  {/* Outer pulse ring */}
+                  <motion.div
+                    animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className="absolute inset-0 w-20 h-20 -m-10 rounded-full border-2 border-primary"
+                  />
+                  
+                  {/* Target circle */}
+                  <div className="w-16 h-16 rounded-full bg-primary/30 border-4 border-primary flex items-center justify-center">
+                    <Target className="w-8 h-8 text-primary" />
+                  </div>
+                  
+                  {/* Blink counter */}
+                  <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex gap-2">
+                    {Array.from({ length: requiredBlinks }).map((_, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className={cn(
+                          'w-4 h-4 rounded-full transition-all',
+                          i < currentBlinkCount 
+                            ? 'bg-green-500' 
+                            : 'bg-white/30 border border-white/50'
+                        )}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Instructions */}
+            <div className="absolute bottom-32 left-0 right-0 text-center px-8">
+              <motion.p
+                key={`landscape-${instruction}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-white text-lg font-medium"
+              >
+                {instruction}
+              </motion.p>
+              
+              <p className="text-white/50 mt-2 text-sm">
+                Position {currentPositionIndex + 1} of {CALIBRATION_POSITIONS.length} • {CALIBRATION_POSITIONS[currentPositionIndex]?.label}
+              </p>
+            </div>
+
+            {/* Blink indicator */}
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-2">
+              {Array.from({ length: requiredBlinks }).map((_, i) => (
+                <motion.div
+                  key={i}
+                  animate={i < currentBlinkCount ? { scale: [1, 1.2, 1] } : {}}
+                  className={cn(
+                    'w-6 h-6 rounded-full flex items-center justify-center transition-all',
+                    i < currentBlinkCount 
+                      ? 'bg-green-500' 
+                      : 'bg-white/10 border border-white/30'
+                  )}
+                >
+                  {i < currentBlinkCount && <Check className="w-4 h-4 text-white" />}
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {/* Complete Step */}
         {step === 'complete' && (
           <motion.div
@@ -748,28 +964,35 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
             </h1>
             
             <p className="text-white/70 mb-8 max-w-sm">
-              Your eye tracking and blink detection has been calibrated successfully. You can now use hands-free controls.
+              Your eye tracking and blink detection has been calibrated for both portrait and landscape modes.
             </p>
             
-            <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="p-4 rounded-lg bg-white/5">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Smartphone className="w-4 h-4 text-primary" />
+                  <span className="text-xs text-white/50">Portrait</span>
+                </div>
                 <div className="text-2xl font-bold text-primary">
-                  {calibrationData.length}
+                  {landscapeCalibrationData.length || calibrationData.length}
                 </div>
                 <div className="text-xs text-white/50">Positions</div>
               </div>
               <div className="p-4 rounded-lg bg-white/5">
-                <div className="text-2xl font-bold text-green-500">
-                  {calibrationData.reduce((sum, p) => sum + p.blinkData.actualBlinks, 0)}
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Smartphone className="w-4 h-4 text-amber-500 rotate-90" />
+                  <span className="text-xs text-white/50">Landscape</span>
                 </div>
-                <div className="text-xs text-white/50">Blinks</div>
-              </div>
-              <div className="p-4 rounded-lg bg-white/5">
                 <div className="text-2xl font-bold text-amber-500">
-                  100%
+                  {orientationMode === 'landscape' ? calibrationData.length : 0}
                 </div>
-                <div className="text-xs text-white/50">Accuracy</div>
+                <div className="text-xs text-white/50">Positions</div>
               </div>
+            </div>
+            
+            <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30 mb-8">
+              <div className="text-2xl font-bold text-green-500">18</div>
+              <div className="text-xs text-white/50">Total Calibration Points</div>
             </div>
             
             <Button

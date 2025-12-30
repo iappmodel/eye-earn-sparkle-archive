@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { MediaSettings } from './MediaSettings';
+import { SecurityPrivacySettings } from './SecurityPrivacySettings';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
 import { 
@@ -520,6 +521,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <h2 className="font-display text-lg font-semibold">Media & Accessibility</h2>
             </div>
             <MediaSettings />
+          </section>
+
+          {/* Security & Privacy Section */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Shield className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Security & Privacy</h2>
+            </div>
+            <div className="neu-inset rounded-xl overflow-hidden">
+              <SecurityPrivacySettings />
+            </div>
           </section>
 
           {/* RTL Indicator (for RTL languages) */}

@@ -1,8 +1,8 @@
-// Button Group Manager - Organize buttons into collapsible sections
-import React, { useState, useEffect } from 'react';
+// Button Group Manager - Organize buttons into collapsible sections with drag-and-drop
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   FolderPlus, ChevronDown, ChevronRight, Trash2, X, Check, Plus, Minus, Layers,
-  Heart, Video, Compass, Gift, Shield, Sparkles, Activity
+  Heart, Video, Compass, Gift, Shield, Sparkles, Activity, GripVertical
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -20,7 +20,15 @@ import {
   createGroupFromTemplate,
   GROUP_TEMPLATES,
   BUTTON_HOVER_OPTIONS,
+  reorderButtonInGroup,
+  moveButtonBetweenGroups,
 } from './LongPressButtonWrapper';
+
+interface DragState {
+  buttonId: string;
+  sourceGroupId: string;
+  sourceIndex: number;
+}
 
 interface ButtonGroupManagerProps {
   isOpen: boolean;
@@ -43,7 +51,7 @@ export const ButtonGroupManager: React.FC<ButtonGroupManagerProps> = ({
   availableButtonIds,
   buttonLabels,
 }) => {
-  const { light, success } = useHapticFeedback();
+  const { light, success, medium } = useHapticFeedback();
   const [groups, setGroups] = useState<ButtonUIGroup[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -51,12 +59,96 @@ export const ButtonGroupManager: React.FC<ButtonGroupManagerProps> = ({
   const [selectedButtons, setSelectedButtons] = useState<string[]>([]);
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [editingHover, setEditingHover] = useState<string | null>(null);
+  
+  // Drag and drop state
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ groupId: string; index: number } | null>(null);
+  const draggedRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setGroups(loadButtonUIGroups());
     }
   }, [isOpen]);
+
+  // Handle drag start
+  const handleDragStart = useCallback((e: React.DragEvent, buttonId: string, groupId: string, index: number) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', buttonId);
+    setDragState({ buttonId, sourceGroupId: groupId, sourceIndex: index });
+    medium();
+    
+    // Add a small delay to allow the drag image to be created
+    setTimeout(() => {
+      if (draggedRef.current) {
+        draggedRef.current.style.opacity = '0.5';
+      }
+    }, 0);
+  }, [medium]);
+
+  // Handle drag over
+  const handleDragOver = useCallback((e: React.DragEvent, groupId: string, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (dropTarget?.groupId !== groupId || dropTarget?.index !== index) {
+      setDropTarget({ groupId, index });
+      light();
+    }
+  }, [dropTarget, light]);
+
+  // Handle drag end
+  const handleDragEnd = useCallback(() => {
+    setDragState(null);
+    setDropTarget(null);
+    if (draggedRef.current) {
+      draggedRef.current.style.opacity = '1';
+    }
+  }, []);
+
+  // Handle drop
+  const handleDrop = useCallback((e: React.DragEvent, targetGroupId: string, targetIndex: number) => {
+    e.preventDefault();
+    
+    if (!dragState) return;
+    
+    const { buttonId, sourceGroupId, sourceIndex } = dragState;
+    
+    if (sourceGroupId === targetGroupId) {
+      // Reorder within the same group
+      if (sourceIndex !== targetIndex) {
+        reorderButtonInGroup(sourceGroupId, sourceIndex, targetIndex);
+        success();
+      }
+    } else {
+      // Move between groups
+      moveButtonBetweenGroups(sourceGroupId, targetGroupId, buttonId, targetIndex);
+      success();
+    }
+    
+    setGroups(loadButtonUIGroups());
+    setDragState(null);
+    setDropTarget(null);
+  }, [dragState, success]);
+
+  // Handle drop on group header (add to end)
+  const handleDropOnGroup = useCallback((e: React.DragEvent, targetGroupId: string) => {
+    e.preventDefault();
+    
+    if (!dragState) return;
+    
+    const { buttonId, sourceGroupId } = dragState;
+    const targetGroup = groups.find(g => g.id === targetGroupId);
+    
+    if (sourceGroupId !== targetGroupId && targetGroup) {
+      moveButtonBetweenGroups(sourceGroupId, targetGroupId, buttonId, targetGroup.buttonIds.length);
+      success();
+      setGroups(loadButtonUIGroups());
+    }
+    
+    setDragState(null);
+    setDropTarget(null);
+  }, [dragState, groups, success]);
 
   const handleCreateGroup = () => {
     if (selectedButtons.length < 1) return;
@@ -310,21 +402,66 @@ export const ButtonGroupManager: React.FC<ButtonGroupManagerProps> = ({
                     </div>
                   )}
                   
-                  {/* Group Buttons */}
+                  {/* Group Buttons with Drag and Drop */}
                   {!group.isCollapsed && (
-                    <div className="p-2 space-y-1">
-                      {group.buttonIds.map(buttonId => (
-                        <div 
-                          key={buttonId}
-                          className="flex items-center justify-between p-2 rounded-lg bg-background/50"
-                        >
-                          <span className="text-sm">{buttonLabels[buttonId] || buttonId}</span>
-                          <button
-                            onClick={() => handleRemoveFromGroup(group.id, buttonId)}
-                            className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                    <div 
+                      className="p-2 space-y-1 min-h-[40px]"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (group.buttonIds.length === 0) {
+                          handleDragOver(e, group.id, 0);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        if (group.buttonIds.length === 0) {
+                          handleDrop(e, group.id, 0);
+                        }
+                      }}
+                    >
+                      {group.buttonIds.map((buttonId, index) => (
+                        <div key={buttonId} className="relative">
+                          {/* Drop indicator above */}
+                          {dropTarget?.groupId === group.id && dropTarget?.index === index && dragState?.sourceGroupId !== group.id && (
+                            <div className="absolute -top-1 left-0 right-0 h-0.5 bg-primary rounded-full animate-pulse" />
+                          )}
+                          {dropTarget?.groupId === group.id && dropTarget?.index === index && dragState?.sourceGroupId === group.id && dragState?.sourceIndex > index && (
+                            <div className="absolute -top-1 left-0 right-0 h-0.5 bg-primary rounded-full animate-pulse" />
+                          )}
+                          
+                          <div 
+                            ref={dragState?.buttonId === buttonId ? draggedRef : null}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, buttonId, group.id, index)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, group.id, index)}
+                            onDrop={(e) => handleDrop(e, group.id, index)}
+                            className={cn(
+                              'flex items-center justify-between p-2 rounded-lg bg-background/50 cursor-grab active:cursor-grabbing transition-all',
+                              dragState?.buttonId === buttonId && 'opacity-50 ring-2 ring-primary',
+                              dropTarget?.groupId === group.id && dropTarget?.index === index && dragState?.buttonId !== buttonId && 'ring-2 ring-primary/50'
+                            )}
                           >
-                            <Minus className="w-3 h-3" />
-                          </button>
+                            <div className="flex items-center gap-2">
+                              <GripVertical className="w-4 h-4 text-muted-foreground/50" />
+                              <span className="text-sm">{buttonLabels[buttonId] || buttonId}</span>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveFromGroup(group.id, buttonId);
+                              }}
+                              className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                          </div>
+                          
+                          {/* Drop indicator below (only for last item) */}
+                          {index === group.buttonIds.length - 1 && 
+                           dropTarget?.groupId === group.id && 
+                           dropTarget?.index === group.buttonIds.length && (
+                            <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full animate-pulse" />
+                          )}
                         </div>
                       ))}
                       

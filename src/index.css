@@ -150,6 +150,31 @@
   }
 }
 
+/* Button Hover Effects */
+.btn-hover-scale:hover {
+  transform: scale(1.15);
+}
+
+.btn-hover-rotate:hover {
+  transform: rotate(15deg);
+}
+
+.btn-hover-glow:hover {
+  box-shadow: 
+    0 0 10px hsl(var(--primary) / 0.8),
+    0 0 20px hsl(var(--primary) / 0.6),
+    0 0 30px hsl(var(--primary) / 0.4);
+}
+
+.btn-hover-scale-rotate:hover {
+  transform: scale(1.15) rotate(10deg);
+}
+
+.btn-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px hsl(var(--primary) / 0.3);
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

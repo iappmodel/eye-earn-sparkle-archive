@@ -63,13 +63,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           status: data.status,
         });
 
-        // Set step based on progress
-        if (data.status === 'submitted' || data.status === 'under_review' || data.status === 'approved') {
-          setCurrentStep('verification');
-        } else if (data.id_front_url) {
-          setCurrentStep('verification');
-        } else if (data.selfie_url) {
-          setCurrentStep('id-upload');
+        // Set step based on progress - ID upload and verification disabled for now
+        if (data.selfie_url) {
+          // After selfie, complete the flow
+          onComplete();
         }
       }
     };
@@ -121,8 +118,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         console.error(error);
       } else {
         setKycData(prev => ({ ...prev, selfieUrl: url }));
-        setCurrentStep('id-upload');
         toast.success('Selfie uploaded successfully');
+        // Complete flow after selfie - ID upload disabled for now
+        onComplete();
       }
     }
     setIsLoading(false);
@@ -176,7 +174,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
 
   if (!isOpen) return null;
 
-  const steps: OnboardingStep[] = ['welcome', 'selfie', 'id-upload', 'verification'];
+  // ID upload and verification steps disabled for now
+  const steps: OnboardingStep[] = ['welcome', 'selfie'];
   const currentStepIndex = steps.indexOf(currentStep);
 
   return (
@@ -203,26 +202,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
         {currentStep === 'selfie' && (
           <SelfieStep
             onCapture={handleSelfieCapture}
-            onSkip={() => setCurrentStep('id-upload')}
+            onSkip={onComplete}
             isLoading={isLoading}
             existingUrl={kycData.selfieUrl}
-          />
-        )}
-
-        {currentStep === 'id-upload' && (
-          <IdUploadStep
-            onUpload={handleIdUpload}
-            onSkip={() => setCurrentStep('verification')}
-            isLoading={isLoading}
-            existingFrontUrl={kycData.idFrontUrl}
-            existingBackUrl={kycData.idBackUrl}
-          />
-        )}
-
-        {currentStep === 'verification' && (
-          <VerificationStep
-            status={kycData.status}
-            onComplete={onComplete}
           />
         )}
       </div>

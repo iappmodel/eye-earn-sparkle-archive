@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { notificationSoundService } from '@/services/notificationSound.service';
 
 export interface Notification {
   id: string;
@@ -179,6 +180,9 @@ export const useNotifications = () => {
 
           // Show in-app toast if enabled
           if (preferences?.in_app_enabled) {
+            // Play notification sound
+            notificationSoundService.playNotification();
+            
             toast(newNotification.title, {
               description: newNotification.body || undefined,
             });

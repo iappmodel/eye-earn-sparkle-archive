@@ -1,11 +1,12 @@
-import React from 'react';
-import { X, Bell, BellOff, Check, CheckCheck, Gift, MessageCircle, Settings, Trash2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Bell, BellOff, Check, CheckCheck, Gift, MessageCircle, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { groupNotificationsByTime, NotificationGroup } from '@/utils/notificationGrouping';
 
 interface NotificationCenterProps {
   isOpen: boolean;
@@ -73,12 +74,54 @@ const NotificationItem: React.FC<{
   );
 };
 
+// Notification Group Component
+const NotificationGroupSection: React.FC<{
+  group: NotificationGroup;
+  onMarkAsSeen: (id: string) => void;
+}> = ({ group, onMarkAsSeen }) => {
+  const [isCollapsed, setIsCollapsed] = useState(group.isCollapsible);
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => group.isCollapsible && setIsCollapsed(!isCollapsed)}
+        className={cn(
+          'w-full flex items-center justify-between px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider',
+          group.isCollapsible && 'cursor-pointer hover:text-foreground'
+        )}
+      >
+        <span>{group.label} ({group.notifications.length})</span>
+        {group.isCollapsible && (
+          isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />
+        )}
+      </button>
+      {!isCollapsed && (
+        <div className="space-y-1">
+          {group.notifications.map(notification => (
+            <NotificationItem
+              key={notification.id}
+              notification={notification}
+              onMarkAsSeen={onMarkAsSeen}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   isOpen,
   onClose,
   onOpenPreferences,
 }) => {
   const { notifications, unreadCount, isLoading, markAsSeen, markAllAsSeen } = useNotifications();
+  
+  // Group notifications by time
+  const groupedNotifications = useMemo(() => 
+    groupNotificationsByTime(notifications), 
+    [notifications]
+  );
 
   if (!isOpen) return null;
 
@@ -130,11 +173,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
               </p>
             </div>
           ) : (
-            <div>
-              {notifications.map(notification => (
-                <NotificationItem
-                  key={notification.id}
-                  notification={notification}
+            <div className="py-2">
+              {groupedNotifications.map(group => (
+                <NotificationGroupSection
+                  key={group.id}
+                  group={group}
                   onMarkAsSeen={markAsSeen}
                 />
               ))}

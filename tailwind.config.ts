@@ -1,5 +1,10 @@
 import type { Config } from "tailwindcss";
 
+// Note: Additional animations for notifications
+// - slide-in-right: For toast notifications sliding in from right
+// - achievement-pop: Bouncy pop-in for achievement modals
+// - float-particle: Floating particles for celebration effects
+
 export default {
   darkMode: ["class"],
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
@@ -221,10 +226,23 @@ export default {
           "0%, 100%": { transform: "rotate(0deg)" },
           "25%": { transform: "rotate(-3deg)" },
           "75%": { transform: "rotate(3deg)" },
-          "50%": { 
-            transform: "translateY(-10px)",
-            filter: "drop-shadow(0 0 20px hsl(320 90% 60% / 0.5))",
-          },
+        },
+        "slide-in-right": {
+          "0%": { transform: "translateX(100%)", opacity: "0" },
+          "100%": { transform: "translateX(0)", opacity: "1" },
+        },
+        "achievement-pop": {
+          "0%": { transform: "scale(0.5)", opacity: "0" },
+          "60%": { transform: "scale(1.1)", opacity: "1" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
+        "float-particle": {
+          "0%": { transform: "translateY(0) scale(1)", opacity: "1" },
+          "100%": { transform: "translateY(-100px) scale(0)", opacity: "0" },
+        },
+        "pulse-slow": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.7" },
         },
       },
       animation: {
@@ -253,6 +271,10 @@ export default {
         "micro-bounce": "micro-bounce 0.3s ease-out",
         "stagger-in": "stagger-in 0.4s ease-out forwards",
         "wiggle": "wiggle 0.5s ease-in-out",
+        "slide-in-right": "slide-in-right 0.3s ease-out",
+        "achievement-pop": "achievement-pop 0.4s ease-out",
+        "float-particle": "float-particle 1.5s ease-out forwards",
+        "pulse-slow": "pulse-slow 2s ease-in-out infinite",
       },
     },
   },

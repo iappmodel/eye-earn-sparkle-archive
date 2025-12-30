@@ -32,6 +32,7 @@ export interface AdvancedSettings {
   fontSize: number;
   buttonSpacing: number;
   buttonPadding: number;
+  animationSpeed: number; // 0.5 = slow, 1 = normal, 2 = fast
 }
 
 // Default button layout
@@ -60,6 +61,7 @@ const defaultAdvancedSettings: AdvancedSettings = {
   fontSize: 14,
   buttonSpacing: 16,
   buttonPadding: 12,
+  animationSpeed: 1,
 };
 
 interface UICustomizationState {
@@ -78,6 +80,7 @@ interface UICustomizationContextType extends UICustomizationState {
   setFontSize: (size: number) => void;
   setButtonSpacing: (spacing: number) => void;
   setButtonPadding: (padding: number) => void;
+  setAnimationSpeed: (speed: number) => void;
   resetAdvancedSettings: () => void;
   
   // Button layout
@@ -247,6 +250,19 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
     }));
   }, []);
 
+  const setAnimationSpeed = useCallback((animationSpeed: number) => {
+    setState(s => ({
+      ...s,
+      advancedSettings: { ...s.advancedSettings, animationSpeed }
+    }));
+  }, []);
+
+  // Apply animation speed as CSS variable
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--animation-speed', `${1 / state.advancedSettings.animationSpeed}`);
+  }, [state.advancedSettings.animationSpeed]);
+
   const getVisibleButtons = useCallback(() => {
     return state.buttonLayout
       .filter(btn => btn.visible)
@@ -263,6 +279,7 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
         setFontSize,
         setButtonSpacing,
         setButtonPadding,
+        setAnimationSpeed,
         resetAdvancedSettings,
         updateButtonPosition,
         reorderButtons,

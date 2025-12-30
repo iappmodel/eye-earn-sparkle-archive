@@ -1,6 +1,6 @@
-// Advanced Theme Controls - Custom color picker, font size, spacing
+// Advanced Theme Controls - Custom color picker, font size, spacing, animations
 import React, { useState } from 'react';
-import { Palette, Type, Move, RotateCcw } from 'lucide-react';
+import { Palette, Type, Move, RotateCcw, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { Slider } from '@/components/ui/slider';
@@ -107,10 +107,11 @@ export const AdvancedThemeControls: React.FC<AdvancedThemeControlsProps> = ({ cl
     setFontSize,
     setButtonSpacing,
     setButtonPadding,
+    setAnimationSpeed,
     resetAdvancedSettings
   } = useUICustomization();
   
-  const [activeSection, setActiveSection] = useState<'colors' | 'typography' | 'spacing'>('colors');
+  const [activeSection, setActiveSection] = useState<'colors' | 'typography' | 'spacing' | 'animation'>('colors');
 
   const updateCustomColor = (key: 'primary' | 'accent' | 'glow', value: string) => {
     setPreset('custom', {
@@ -161,6 +162,19 @@ export const AdvancedThemeControls: React.FC<AdvancedThemeControlsProps> = ({ cl
         >
           <Move className="w-4 h-4" />
           Spacing
+        </button>
+        <button
+          onClick={() => setActiveSection('animation')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-sm font-medium',
+            'border transition-all duration-200',
+            activeSection === 'animation'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-border/30 bg-muted/30 hover:bg-muted/50'
+          )}
+        >
+          <Zap className="w-4 h-4" />
+          Speed
         </button>
       </div>
 
@@ -272,6 +286,84 @@ export const AdvancedThemeControls: React.FC<AdvancedThemeControlsProps> = ({ cl
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Animation Section */}
+      {activeSection === 'animation' && (
+        <div className="space-y-6 p-4 rounded-2xl bg-muted/20 border border-border/30">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Animation Speed</span>
+              <span className="text-sm text-muted-foreground">
+                {advancedSettings.animationSpeed === 0.5 ? 'Slow' : 
+                 advancedSettings.animationSpeed === 1 ? 'Normal' : 
+                 advancedSettings.animationSpeed === 1.5 ? 'Fast' : 'Very Fast'}
+              </span>
+            </div>
+            <Slider
+              value={[advancedSettings.animationSpeed]}
+              min={0.5}
+              max={2}
+              step={0.5}
+              onValueChange={([v]) => setAnimationSpeed(v)}
+              className="[&_[role=slider]]:bg-primary"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Slow</span>
+              <span>Normal</span>
+              <span>Fast</span>
+            </div>
+          </div>
+
+          {/* Animation Preview */}
+          <div className="p-4 rounded-xl bg-card border border-border/30">
+            <p className="text-center text-muted-foreground mb-4 text-xs uppercase tracking-wider">Preview</p>
+            <div className="flex justify-center gap-4">
+              <div 
+                className="w-12 h-12 rounded-xl bg-primary/30 border border-primary/50"
+                style={{
+                  animation: `pulse ${2 / advancedSettings.animationSpeed}s cubic-bezier(0.4, 0, 0.6, 1) infinite`
+                }}
+              />
+              <div 
+                className="w-12 h-12 rounded-xl bg-accent/30 border border-accent/50"
+                style={{
+                  animation: `bounce ${1 / advancedSettings.animationSpeed}s infinite`
+                }}
+              />
+              <div 
+                className="w-12 h-12 rounded-xl bg-primary/30 border border-primary/50"
+                style={{
+                  animation: `spin ${2 / advancedSettings.animationSpeed}s linear infinite`
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Reduced Motion Option */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/30">
+            <div>
+              <span className="text-sm font-medium">Disable Animations</span>
+              <p className="text-xs text-muted-foreground">For reduced motion preference</p>
+            </div>
+            <button
+              onClick={() => setAnimationSpeed(advancedSettings.animationSpeed === 0 ? 1 : 0)}
+              className={cn(
+                'w-12 h-6 rounded-full transition-all duration-200',
+                advancedSettings.animationSpeed === 0 
+                  ? 'bg-primary' 
+                  : 'bg-muted-foreground/30'
+              )}
+            >
+              <div 
+                className={cn(
+                  'w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200',
+                  advancedSettings.animationSpeed === 0 ? 'translate-x-6' : 'translate-x-0.5'
+                )}
+              />
+            </button>
           </div>
         </div>
       )}

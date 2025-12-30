@@ -545,8 +545,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </div>
       )}
 
-      {/* Perfect attention celebration */}
-      {showPerfectCelebration && (
+      {/* Perfect attention celebration - disabled */}
+      {false && showPerfectCelebration && (
         <PerfectAttentionCelebration
           isActive={showPerfectCelebration}
           onComplete={() => setShowPerfectCelebration(false)}

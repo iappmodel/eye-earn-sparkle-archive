@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, createContext, useContext } fr
 import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
+import { DraggableButton, loadSavedPositions } from './DraggableButton';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
 
@@ -121,6 +122,10 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 }) => {
   const { isVisible } = useControlsVisibility();
   const { getVisibleButtons, advancedSettings } = useUICustomization();
+  const [repositionedButtons, setRepositionedButtons] = useState<Set<string>>(() => {
+    const saved = loadSavedPositions();
+    return new Set(Object.keys(saved));
+  });
   
   const visibleButtons = getVisibleButtons();
 
@@ -194,8 +199,13 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     }
   };
 
+  // Handle position change (button was repositioned)
+  const handlePositionChange = useCallback((id: string) => {
+    setRepositionedButtons(prev => new Set([...prev, id]));
+  }, []);
+
   // Render a button based on its configuration
-  const renderButton = (button: ButtonPosition) => {
+  const renderButton = (button: ButtonPosition, isRepositioned: boolean = false) => {
     const { id, action, size } = button;
     const handler = actionHandlers[action];
     const icon = actionIcons[action];
@@ -208,7 +218,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
     // Special rendering for like button with morphing behavior
     if (action === 'like') {
-      return (
+      const likeButton = (
         <MorphingLikeButton
           key={id}
           isLiked={isLiked}
@@ -217,11 +227,24 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           onTip={onTip}
         />
       );
+      
+      // Wrap in draggable if not already repositioned in the flow
+      if (!isRepositioned) {
+        return (
+          <DraggableButton 
+            key={id} 
+            id={id}
+            onPositionChange={handlePositionChange}
+          >
+            {likeButton}
+          </DraggableButton>
+        );
+      }
+      return likeButton;
     }
 
     const buttonElement = (
       <NeuButton 
-        key={id}
         onClick={handler}
         variant={state.variant}
         isPressed={state.isPressed}
@@ -233,32 +256,50 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     );
 
     // Wrap with count if applicable
-    if (count !== null) {
+    const buttonWithCount = count !== null ? (
+      <div className="flex flex-col items-center gap-1">
+        {buttonElement}
+        <span 
+          className="text-xs font-medium text-foreground/70"
+          style={{ fontSize: `${Math.max(10, advancedSettings.fontSize - 2)}px` }}
+        >
+          {formatCount(count)}
+        </span>
+      </div>
+    ) : buttonElement;
+
+    // Wrap in draggable if not already repositioned
+    if (!isRepositioned) {
       return (
-        <div key={id} className="flex flex-col items-center gap-1">
-          {buttonElement}
-          <span 
-            className="text-xs font-medium text-foreground/70"
-            style={{ fontSize: `${Math.max(10, advancedSettings.fontSize - 2)}px` }}
-          >
-            {formatCount(count)}
-          </span>
-        </div>
+        <DraggableButton 
+          key={id} 
+          id={id}
+          onPositionChange={handlePositionChange}
+        >
+          {buttonWithCount}
+        </DraggableButton>
       );
     }
 
-    return buttonElement;
+    return <React.Fragment key={id}>{buttonWithCount}</React.Fragment>;
   };
 
   // Split buttons into primary and secondary groups
   const primaryActions: ButtonAction[] = ['like', 'comment', 'share', 'follow'];
   const secondaryActions: ButtonAction[] = ['wallet', 'profile', 'settings', 'tip', 'save', 'report', 'mute'];
 
-  const primaryButtons = visibleButtons.filter(b => primaryActions.includes(b.action));
-  const secondaryButtons = visibleButtons.filter(b => secondaryActions.includes(b.action));
+  // Filter out repositioned buttons from the main flow
+  const primaryButtons = visibleButtons.filter(b => primaryActions.includes(b.action) && !repositionedButtons.has(b.id));
+  const secondaryButtons = visibleButtons.filter(b => secondaryActions.includes(b.action) && !repositionedButtons.has(b.id));
+  
+  // Get repositioned buttons to render separately
+  const repositionedButtonsList = visibleButtons.filter(b => repositionedButtons.has(b.id));
 
   return (
     <>
+      {/* Repositioned buttons - render as fixed positioned */}
+      {repositionedButtonsList.map(button => renderButton(button, true))}
+      
       {/* Right side 3D button stack - thumb zone optimized */}
       <div 
         className={cn(
@@ -272,7 +313,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         style={{ gap: `${advancedSettings.buttonSpacing}px` }}
       >
         {/* Primary action buttons */}
-        {primaryButtons.map(renderButton)}
+        {primaryButtons.map(button => renderButton(button, false))}
 
         {/* Separator - only show if we have both groups */}
         {primaryButtons.length > 0 && secondaryButtons.length > 0 && (
@@ -280,7 +321,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         )}
 
         {/* Secondary action buttons */}
-        {secondaryButtons.map(renderButton)}
+        {secondaryButtons.map(button => renderButton(button, false))}
       </div>
     </>
   );

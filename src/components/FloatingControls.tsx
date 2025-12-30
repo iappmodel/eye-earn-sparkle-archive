@@ -29,7 +29,7 @@ interface ControlsVisibilityProviderProps {
 
 export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProps> = ({
   children,
-  autoHideDelay = 3000,
+  autoHideDelay = 5000, // Increased to 5 seconds for better usability
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);

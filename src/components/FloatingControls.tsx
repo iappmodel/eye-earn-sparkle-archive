@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy } from 'lucide-react';
+import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy, Layers } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
-import { LongPressButtonWrapper, getHiddenButtons } from './LongPressButtonWrapper';
+import { LongPressButtonWrapper, getHiddenButtons, loadButtonUIGroups, toggleUIGroupCollapse, ButtonUIGroup } from './LongPressButtonWrapper';
 import { ButtonPresetManager } from './ButtonPresetManager';
+import { ButtonGroupManager } from './ButtonGroupManager';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
 
@@ -305,6 +306,8 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   
   const [hiddenButtons, setHiddenButtonsState] = useState<string[]>(() => getHiddenButtons());
   const [showPresetManager, setShowPresetManager] = useState(false);
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [buttonGroups, setButtonGroups] = useState<ButtonUIGroup[]>(() => loadButtonUIGroups());
   
   // Listen for hidden buttons changes
   useEffect(() => {
@@ -312,12 +315,18 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       setHiddenButtonsState(e.detail);
     };
     const handleOpenPresets = () => setShowPresetManager(true);
+    const handleOpenGroups = () => setShowGroupManager(true);
+    const handleGroupsChange = () => setButtonGroups(loadButtonUIGroups());
     
     window.addEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
     window.addEventListener('openButtonPresets', handleOpenPresets);
+    window.addEventListener('openButtonGroups', handleOpenGroups);
+    window.addEventListener('buttonUIGroupsChanged', handleGroupsChange);
     return () => {
       window.removeEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
       window.removeEventListener('openButtonPresets', handleOpenPresets);
+      window.removeEventListener('openButtonGroups', handleOpenGroups);
+      window.removeEventListener('buttonUIGroupsChanged', handleGroupsChange);
     };
   }, []);
   
@@ -572,12 +581,33 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
         {/* Visibility Toggle - integrated at the bottom */}
         <VisibilityToggleButton />
+        
+        {/* Button Groups Toggle */}
+        <LongPressButtonWrapper
+          buttonId="group-manager-toggle"
+          buttonLabel="Button Groups"
+        >
+          <NeuButton 
+            onClick={() => setShowGroupManager(true)}
+            tooltip="Organize buttons into groups"
+          >
+            <Layers className="w-5 h-5" />
+          </NeuButton>
+        </LongPressButtonWrapper>
       </div>
       
       {/* Button Preset Manager Modal */}
       <ButtonPresetManager 
         isOpen={showPresetManager} 
         onClose={() => setShowPresetManager(false)} 
+      />
+      
+      {/* Button Group Manager Modal */}
+      <ButtonGroupManager
+        isOpen={showGroupManager}
+        onClose={() => setShowGroupManager(false)}
+        availableButtonIds={visibleButtons.map(b => b.id)}
+        buttonLabels={Object.fromEntries(visibleButtons.map(b => [b.id, getButtonLabel(b.action)]))}
       />
     </>
   );

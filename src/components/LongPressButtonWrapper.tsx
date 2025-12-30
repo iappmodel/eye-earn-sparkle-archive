@@ -53,6 +53,8 @@ const BUTTON_ANIMATIONS_KEY = 'visuai-button-animations';
 const BUTTON_OPACITY_KEY = 'visuai-button-opacity';
 const BUTTON_BORDERS_KEY = 'visuai-button-borders';
 const BUTTON_SHADOWS_KEY = 'visuai-button-shadows';
+const BUTTON_HOVERS_KEY = 'visuai-button-hovers';
+const BUTTON_UI_GROUPS_KEY = 'visuai-button-ui-groups';
 
 // Grid snap configuration
 const GRID_SIZE = 40;
@@ -152,6 +154,26 @@ export const BUTTON_SHADOW_OPTIONS: { value: ButtonShadowStyle; label: string; d
   { value: 'hard', label: 'Hard', description: 'Sharp shadow' },
   { value: 'neon', label: 'Neon Glow', description: 'Neon effect' },
 ];
+
+// Hover effect options
+export type ButtonHoverEffect = 'none' | 'scale' | 'rotate' | 'glow' | 'scale-rotate' | 'lift';
+export const BUTTON_HOVER_OPTIONS: { value: ButtonHoverEffect; label: string; description: string }[] = [
+  { value: 'none', label: 'None', description: 'No hover effect' },
+  { value: 'scale', label: 'Scale', description: 'Grow on hover' },
+  { value: 'rotate', label: 'Rotate', description: 'Spin on hover' },
+  { value: 'glow', label: 'Glow', description: 'Glow on hover' },
+  { value: 'scale-rotate', label: 'Scale + Rotate', description: 'Combined effect' },
+  { value: 'lift', label: 'Lift', description: 'Float up on hover' },
+];
+
+// Button UI Groups for collapsible sections
+export interface ButtonUIGroup {
+  id: string;
+  name: string;
+  buttonIds: string[];
+  isCollapsed: boolean;
+  icon?: string;
+}
 
 // Load/save button settings
 export const loadButtonSettings = (): Record<string, ButtonSettings> => {
@@ -472,6 +494,105 @@ export const getButtonShadow = (buttonId: string): ButtonShadowStyle => {
   return shadows[buttonId] || 'none';
 };
 
+// Button hover effects management
+export const getButtonHovers = (): Record<string, ButtonHoverEffect> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_HOVERS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonHover = (buttonId: string, hover: ButtonHoverEffect) => {
+  try {
+    const hovers = getButtonHovers();
+    hovers[buttonId] = hover;
+    localStorage.setItem(BUTTON_HOVERS_KEY, JSON.stringify(hovers));
+    window.dispatchEvent(new CustomEvent('buttonHoversChanged', { detail: hovers }));
+  } catch (e) {
+    console.error('Failed to save button hover:', e);
+  }
+};
+
+export const getButtonHover = (buttonId: string): ButtonHoverEffect => {
+  const hovers = getButtonHovers();
+  return hovers[buttonId] || 'none';
+};
+
+// Button UI Groups management
+export const loadButtonUIGroups = (): ButtonUIGroup[] => {
+  try {
+    const saved = localStorage.getItem(BUTTON_UI_GROUPS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveButtonUIGroups = (groups: ButtonUIGroup[]) => {
+  try {
+    localStorage.setItem(BUTTON_UI_GROUPS_KEY, JSON.stringify(groups));
+    window.dispatchEvent(new CustomEvent('buttonUIGroupsChanged', { detail: groups }));
+  } catch (e) {
+    console.error('Failed to save button UI groups:', e);
+  }
+};
+
+export const createButtonUIGroup = (buttonIds: string[], name?: string): ButtonUIGroup => {
+  const groups = loadButtonUIGroups();
+  const newGroup: ButtonUIGroup = {
+    id: `ui-group-${Date.now()}`,
+    name: name || `Group ${groups.length + 1}`,
+    buttonIds,
+    isCollapsed: false,
+  };
+  groups.push(newGroup);
+  saveButtonUIGroups(groups);
+  return newGroup;
+};
+
+export const toggleUIGroupCollapse = (groupId: string) => {
+  const groups = loadButtonUIGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (group) {
+    group.isCollapsed = !group.isCollapsed;
+    saveButtonUIGroups(groups);
+  }
+};
+
+export const deleteButtonUIGroup = (groupId: string) => {
+  const groups = loadButtonUIGroups();
+  saveButtonUIGroups(groups.filter(g => g.id !== groupId));
+};
+
+export const addButtonToUIGroup = (groupId: string, buttonId: string) => {
+  const groups = loadButtonUIGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (group && !group.buttonIds.includes(buttonId)) {
+    group.buttonIds.push(buttonId);
+    saveButtonUIGroups(groups);
+  }
+};
+
+export const removeButtonFromUIGroup = (groupId: string, buttonId: string) => {
+  const groups = loadButtonUIGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (group) {
+    group.buttonIds = group.buttonIds.filter(id => id !== buttonId);
+    if (group.buttonIds.length === 0) {
+      saveButtonUIGroups(groups.filter(g => g.id !== groupId));
+    } else {
+      saveButtonUIGroups(groups);
+    }
+  }
+};
+
+export const getButtonUIGroup = (buttonId: string): ButtonUIGroup | undefined => {
+  const groups = loadButtonUIGroups();
+  return groups.find(g => g.buttonIds.includes(buttonId));
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {
@@ -575,11 +696,13 @@ const ButtonSettingsPopover: React.FC<{
   const [selectedOpacity, setSelectedOpacity] = useState<number>(() => getButtonOpacity(buttonId));
   const [selectedBorder, setSelectedBorder] = useState<ButtonBorderStyle>(() => getButtonBorder(buttonId));
   const [selectedShadow, setSelectedShadow] = useState<ButtonShadowStyle>(() => getButtonShadow(buttonId));
+  const [selectedHover, setSelectedHover] = useState<ButtonHoverEffect>(() => getButtonHover(buttonId));
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showAnimationPicker, setShowAnimationPicker] = useState(false);
   const [showBorderPicker, setShowBorderPicker] = useState(false);
   const [showShadowPicker, setShowShadowPicker] = useState(false);
+  const [showHoverPicker, setShowHoverPicker] = useState(false);
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -670,6 +793,12 @@ const ButtonSettingsPopover: React.FC<{
     light();
     setSelectedShadow(shadow);
     setButtonShadow(buttonId, shadow);
+  };
+
+  const handleHoverChange = (hover: ButtonHoverEffect) => {
+    light();
+    setSelectedHover(hover);
+    setButtonHover(buttonId, hover);
   };
 
   const handleResetPosition = () => {
@@ -1193,6 +1322,73 @@ const ButtonSettingsPopover: React.FC<{
                       )}>
                         <Sparkles className="w-5 h-5 text-primary-foreground" />
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Hover Effects */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowHoverPicker(!showHoverPicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Activity className={cn(
+                    'w-5 h-5',
+                    selectedHover !== 'none' ? 'text-primary' : 'text-muted-foreground'
+                  )} />
+                  <span className="text-sm font-medium">
+                    {selectedHover !== 'none' 
+                      ? BUTTON_HOVER_OPTIONS.find(h => h.value === selectedHover)?.label + ' Hover'
+                      : 'Hover Effect'}
+                  </span>
+                </div>
+                <Activity 
+                  className={cn(
+                    'w-4 h-4 transition-colors',
+                    showHoverPicker ? 'text-primary' : 'text-muted-foreground'
+                  )} 
+                />
+              </button>
+              
+              {showHoverPicker && (
+                <div className="space-y-2 animate-fade-in p-2 rounded-xl bg-muted/30">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {BUTTON_HOVER_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleHoverChange(option.value)}
+                        className={cn(
+                          'p-2.5 rounded-lg transition-all text-left',
+                          selectedHover === option.value
+                            ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                            : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                        )}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="text-[10px] opacity-70">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Hover Preview */}
+                  {selectedHover !== 'none' && (
+                    <div className="flex items-center justify-center p-3 rounded-lg bg-background/50">
+                      <div className={cn(
+                        'w-10 h-10 rounded-full bg-primary flex items-center justify-center transition-all duration-300',
+                        selectedHover === 'scale' && 'btn-hover-scale',
+                        selectedHover === 'rotate' && 'btn-hover-rotate',
+                        selectedHover === 'glow' && 'btn-hover-glow',
+                        selectedHover === 'scale-rotate' && 'btn-hover-scale-rotate',
+                        selectedHover === 'lift' && 'btn-hover-lift',
+                      )}>
+                        <Sparkles className="w-5 h-5 text-primary-foreground" />
+                      </div>
+                      <span className="ml-2 text-[10px] text-muted-foreground">Hover to preview</span>
                     </div>
                   )}
                 </div>

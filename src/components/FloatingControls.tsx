@@ -175,6 +175,17 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
   );
 };
 
+interface CreatorInfo {
+  id: string;
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  postsCount?: number;
+  followersCount?: number;
+  followingCount?: number;
+  isVerified?: boolean;
+}
+
 interface FloatingControlsProps {
   onWalletClick: () => void;
   onProfileClick: () => void;
@@ -196,6 +207,9 @@ interface FloatingControlsProps {
   creatorName?: string;
   showAchievements?: boolean;
   achievementsCount?: number;
+  /** Info about the content creator being viewed */
+  creatorInfo?: CreatorInfo;
+  onViewCreatorProfile?: () => void;
 }
 
 // Profile Preview Sheet Component
@@ -203,12 +217,14 @@ interface ProfilePreviewSheetProps {
   onFullProfileClick: () => void;
   onAchievementsClick?: () => void;
   onWalletClick?: () => void;
+  creatorInfo?: CreatorInfo;
 }
 
 const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({ 
   onFullProfileClick,
   onAchievementsClick,
   onWalletClick,
+  creatorInfo,
 }) => {
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -239,6 +255,9 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
     setDragY(0);
   };
 
+  const displayName = creatorInfo?.displayName || creatorInfo?.username || 'Creator';
+  const avatarUrl = creatorInfo?.avatarUrl;
+
   return (
     <div 
       className="h-full flex flex-col"
@@ -264,27 +283,46 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
       {/* Profile preview content */}
       <div className="flex-1 px-4 space-y-4 overflow-y-auto">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center">
-            <User className="w-8 h-8 text-foreground/70" />
-          </div>
+          {avatarUrl ? (
+            <img 
+              src={avatarUrl} 
+              alt={displayName}
+              className="w-16 h-16 rounded-full object-cover border-2 border-primary/30"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center">
+              <User className="w-8 h-8 text-foreground/70" />
+            </div>
+          )}
           <div>
-            <h3 className="font-semibold text-foreground">Your Profile</h3>
-            <p className="text-sm text-muted-foreground">View your content and stats</p>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-foreground">{displayName}</h3>
+              {creatorInfo?.isVerified && (
+                <span className="w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {creatorInfo?.username ? `@${creatorInfo.username}` : 'View creator profile'}
+            </p>
           </div>
         </div>
         
         {/* Quick stats preview */}
         <div className="grid grid-cols-3 gap-4 py-4 border-t border-border/50">
           <div className="text-center">
-            <div className="text-lg font-bold text-foreground">0</div>
+            <div className="text-lg font-bold text-foreground">{creatorInfo?.postsCount ?? 0}</div>
             <div className="text-xs text-muted-foreground">Posts</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-foreground">0</div>
+            <div className="text-lg font-bold text-foreground">{creatorInfo?.followersCount ?? 0}</div>
             <div className="text-xs text-muted-foreground">Followers</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-foreground">0</div>
+            <div className="text-lg font-bold text-foreground">{creatorInfo?.followingCount ?? 0}</div>
             <div className="text-xs text-muted-foreground">Following</div>
           </div>
         </div>
@@ -377,6 +415,8 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onAchievementsClick,
   isLiked = false,
   likeCount = 0,
+  creatorInfo,
+  onViewCreatorProfile,
 }) => {
   const { isVisible } = useControlsVisibility();
   const { medium } = useHapticFeedback();
@@ -386,7 +426,12 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   
   const handleFullProfileClick = () => {
     setProfileSheetOpen(false);
-    onProfileClick();
+    // If there's a creator-specific handler, use it; otherwise fall back to profile click
+    if (onViewCreatorProfile) {
+      onViewCreatorProfile();
+    } else {
+      onProfileClick();
+    }
   };
   
   const handleRemoteControlToggle = () => {
@@ -463,6 +508,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
                 setProfileSheetOpen(false);
                 onWalletClick?.();
               }}
+              creatorInfo={creatorInfo}
             />
           </SheetContent>
         </Sheet>

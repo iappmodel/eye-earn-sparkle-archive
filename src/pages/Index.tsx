@@ -46,6 +46,16 @@ const mockMedia = [
     duration: 8,
     reward: { amount: 50, type: 'vicoin' as const },
     title: 'Holiday Special',
+    creator: {
+      id: 'creator-1',
+      username: 'holiday_deals',
+      displayName: 'Holiday Deals',
+      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
+      postsCount: 156,
+      followersCount: 24500,
+      followingCount: 89,
+      isVerified: true,
+    },
   },
   {
     id: '2',
@@ -54,6 +64,16 @@ const mockMedia = [
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     duration: 15,
     title: 'Trending Now',
+    creator: {
+      id: 'creator-2',
+      username: 'alex_creates',
+      displayName: 'Alex Rivera',
+      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+      postsCount: 89,
+      followersCount: 12300,
+      followingCount: 234,
+      isVerified: false,
+    },
   },
   {
     id: '3',
@@ -63,12 +83,32 @@ const mockMedia = [
     duration: 10,
     reward: { amount: 1, type: 'icoin' as const },
     title: 'Coffee Shop Reward',
+    creator: {
+      id: 'creator-3',
+      username: 'cafe_central',
+      displayName: 'Cafe Central',
+      avatarUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=100&h=100&fit=crop',
+      postsCount: 342,
+      followersCount: 8700,
+      followingCount: 156,
+      isVerified: true,
+    },
   },
   {
     id: '4',
     type: 'image' as const,
     src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
     title: 'Mountain View',
+    creator: {
+      id: 'creator-4',
+      username: 'nature_shots',
+      displayName: 'Maya Thompson',
+      avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
+      postsCount: 234,
+      followersCount: 45600,
+      followingCount: 123,
+      isVerified: true,
+    },
   },
   {
     id: '5',
@@ -78,6 +118,16 @@ const mockMedia = [
     duration: 12,
     reward: { amount: 25, type: 'vicoin' as const },
     title: 'Sneaker Drop',
+    creator: {
+      id: 'creator-5',
+      username: 'sneaker_drops',
+      displayName: 'Sneaker Drops',
+      avatarUrl: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=100&h=100&fit=crop',
+      postsCount: 567,
+      followersCount: 89000,
+      followingCount: 45,
+      isVerified: true,
+    },
   },
 ];
 
@@ -462,6 +512,11 @@ const Index = () => {
                 commentCount={89}
                 showAchievements={isPromoContent && eyeTrackingEnabled}
                 achievementsCount={unlockedAchievements.size}
+                creatorInfo={currentMedia.creator}
+                onViewCreatorProfile={() => {
+                  // TODO: Navigate to creator's public profile
+                  toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
+                }}
               />
 
               {/* Achievements panel */}

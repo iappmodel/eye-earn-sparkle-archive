@@ -87,7 +87,11 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
       targetAudience: form.targetAudience,
     },
     useCallback((data) => {
-      setForm(prev => ({ ...prev, ...data }));
+      setForm(prev => ({ 
+        ...prev, 
+        ...data,
+        mediaType: (data.mediaType as MediaType) || prev.mediaType,
+      }));
     }, [])
   );
 

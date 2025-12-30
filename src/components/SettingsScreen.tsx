@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useLocalization } from '@/contexts/LocalizationContext';
@@ -17,6 +17,7 @@ import {
   deleteLayoutPreset,
   GROUP_LAYOUT_PRESETS,
 } from './DraggableButton';
+import { getAutoHideEnabled, setAutoHideEnabled } from './FloatingControls';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -57,6 +58,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [layoutPresets, setLayoutPresets] = useState(loadLayoutPresets());
   const [newPresetName, setNewPresetName] = useState('');
   const [showSavePreset, setShowSavePreset] = useState(false);
+  const [autoHideButtons, setAutoHideButtons] = useState(() => getAutoHideEnabled());
 
   // Update counts when screen opens
   useEffect(() => {
@@ -265,6 +267,42 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <h2 className="font-display text-lg font-semibold">Button Layout</h2>
             </div>
             <div className="neu-inset rounded-xl p-4 space-y-4">
+              {/* Auto-hide Toggle */}
+              <button
+                onClick={() => {
+                  const newValue = !autoHideButtons;
+                  setAutoHideButtons(newValue);
+                  setAutoHideEnabled(newValue);
+                  // Trigger storage event for other components
+                  window.dispatchEvent(new Event('storage'));
+                  toast.success(newValue ? 'Buttons will auto-hide after 5 seconds' : 'Buttons will always stay visible');
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  {autoHideButtons ? (
+                    <EyeOff className="w-5 h-5 text-muted-foreground" />
+                  ) : (
+                    <Eye className="w-5 h-5 text-primary" />
+                  )}
+                  <div className="text-left">
+                    <span className="font-medium block">Auto-hide Buttons</span>
+                    <span className="text-xs text-muted-foreground">
+                      {autoHideButtons ? 'Buttons hide after 5 seconds' : 'Buttons always visible'}
+                    </span>
+                  </div>
+                </div>
+                <div className={cn(
+                  "w-12 h-7 rounded-full p-1 transition-all",
+                  autoHideButtons ? "bg-primary" : "bg-muted"
+                )}>
+                  <div className={cn(
+                    "w-5 h-5 rounded-full bg-background shadow-md transition-transform",
+                    autoHideButtons && "translate-x-5"
+                  )} />
+                </div>
+              </button>
+
               {/* Stats */}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Repositioned buttons:</span>

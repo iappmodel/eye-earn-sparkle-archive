@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, Eye, Heart, Share2, Users, Play, 
-  BarChart3, Clock, ArrowUp, ArrowDown, Minus
+  BarChart3, Clock, ArrowUp, ArrowDown, Minus, DollarSign, Bell
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,6 +10,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AudienceInsights } from './AudienceInsights';
 import { BestPostingTimes } from './BestPostingTimes';
 import { ContentComparison } from './ContentComparison';
+import { SmartPostScheduler } from './SmartPostScheduler';
+import { RevenueAnalytics } from './RevenueAnalytics';
+import { FollowerGrowth } from './FollowerGrowth';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format, subDays, eachDayOfInterval, startOfDay, endOfDay } from 'date-fns';
 
@@ -288,25 +291,46 @@ export const CreatorDashboard: React.FC = () => {
 
       {/* Sub-sections */}
       <Tabs defaultValue="audience" className="w-full">
-        <TabsList className="w-full grid grid-cols-3">
-          <TabsTrigger value="audience" className="text-xs">
-            <Users className="w-3 h-3 mr-1" />
+        <TabsList className="w-full grid grid-cols-6 h-auto p-1">
+          <TabsTrigger value="audience" className="text-[10px] px-1 py-2 flex-col gap-0.5">
+            <Users className="w-3 h-3" />
             Audience
           </TabsTrigger>
-          <TabsTrigger value="timing" className="text-xs">
-            <Clock className="w-3 h-3 mr-1" />
+          <TabsTrigger value="growth" className="text-[10px] px-1 py-2 flex-col gap-0.5">
+            <TrendingUp className="w-3 h-3" />
+            Growth
+          </TabsTrigger>
+          <TabsTrigger value="revenue" className="text-[10px] px-1 py-2 flex-col gap-0.5">
+            <DollarSign className="w-3 h-3" />
+            Revenue
+          </TabsTrigger>
+          <TabsTrigger value="timing" className="text-[10px] px-1 py-2 flex-col gap-0.5">
+            <Clock className="w-3 h-3" />
             Timing
           </TabsTrigger>
-          <TabsTrigger value="compare" className="text-xs">
-            <BarChart3 className="w-3 h-3 mr-1" />
+          <TabsTrigger value="schedule" className="text-[10px] px-1 py-2 flex-col gap-0.5">
+            <Bell className="w-3 h-3" />
+            Schedule
+          </TabsTrigger>
+          <TabsTrigger value="compare" className="text-[10px] px-1 py-2 flex-col gap-0.5">
+            <BarChart3 className="w-3 h-3" />
             Compare
           </TabsTrigger>
         </TabsList>
         <TabsContent value="audience" className="mt-4">
           <AudienceInsights />
         </TabsContent>
+        <TabsContent value="growth" className="mt-4">
+          <FollowerGrowth />
+        </TabsContent>
+        <TabsContent value="revenue" className="mt-4">
+          <RevenueAnalytics />
+        </TabsContent>
         <TabsContent value="timing" className="mt-4">
           <BestPostingTimes />
+        </TabsContent>
+        <TabsContent value="schedule" className="mt-4">
+          <SmartPostScheduler />
         </TabsContent>
         <TabsContent value="compare" className="mt-4">
           <ContentComparison />

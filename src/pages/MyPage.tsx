@@ -3,31 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings, Grid3X3, Video, Camera, Crown, Heart, Eye, Play, ImageIcon, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useUserContent } from '@/hooks/useUserContent';
 import { cn } from '@/lib/utils';
 import { AppLogo } from '@/components/AppLogo';
 import { VerificationBadge } from '@/components/VerificationBadge';
 import { SettingsScreen } from '@/components/SettingsScreen';
 import { CreatorDashboard } from '@/components/analytics';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type ContentTab = 'grid' | 'videos' | 'promotions' | 'rewards' | 'analytics';
-
-// Mock user content data
-const mockContent = [
-  { id: '1', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1614850715649-1d0106293bd1?w=300&h=300&fit=crop', likes: 234, views: 1200 },
-  { id: '2', type: 'video', thumbnail: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=300&h=300&fit=crop', likes: 567, views: 3400 },
-  { id: '3', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=300&h=300&fit=crop', likes: 189, views: 890 },
-  { id: '4', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=300&h=300&fit=crop', likes: 445, views: 2100 },
-  { id: '5', type: 'video', thumbnail: 'https://images.unsplash.com/photo-1682687220063-4742bd7fd538?w=300&h=300&fit=crop', likes: 678, views: 4500 },
-  { id: '6', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1682687221038-404670f09439?w=300&h=300&fit=crop', likes: 312, views: 1800 },
-  { id: '7', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=300&h=300&fit=crop', likes: 523, views: 2900 },
-  { id: '8', type: 'video', thumbnail: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=300&h=300&fit=crop', likes: 891, views: 5600 },
-  { id: '9', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop', likes: 267, views: 1400 },
-];
 
 const MyPage: React.FC = () => {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
   const { tier, tierName } = useSubscription();
+  const { content, isLoading } = useUserContent();
   const [activeTab, setActiveTab] = useState<ContentTab>('grid');
   const [showSettings, setShowSettings] = useState(false);
 
@@ -44,7 +34,7 @@ const MyPage: React.FC = () => {
     { id: 'rewards' as const, icon: Crown, label: 'Rewards' },
   ];
 
-  const filteredContent = mockContent.filter(item => {
+  const filteredContent = content.filter(item => {
     if (activeTab === 'grid') return true;
     if (activeTab === 'videos') return item.type === 'video';
     return true;
@@ -175,6 +165,12 @@ const MyPage: React.FC = () => {
           </div>
         ) : activeTab === 'analytics' ? (
           <CreatorDashboard />
+        ) : isLoading ? (
+          <div className="grid grid-cols-3 gap-1">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <Skeleton key={i} className="aspect-square rounded-sm" />
+            ))}
+          </div>
         ) : filteredContent.length > 0 ? (
           <div className="grid grid-cols-3 gap-1">
             {filteredContent.map((item) => (

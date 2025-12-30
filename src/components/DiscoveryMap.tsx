@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { MapSearchBar } from './MapSearchBar';
 import { MapFilterSheet, defaultMapFilters, type MapFilters } from './MapFilterSheet';
 import { FavoriteLocations, useFavoriteLocation } from './FavoriteLocations';
+import { CategoryIcon, getCategoryInfo } from './PromotionCategories';
+import { CheckInButton } from './CheckInButton';
 interface Promotion {
   id: string;
   business_name: string;
@@ -809,7 +811,8 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
               </button>
             </div>
 
-            <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <CategoryIcon category={selectedPromo.category} size="sm" />
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <MapPin className="w-4 h-4" />
                 <span>{selectedPromo.distance?.toFixed(1) || '?'} km</span>
@@ -820,18 +823,25 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
                   {selectedPromo.reward_amount} {selectedPromo.reward_type === 'vicoin' ? 'Vicoins' : selectedPromo.reward_type === 'icoin' ? 'Icoins' : 'V+I'}
                 </span>
               </div>
-              <span className="text-xs bg-muted px-2 py-1 rounded-full capitalize">
-                {selectedPromo.required_action}
-              </span>
+            </div>
+
+            <div className="text-xs text-muted-foreground mb-3 p-2 bg-muted/30 rounded-lg">
+              📋 {selectedPromo.required_action}
             </div>
 
             <div className="flex gap-3">
-              <button 
-                className="flex-1 py-3 rounded-xl text-white font-medium"
-                style={{ background: getRewardGradient(selectedPromo.reward_amount, selectedPromo.reward_type) }}
-              >
-                Claim Reward
-              </button>
+              <CheckInButton
+                promotion={{
+                  id: selectedPromo.id,
+                  business_name: selectedPromo.business_name,
+                  latitude: selectedPromo.latitude,
+                  longitude: selectedPromo.longitude,
+                  reward_amount: selectedPromo.reward_amount,
+                  reward_type: selectedPromo.reward_type,
+                }}
+                className="flex-1"
+                onSuccess={() => setSelectedPromo(null)}
+              />
               <button 
                 onClick={() => toggleFavorite({
                   id: selectedPromo.id,
@@ -875,22 +885,25 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
                 }}
                 className="flex-shrink-0 neu-card rounded-2xl p-3 min-w-[200px] text-left border border-border/30"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <div 
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
-                    style={{ background: getRewardGradient(promo.reward_amount, promo.reward_type) }}
-                  >
-                    {promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★'}
-                  </div>
-                  <span className="font-medium text-sm truncate">{promo.business_name}</span>
+                <div className="flex items-center gap-2 mb-2">
+                  <CategoryIcon category={promo.category} size="sm" />
+                  <span className="font-medium text-sm truncate flex-1">{promo.business_name}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{promo.distance?.toFixed(1)} km</span>
+                  <div className="flex items-center gap-1">
+                    <div 
+                      className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold text-white"
+                      style={{ background: getRewardGradient(promo.reward_amount, promo.reward_type) }}
+                    >
+                      {promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★'}
+                    </div>
+                    <span>{promo.distance?.toFixed(1)} km</span>
+                  </div>
                   <span 
                     className="font-semibold"
                     style={{ color: promo.reward_amount > 100 ? '#ef4444' : promo.reward_amount > 50 ? '#eab308' : '#22c55e' }}
                   >
-                    +{promo.reward_amount} {promo.reward_type === 'vicoin' ? 'V' : 'I'}
+                    +{promo.reward_amount}
                   </span>
                 </div>
               </button>

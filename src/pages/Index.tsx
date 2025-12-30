@@ -28,6 +28,7 @@ import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
+import { useContentFeed } from '@/hooks/useContentFeed';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -35,102 +36,6 @@ import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-// Mock data - more realistic content with video support
-const mockMedia = [
-  {
-    id: '1',
-    type: 'promo' as const,
-    src: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    duration: 8,
-    reward: { amount: 50, type: 'vicoin' as const },
-    title: 'Holiday Special',
-    creator: {
-      id: 'creator-1',
-      username: 'holiday_deals',
-      displayName: 'Holiday Deals',
-      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
-      postsCount: 156,
-      followersCount: 24500,
-      followingCount: 89,
-      isVerified: true,
-    },
-  },
-  {
-    id: '2',
-    type: 'video' as const,
-    src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    duration: 15,
-    title: 'Trending Now',
-    creator: {
-      id: 'creator-2',
-      username: 'alex_creates',
-      displayName: 'Alex Rivera',
-      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
-      postsCount: 89,
-      followersCount: 12300,
-      followingCount: 234,
-      isVerified: false,
-    },
-  },
-  {
-    id: '3',
-    type: 'promo' as const,
-    src: 'https://images.unsplash.com/photo-1560472355-536de3962603?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    duration: 10,
-    reward: { amount: 1, type: 'icoin' as const },
-    title: 'Coffee Shop Reward',
-    creator: {
-      id: 'creator-3',
-      username: 'cafe_central',
-      displayName: 'Cafe Central',
-      avatarUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=100&h=100&fit=crop',
-      postsCount: 342,
-      followersCount: 8700,
-      followingCount: 156,
-      isVerified: true,
-    },
-  },
-  {
-    id: '4',
-    type: 'image' as const,
-    src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
-    title: 'Mountain View',
-    creator: {
-      id: 'creator-4',
-      username: 'nature_shots',
-      displayName: 'Maya Thompson',
-      avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
-      postsCount: 234,
-      followersCount: 45600,
-      followingCount: 123,
-      isVerified: true,
-    },
-  },
-  {
-    id: '5',
-    type: 'promo' as const,
-    src: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    duration: 12,
-    reward: { amount: 25, type: 'vicoin' as const },
-    title: 'Sneaker Drop',
-    creator: {
-      id: 'creator-5',
-      username: 'sneaker_drops',
-      displayName: 'Sneaker Drops',
-      avatarUrl: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=100&h=100&fit=crop',
-      postsCount: 567,
-      followersCount: 89000,
-      followingCount: 45,
-      isVerified: true,
-    },
-  },
-];
-
 type HorizontalScreen = 'friends' | 'main' | 'promos';
 
 const Index = () => {
@@ -142,8 +47,10 @@ const Index = () => {
   const { light, medium } = useHapticFeedback();
   const { eyeTrackingEnabled } = useMediaSettings();
   const { stats: achievementStats, unlockedAchievements, newlyUnlocked, dismissNotification } = useAttentionAchievements();
-  const [isLoading, setIsLoading] = useState(true);
   const [showAchievementsPanel, setShowAchievementsPanel] = useState(false);
+  
+  // Real content from database
+  const { content: feedContent, isLoading, refresh: refreshFeed } = useContentFeed();
   
   // Page navigation from configured layout
   const {
@@ -180,19 +87,13 @@ const Index = () => {
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
   
-  // Check if current media is promo content
-  const currentMedia = useMemo(() => mockMedia[currentIndex], [currentIndex]);
+  // Current media from real feed
+  const currentMedia = useMemo(() => feedContent[currentIndex] || feedContent[0], [feedContent, currentIndex]);
   const isPromoContent = currentMedia?.type === 'promo' && !!currentMedia?.reward;
-  
-  // Simulate initial load
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
   
   // Pull to refresh handler
   const handleRefresh = useCallback(async () => {
-    await refreshProfile();
+    await Promise.all([refreshProfile(), refreshFeed()]);
     toast.success('Feed refreshed!');
   }, [refreshProfile]);
 
@@ -307,22 +208,22 @@ const Index = () => {
 
   // Navigate with swipe animation (vertical) - for main feed content
   const navigateToMedia = useCallback((direction: 'up' | 'down') => {
-    if (isTransitioning || currentState.direction !== 'center') return;
+    if (isTransitioning || currentState.direction !== 'center' || feedContent.length === 0) return;
     
     setIsTransitioning(true);
     setSwipeDirection(direction);
 
     setTimeout(() => {
       if (direction === 'up') {
-        setCurrentIndex(prev => (prev + 1) % mockMedia.length);
+        setCurrentIndex(prev => (prev + 1) % feedContent.length);
       } else {
-        setCurrentIndex(prev => (prev - 1 + mockMedia.length) % mockMedia.length);
+        setCurrentIndex(prev => (prev - 1 + feedContent.length) % feedContent.length);
       }
       setIsLiked(false);
       setSwipeDirection(null);
       setIsTransitioning(false);
     }, 300);
-  }, [isTransitioning, currentState.direction]);
+  }, [isTransitioning, currentState.direction, feedContent.length]);
 
   // Skip to next media
   const handleSkip = useCallback(() => {
@@ -377,14 +278,18 @@ const Index = () => {
       return;
     }
 
-    // For demo purposes, use a mock creator ID (in real app, would come from content metadata)
-    const mockCreatorId = 'demo-creator-id';
+    // Use the real creator ID from the content
+    const creatorId = currentMedia?.creator?.id;
+    if (!creatorId || creatorId === 'system') {
+      toast.error('Cannot tip this content');
+      return;
+    }
     
     try {
       const { data, error } = await supabase.functions.invoke('tip-creator', {
         body: {
           contentId: currentMedia.id,
-          creatorId: mockCreatorId,
+          creatorId,
           amount,
           coinType,
         },

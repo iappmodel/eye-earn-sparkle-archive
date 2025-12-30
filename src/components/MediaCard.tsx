@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Play, Pause, Volume2, VolumeX, SkipForward, Eye, Clock, Award, XCircle, Trophy } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipForward, Eye, Clock, Award, XCircle } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
 import { EyeTrackingIndicator } from './EyeTrackingIndicator';
 import { AttentionProgressBar } from './AttentionProgressBar';
@@ -8,7 +8,7 @@ import { FocusChallengeMiniGame } from './FocusChallengeMiniGame';
 import { PerfectAttentionCelebration } from './PerfectAttentionCelebration';
 import { AttentionHeatmap, useAttentionHeatmap } from './AttentionHeatmap';
 
-import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from './AttentionAchievements';
+import { useAttentionAchievements } from './AttentionAchievements';
 import { useEyeTracking } from '@/hooks/useEyeTracking';
 import { useMediaSettings } from './MediaSettings';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -56,7 +56,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [attentionLostCount, setAttentionLostCount] = useState(0);
   const [showPerfectCelebration, setShowPerfectCelebration] = useState(false);
   
-  const [showAchievementsPanel, setShowAchievementsPanel] = useState(false);
+  
   const hasCompleted = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
@@ -69,7 +69,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
   const haptic = useHapticFeedback();
   const { segments: heatmapSegments, recordAttention, reset: resetHeatmap, finalizeCurrentSegment } = useAttentionHeatmap();
-  const { stats: achievementStats, unlockedAchievements, newlyUnlocked, recordVideoCompletion, dismissNotification } = useAttentionAchievements();
+  const { recordVideoCompletion } = useAttentionAchievements();
 
   // Eye tracking for promo content
   const isPromoContent = type === 'promo' && !!reward;
@@ -502,36 +502,6 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           position="top-center"
         />
       )}
-
-
-      {/* Achievements button */}
-      {isPromoContent && eyeTrackingEnabled && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowAchievementsPanel(true); }}
-          className="absolute top-32 right-4 z-30 w-10 h-10 rounded-full bg-background/40 backdrop-blur-md border border-border/20 flex items-center justify-center transition-all hover:bg-background/60"
-        >
-          <Trophy className="w-5 h-5 text-amber-500" />
-          {unlockedAchievements.size > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
-              {unlockedAchievements.size}
-            </span>
-          )}
-        </button>
-      )}
-
-      {/* Achievements panel */}
-      <AttentionAchievementsPanel
-        isVisible={showAchievementsPanel}
-        onClose={() => setShowAchievementsPanel(false)}
-        stats={achievementStats}
-        unlockedAchievements={unlockedAchievements}
-      />
-
-      {/* Achievement unlock notification */}
-      <AchievementUnlockNotification
-        achievement={newlyUnlocked}
-        onDismiss={dismissNotification}
-      />
 
       {/* Focus Challenge Mini-Game overlay */}
       {showFocusChallenge && (

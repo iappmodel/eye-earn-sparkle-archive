@@ -5,7 +5,7 @@ import {
   Heart, MessageCircle, Share2, UserPlus, Wallet, User, Cog, Gift, Bookmark, Flag, VolumeX,
   Bell, Star, ThumbsUp, ThumbsDown, Send, Camera, Video, Music, Image, Home, Search, Plus,
   Sparkles, Flame, Trophy, Crown, Diamond, Gem, Coins, Award, Target, Lightbulb,
-  Wand2, CircleDot, Waves, Activity, Square,
+  Wand2, CircleDot, Waves, Activity, Square, Sun, Layers,
   type LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,7 @@ const BUTTON_COLORS_KEY = 'visuai-button-colors';
 const BUTTON_ANIMATIONS_KEY = 'visuai-button-animations';
 const BUTTON_OPACITY_KEY = 'visuai-button-opacity';
 const BUTTON_BORDERS_KEY = 'visuai-button-borders';
+const BUTTON_SHADOWS_KEY = 'visuai-button-shadows';
 
 // Grid snap configuration
 const GRID_SIZE = 40;
@@ -141,6 +142,15 @@ export const BUTTON_BORDER_OPTIONS: { value: ButtonBorderStyle; label: string; d
   { value: 'dashed', label: 'Dashed', description: 'Dashed line' },
   { value: 'dotted', label: 'Dotted', description: 'Dotted line' },
   { value: 'gradient', label: 'Gradient', description: 'Neon glow border' },
+];
+
+// Shadow style options
+export type ButtonShadowStyle = 'none' | 'soft' | 'hard' | 'neon';
+export const BUTTON_SHADOW_OPTIONS: { value: ButtonShadowStyle; label: string; description: string }[] = [
+  { value: 'none', label: 'None', description: 'No shadow' },
+  { value: 'soft', label: 'Soft', description: 'Subtle shadow' },
+  { value: 'hard', label: 'Hard', description: 'Sharp shadow' },
+  { value: 'neon', label: 'Neon Glow', description: 'Neon effect' },
 ];
 
 // Load/save button settings
@@ -436,6 +446,32 @@ export const getButtonBorder = (buttonId: string): ButtonBorderStyle => {
   return borders[buttonId] || 'none';
 };
 
+// Button shadow styles management
+export const getButtonShadows = (): Record<string, ButtonShadowStyle> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_SHADOWS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonShadow = (buttonId: string, shadow: ButtonShadowStyle) => {
+  try {
+    const shadows = getButtonShadows();
+    shadows[buttonId] = shadow;
+    localStorage.setItem(BUTTON_SHADOWS_KEY, JSON.stringify(shadows));
+    window.dispatchEvent(new CustomEvent('buttonShadowsChanged', { detail: shadows }));
+  } catch (e) {
+    console.error('Failed to save button shadow:', e);
+  }
+};
+
+export const getButtonShadow = (buttonId: string): ButtonShadowStyle => {
+  const shadows = getButtonShadows();
+  return shadows[buttonId] || 'none';
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {
@@ -538,10 +574,12 @@ const ButtonSettingsPopover: React.FC<{
   const [selectedAnimation, setSelectedAnimation] = useState<ButtonAnimationType>(() => getButtonAnimation(buttonId));
   const [selectedOpacity, setSelectedOpacity] = useState<number>(() => getButtonOpacity(buttonId));
   const [selectedBorder, setSelectedBorder] = useState<ButtonBorderStyle>(() => getButtonBorder(buttonId));
+  const [selectedShadow, setSelectedShadow] = useState<ButtonShadowStyle>(() => getButtonShadow(buttonId));
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showAnimationPicker, setShowAnimationPicker] = useState(false);
   const [showBorderPicker, setShowBorderPicker] = useState(false);
+  const [showShadowPicker, setShowShadowPicker] = useState(false);
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -626,6 +664,12 @@ const ButtonSettingsPopover: React.FC<{
     light();
     setSelectedBorder(border);
     setButtonBorder(buttonId, border);
+  };
+
+  const handleShadowChange = (shadow: ButtonShadowStyle) => {
+    light();
+    setSelectedShadow(shadow);
+    setButtonShadow(buttonId, shadow);
   };
 
   const handleResetPosition = () => {
@@ -1092,6 +1136,70 @@ const ButtonSettingsPopover: React.FC<{
             </div>
           )}
 
+          {/* Shadow Style */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowShadowPicker(!showShadowPicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Sun className={cn(
+                    'w-5 h-5',
+                    selectedShadow !== 'none' ? 'text-primary' : 'text-muted-foreground'
+                  )} />
+                  <span className="text-sm font-medium">
+                    {selectedShadow !== 'none' 
+                      ? BUTTON_SHADOW_OPTIONS.find(s => s.value === selectedShadow)?.label + ' Shadow'
+                      : 'Add Shadow'}
+                  </span>
+                </div>
+                <Sun 
+                  className={cn(
+                    'w-4 h-4 transition-colors',
+                    showShadowPicker ? 'text-primary' : 'text-muted-foreground'
+                  )} 
+                />
+              </button>
+              
+              {showShadowPicker && (
+                <div className="space-y-2 animate-fade-in p-2 rounded-xl bg-muted/30">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {BUTTON_SHADOW_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleShadowChange(option.value)}
+                        className={cn(
+                          'p-2.5 rounded-lg transition-all text-left',
+                          selectedShadow === option.value
+                            ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                            : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                        )}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="text-[10px] opacity-70">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Shadow Preview */}
+                  {selectedShadow !== 'none' && (
+                    <div className="flex items-center justify-center p-3 rounded-lg bg-background/50">
+                      <div className={cn(
+                        'w-10 h-10 rounded-full bg-primary flex items-center justify-center',
+                        selectedShadow === 'soft' && 'btn-shadow-soft',
+                        selectedShadow === 'hard' && 'btn-shadow-hard',
+                        selectedShadow === 'neon' && 'btn-shadow-neon',
+                      )}>
+                        <Sparkles className="w-5 h-5 text-primary-foreground" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Move Button with Grid Snap */}
           <div className="space-y-2">
             <button
@@ -1165,6 +1273,22 @@ const ButtonSettingsPopover: React.FC<{
               </div>
             </div>
           )}
+
+          {/* Divider */}
+          <div className="border-t border-border/50" />
+
+          {/* Presets Button - opens preset manager via event */}
+          <button
+            onClick={() => {
+              light();
+              window.dispatchEvent(new CustomEvent('openButtonPresets'));
+              onClose();
+            }}
+            className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-accent/10 hover:bg-accent/20 text-accent-foreground transition-colors"
+          >
+            <Layers className="w-5 h-5" />
+            <span className="text-sm font-medium">Manage Presets</span>
+          </button>
 
           {/* Reset All */}
           <button

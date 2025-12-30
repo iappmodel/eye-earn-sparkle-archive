@@ -5,6 +5,7 @@ import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
 import { LongPressButtonWrapper, getHiddenButtons } from './LongPressButtonWrapper';
+import { ButtonPresetManager } from './ButtonPresetManager';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
 
@@ -303,14 +304,21 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   });
   
   const [hiddenButtons, setHiddenButtonsState] = useState<string[]>(() => getHiddenButtons());
+  const [showPresetManager, setShowPresetManager] = useState(false);
   
   // Listen for hidden buttons changes
   useEffect(() => {
     const handleHiddenChange = (e: CustomEvent) => {
       setHiddenButtonsState(e.detail);
     };
+    const handleOpenPresets = () => setShowPresetManager(true);
+    
     window.addEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
-    return () => window.removeEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
+    window.addEventListener('openButtonPresets', handleOpenPresets);
+    return () => {
+      window.removeEventListener('hiddenButtonsChanged', handleHiddenChange as EventListener);
+      window.removeEventListener('openButtonPresets', handleOpenPresets);
+    };
   }, []);
   
   const visibleButtons = getVisibleButtons().filter(b => !hiddenButtons.includes(b.id));
@@ -565,6 +573,12 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         {/* Visibility Toggle - integrated at the bottom */}
         <VisibilityToggleButton />
       </div>
+      
+      {/* Button Preset Manager Modal */}
+      <ButtonPresetManager 
+        isOpen={showPresetManager} 
+        onClose={() => setShowPresetManager(false)} 
+      />
     </>
   );
 };

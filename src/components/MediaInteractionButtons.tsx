@@ -10,7 +10,8 @@ import {
   VolumeX,
   Play,
   Pause,
-  X
+  X,
+  Trophy
 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -42,11 +43,14 @@ interface MediaInteractionButtonsProps {
   onToggleMute?: () => void;
   onTogglePlay?: () => void;
   onExitFullscreen?: () => void;
+  onAchievements?: () => void;
   
   // Display options
   showVolumeControl?: boolean;
   showPlayControl?: boolean;
   showFullscreenExit?: boolean;
+  showAchievements?: boolean;
+  achievementsCount?: number;
   variant?: 'sidebar' | 'overlay';
   className?: string;
 }
@@ -72,9 +76,12 @@ export const MediaInteractionButtons: React.FC<MediaInteractionButtonsProps> = (
   onToggleMute,
   onTogglePlay,
   onExitFullscreen,
+  onAchievements,
   showVolumeControl = true,
   showPlayControl = false,
   showFullscreenExit = false,
+  showAchievements = false,
+  achievementsCount = 0,
   variant = 'sidebar',
   className,
 }) => {
@@ -166,6 +173,20 @@ export const MediaInteractionButtons: React.FC<MediaInteractionButtonsProps> = (
       >
         <Bookmark className={cn('w-6 h-6', isSaved && 'fill-current')} />
       </NeuButton>
+
+      {/* Achievements */}
+      {showAchievements && (
+        <div className="relative">
+          <NeuButton onClick={onAchievements}>
+            <Trophy className="w-6 h-6 text-amber-500" />
+          </NeuButton>
+          {achievementsCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
+              {achievementsCount}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Follow */}
       <NeuButton 

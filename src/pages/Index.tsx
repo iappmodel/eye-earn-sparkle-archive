@@ -14,6 +14,8 @@ import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
 import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
+import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from '@/components/AttentionAchievements';
+import { useMediaSettings } from '@/components/MediaSettings';
 
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
@@ -86,7 +88,10 @@ const Index = () => {
   const { showTutorial, completeTutorial } = useGestureTutorial();
   const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useCelebration();
   const { light, medium } = useHapticFeedback();
+  const { eyeTrackingEnabled } = useMediaSettings();
+  const { stats: achievementStats, unlockedAchievements, newlyUnlocked, dismissNotification } = useAttentionAchievements();
   const [isLoading, setIsLoading] = useState(true);
+  const [showAchievementsPanel, setShowAchievementsPanel] = useState(false);
   
   // Page navigation from configured layout
   const {
@@ -122,6 +127,10 @@ const Index = () => {
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
   
+  // Check if current media is promo content
+  const currentMedia = useMemo(() => mockMedia[currentIndex], [currentIndex]);
+  const isPromoContent = currentMedia?.type === 'promo' && !!currentMedia?.reward;
+  
   // Simulate initial load
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 800);
@@ -134,7 +143,7 @@ const Index = () => {
     toast.success('Feed refreshed!');
   }, [refreshProfile]);
 
-  const currentMedia = mockMedia[currentIndex];
+  
   
   // Map content type to component rendering
   const renderPageContent = useCallback((contentType: string, isActive: boolean) => {
@@ -434,9 +443,26 @@ const Index = () => {
                 onCommentClick={handleComment}
                 onShareClick={handleShare}
                 onSettingsClick={handleSettings}
+                onAchievementsClick={() => setShowAchievementsPanel(true)}
                 isLiked={isLiked}
                 likeCount={1234}
                 commentCount={89}
+                showAchievements={isPromoContent && eyeTrackingEnabled}
+                achievementsCount={unlockedAchievements.size}
+              />
+
+              {/* Achievements panel */}
+              <AttentionAchievementsPanel
+                isVisible={showAchievementsPanel}
+                onClose={() => setShowAchievementsPanel(false)}
+                stats={achievementStats}
+                unlockedAchievements={unlockedAchievements}
+              />
+
+              {/* Achievement unlock notification */}
+              <AchievementUnlockNotification
+                achievement={newlyUnlocked}
+                onDismiss={dismissNotification}
               />
             </div>
           ) : currentPage ? (

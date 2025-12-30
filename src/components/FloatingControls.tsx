@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff } from 'lucide-react';
+import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
@@ -188,16 +188,19 @@ interface FloatingControlsProps {
   onSaveClick?: () => void;
   onReportClick?: () => void;
   onMuteClick?: () => void;
+  onAchievementsClick?: () => void;
   isLiked?: boolean;
   isFollowing?: boolean;
   isSaved?: boolean;
   likeCount?: number;
   commentCount?: number;
   creatorName?: string;
+  showAchievements?: boolean;
+  achievementsCount?: number;
 }
 
 // Icon mapping for button actions
-const actionIcons: Record<ButtonAction, React.ReactNode> = {
+const actionIcons: Record<ButtonAction | 'achievements', React.ReactNode> = {
   like: <Heart />,
   comment: <MessageCircle />,
   share: <Share2 />,
@@ -209,6 +212,7 @@ const actionIcons: Record<ButtonAction, React.ReactNode> = {
   save: <Bookmark />,
   report: <Flag />,
   mute: <VolumeX />,
+  achievements: <Trophy className="text-amber-500" />,
   none: null,
 };
 
@@ -224,12 +228,15 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onSaveClick,
   onReportClick,
   onMuteClick,
+  onAchievementsClick,
   isLiked = false,
   isFollowing = false,
   isSaved = false,
   likeCount = 0,
   commentCount = 0,
   creatorName,
+  showAchievements = false,
+  achievementsCount = 0,
 }) => {
   const { isVisible } = useControlsVisibility();
   const { getVisibleButtons, advancedSettings } = useUICustomization();
@@ -425,6 +432,20 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       >
         {/* Primary action buttons */}
         {primaryButtons.map(button => renderButton(button, false))}
+
+        {/* Achievements button - show when enabled */}
+        {showAchievements && onAchievementsClick && (
+          <div className="relative">
+            <NeuButton onClick={onAchievementsClick} tooltip="Achievements">
+              <Trophy className="w-6 h-6 text-amber-500" />
+            </NeuButton>
+            {achievementsCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
+                {achievementsCount}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Separator - only show if we have both groups */}
         {primaryButtons.length > 0 && secondaryButtons.length > 0 && (

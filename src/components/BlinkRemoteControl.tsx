@@ -3,7 +3,7 @@ import {
   Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight, 
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
   ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video,
-  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock
+  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock, Volume2, VolumeX
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -31,11 +31,14 @@ import {
   removeCombo,
 } from '@/hooks/useGestureCombos';
 import { GestureComboBuilder } from '@/components/GestureComboBuilder';
+import { GestureComboImportExport } from '@/components/GestureComboImportExport';
+import { ComboPracticeMode } from '@/components/ComboPracticeMode';
 import { 
   RemoteControlTutorial, 
   useRemoteControlTutorial 
 } from '@/components/RemoteControlTutorial';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { useVoiceFeedback } from '@/hooks/useVoiceFeedback';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -91,8 +94,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   className,
 }) => {
   const haptics = useHapticFeedback();
+  const voiceFeedback = useVoiceFeedback();
   const [showSettings, setShowSettings] = useState(false);
   const [showComboBuilder, setShowComboBuilder] = useState(false);
+  const [practiceMode, setPracticeMode] = useState(false);
   
   // Tutorial hook
   const {
@@ -118,8 +123,16 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     enabled: enabled,
     onComboExecuted: (combo) => {
       haptics.success();
-      console.log('[RemoteControl] Combo executed:', combo.name, combo.action);
-      onComboAction?.(combo.action, combo);
+      
+      // Announce with voice feedback
+      if (!practiceMode) {
+        voiceFeedback.announceCombo(combo.name, COMBO_ACTION_LABELS[combo.action]);
+        console.log('[RemoteControl] Combo executed:', combo.name, combo.action);
+        onComboAction?.(combo.action, combo);
+      } else {
+        voiceFeedback.announcePracticeCombo(combo.name);
+        console.log('[RemoteControl] Practice combo:', combo.name);
+      }
     },
   });
   
@@ -326,10 +339,11 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           </SheetHeader>
           
           <Tabs defaultValue="commands" className="mt-4">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="commands">Blinks</TabsTrigger>
               <TabsTrigger value="combos">Combos</TabsTrigger>
               <TabsTrigger value="gaze">Gaze</TabsTrigger>
+              <TabsTrigger value="audio">Audio</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
@@ -529,6 +543,25 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   </p>
                 </div>
               )}
+
+              {/* Import/Export */}
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="text-sm font-medium">Import / Export</h4>
+                <p className="text-xs text-muted-foreground">
+                  Share your gesture combos between devices or with others.
+                </p>
+                <GestureComboImportExport />
+              </div>
+
+              {/* Practice Mode */}
+              <ComboPracticeMode
+                isActive={practiceMode}
+                onToggle={setPracticeMode}
+                combos={combos}
+                currentSteps={comboSteps}
+                matchProgress={comboProgress}
+                lastMatchedCombo={lastMatchedCombo}
+              />
             </TabsContent>
 
             {/* Gaze Navigation Tab */}
@@ -600,6 +633,176 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   onCheckedChange={(checked) => updateSettings({ rapidMovementEnabled: checked })}
                 />
               </div>
+            </TabsContent>
+
+            {/* Audio Feedback Tab */}
+            <TabsContent value="audio" className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pb-4">
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Volume2 className="w-4 h-4 text-primary" />
+                  Audio Feedback
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Enable voice announcements and sound effects for accessibility.
+                </p>
+              </div>
+
+              {/* Voice feedback toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    {voiceFeedback.settings.voiceEnabled ? (
+                      <Volume2 className="w-5 h-5 text-primary" />
+                    ) : (
+                      <VolumeX className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <h5 className="font-medium">Voice Announcements</h5>
+                    <p className="text-xs text-muted-foreground">Speak combo names and actions</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={voiceFeedback.settings.voiceEnabled}
+                  onCheckedChange={(checked) => voiceFeedback.updateSettings({ voiceEnabled: checked })}
+                />
+              </div>
+
+              {/* Voice settings */}
+              {voiceFeedback.settings.voiceEnabled && (
+                <div className="space-y-4 p-4 rounded-lg border border-border">
+                  {/* Voice volume */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Voice Volume</label>
+                      <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">
+                        {Math.round(voiceFeedback.settings.voiceVolume * 100)}%
+                      </span>
+                    </div>
+                    <Slider
+                      value={[voiceFeedback.settings.voiceVolume]}
+                      min={0.1}
+                      max={1}
+                      step={0.1}
+                      onValueChange={([value]) => voiceFeedback.updateSettings({ voiceVolume: value })}
+                    />
+                  </div>
+
+                  {/* Voice speed */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Voice Speed</label>
+                      <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">
+                        {voiceFeedback.settings.voiceRate}x
+                      </span>
+                    </div>
+                    <Slider
+                      value={[voiceFeedback.settings.voiceRate]}
+                      min={0.5}
+                      max={2}
+                      step={0.1}
+                      onValueChange={([value]) => voiceFeedback.updateSettings({ voiceRate: value })}
+                    />
+                  </div>
+
+                  {/* Voice selection */}
+                  {voiceFeedback.availableVoices.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Voice</label>
+                      <select
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                        value={voiceFeedback.settings.selectedVoice || ''}
+                        onChange={(e) => voiceFeedback.updateSettings({ selectedVoice: e.target.value || null })}
+                      >
+                        <option value="">System Default</option>
+                        {voiceFeedback.availableVoices.map((voice) => (
+                          <option key={voice.name} value={voice.name}>
+                            {voice.name} ({voice.lang})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Test voice */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => voiceFeedback.speak('Quick Like. Like Video', true)}
+                    className="w-full"
+                  >
+                    <Volume2 className="w-4 h-4 mr-2" />
+                    Test Voice
+                  </Button>
+                </div>
+              )}
+
+              {/* Sound effects toggle */}
+              <div className="flex items-center justify-between p-4 rounded-lg border border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <h5 className="font-medium">Sound Effects</h5>
+                    <p className="text-xs text-muted-foreground">Play sounds for gestures and combos</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={voiceFeedback.settings.soundEnabled}
+                  onCheckedChange={(checked) => voiceFeedback.updateSettings({ soundEnabled: checked })}
+                />
+              </div>
+
+              {/* Sound settings */}
+              {voiceFeedback.settings.soundEnabled && (
+                <div className="space-y-4 p-4 rounded-lg border border-border">
+                  {/* Sound volume */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Sound Volume</label>
+                      <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">
+                        {Math.round(voiceFeedback.settings.soundVolume * 100)}%
+                      </span>
+                    </div>
+                    <Slider
+                      value={[voiceFeedback.settings.soundVolume]}
+                      min={0.1}
+                      max={1}
+                      step={0.1}
+                      onValueChange={([value]) => voiceFeedback.updateSettings({ soundVolume: value })}
+                    />
+                  </div>
+
+                  {/* Test sounds */}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => voiceFeedback.playSound('step')}
+                      className="flex-1"
+                    >
+                      Step
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => voiceFeedback.playSound('success')}
+                      className="flex-1"
+                    >
+                      Success
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => voiceFeedback.playComboSound()}
+                      className="flex-1"
+                    >
+                      Combo
+                    </Button>
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             {/* Settings Tab */}

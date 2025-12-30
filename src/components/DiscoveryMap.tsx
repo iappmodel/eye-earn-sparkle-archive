@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
-import { X, Navigation, RefreshCw, MapPin, Coins, Search } from 'lucide-react';
+import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-
+import { MapSearchBar } from './MapSearchBar';
+import { MapFilterSheet, defaultMapFilters, type MapFilters } from './MapFilterSheet';
+import { FavoriteLocations, useFavoriteLocation } from './FavoriteLocations';
 interface Promotion {
   id: string;
   business_name: string;
@@ -170,7 +172,12 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions());
   const [localPromos, setLocalPromos] = useState<Promotion[]>([]);
-
+  
+  // New state for enhanced features
+  const [showFilters, setShowFilters] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [mapFilters, setMapFilters] = useState<MapFilters>(defaultMapFilters);
+  const { toggleFavorite, isFavorite } = useFavoriteLocation();
   // Create popup HTML for a promotion
   const createPopupHTML = useCallback((promo: Promotion): string => {
     const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : 'V+I';
@@ -577,6 +584,51 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
     }
   };
 
+  // Navigate to searched location
+  const handleSearchLocation = (lng: number, lat: number, placeName: string) => {
+    if (map.current) {
+      map.current.flyTo({
+        center: [lng, lat],
+        zoom: 14,
+        pitch: 45,
+      });
+      setMapCenter({ lat, lng });
+      toast.success(`Moved to ${placeName.split(',')[0]}`);
+    }
+  };
+
+  // Open directions in external map app
+  const openDirections = (lat: number, lng: number, name: string) => {
+    // Check if on iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    if (isIOS) {
+      // Try Apple Maps first
+      window.open(`maps://maps.apple.com/?daddr=${lat},${lng}&q=${encodeURIComponent(name)}`, '_blank');
+    } else {
+      // Use Google Maps for Android/web
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${encodeURIComponent(name)}`, '_blank');
+    }
+  };
+
+  // Apply filters
+  const applyFilters = () => {
+    fetchPromotions();
+    toast.success('Filters applied');
+  };
+
+  // Reset filters
+  const resetFilters = () => {
+    setMapFilters(defaultMapFilters);
+  };
+
+  // Count active filters
+  const activeFilterCount = 
+    (mapFilters.rewardTypes.length < 3 ? 1 : 0) +
+    (mapFilters.categories.length > 0 ? 1 : 0) +
+    (mapFilters.minReward > 0 ? 1 : 0) +
+    (mapFilters.distance !== 10 ? 1 : 0);
+
   if (!isOpen) return null;
 
   return (
@@ -599,54 +651,77 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       `}</style>
 
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-background to-transparent">
-        <div className="flex items-center justify-between mb-4">
+      <div className="absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-background via-background/90 to-transparent">
+        <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-xl font-bold">Discovery Map</h1>
-          <NeuButton onClick={onClose} size="sm">
-            <X className="w-5 h-5" />
-          </NeuButton>
+          <div className="flex gap-2">
+            <NeuButton onClick={() => setShowFavorites(true)} size="sm">
+              <Heart className="w-5 h-5" />
+            </NeuButton>
+            <NeuButton onClick={onClose} size="sm">
+              <X className="w-5 h-5" />
+            </NeuButton>
+          </div>
         </div>
 
-        {/* Filters with coin icons */}
-        <div className="flex gap-2">
+        {/* Search Bar */}
+        {mapboxToken && (
+          <MapSearchBar
+            mapboxToken={mapboxToken}
+            onSelectLocation={handleSearchLocation}
+            className="mb-3"
+          />
+        )}
+
+        {/* Filters Row */}
+        <div className="flex gap-2 items-center">
+          <button
+            onClick={() => setShowFilters(true)}
+            className={cn(
+              'relative px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2',
+              'bg-background/80 backdrop-blur-sm neu-button'
+            )}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setFilter('all')}
             className={cn(
-              'px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2',
+              'px-3 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5',
               filter === 'all'
                 ? 'bg-gradient-to-r from-primary to-blue-500 text-white shadow-lg'
                 : 'bg-background/80 backdrop-blur-sm neu-button'
             )}
           >
-            <span className="flex items-center gap-0.5">
-              <span className="w-4 h-4 rounded-full bg-primary inline-flex items-center justify-center text-[10px] font-bold text-white">V</span>
-              <span className="w-4 h-4 rounded-full bg-blue-500 inline-flex items-center justify-center text-[10px] font-bold text-white">I</span>
-            </span>
             All
           </button>
           <button
             onClick={() => setFilter('vicoin')}
             className={cn(
-              'px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2',
+              'px-3 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5',
               filter === 'vicoin'
                 ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
                 : 'bg-background/80 backdrop-blur-sm neu-button'
             )}
           >
-            <span className="w-5 h-5 rounded-full bg-primary/20 inline-flex items-center justify-center text-xs font-bold">V</span>
-            Vicoins
+            <span className="w-4 h-4 rounded-full bg-primary/20 inline-flex items-center justify-center text-[10px] font-bold">V</span>
           </button>
           <button
             onClick={() => setFilter('icoin')}
             className={cn(
-              'px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2',
+              'px-3 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5',
               filter === 'icoin'
                 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
                 : 'bg-background/80 backdrop-blur-sm neu-button'
             )}
           >
-            <span className="w-5 h-5 rounded-full bg-blue-500/20 inline-flex items-center justify-center text-xs font-bold">I</span>
-            Icoins
+            <span className="w-4 h-4 rounded-full bg-blue-500/20 inline-flex items-center justify-center text-[10px] font-bold">I</span>
           </button>
         </div>
       </div>
@@ -757,8 +832,27 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
               >
                 Claim Reward
               </button>
-              <button className="py-3 px-4 rounded-xl neu-button">
-                <Navigation className="w-5 h-5" />
+              <button 
+                onClick={() => toggleFavorite({
+                  id: selectedPromo.id,
+                  business_name: selectedPromo.business_name,
+                  latitude: selectedPromo.latitude,
+                  longitude: selectedPromo.longitude,
+                  address: selectedPromo.address,
+                  category: selectedPromo.category,
+                })}
+                className={cn(
+                  "py-3 px-4 rounded-xl neu-button",
+                  isFavorite(selectedPromo.id) && "text-red-500"
+                )}
+              >
+                <Heart className={cn("w-5 h-5", isFavorite(selectedPromo.id) && "fill-current")} />
+              </button>
+              <button 
+                onClick={() => openDirections(selectedPromo.latitude, selectedPromo.longitude, selectedPromo.business_name)}
+                className="py-3 px-4 rounded-xl neu-button"
+              >
+                <ExternalLink className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -804,6 +898,31 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
           </div>
         </div>
       )}
+
+      {/* Filter Sheet */}
+      <MapFilterSheet
+        open={showFilters}
+        onOpenChange={setShowFilters}
+        filters={mapFilters}
+        onFiltersChange={setMapFilters}
+        onApply={applyFilters}
+        onReset={resetFilters}
+      />
+
+      {/* Favorites Sheet */}
+      <FavoriteLocations
+        open={showFavorites}
+        onOpenChange={setShowFavorites}
+        onNavigate={(lat, lng, name) => {
+          if (map.current) {
+            map.current.flyTo({
+              center: [lng, lat],
+              zoom: 16,
+              pitch: 45,
+            });
+          }
+        }}
+      />
     </div>
   );
 };

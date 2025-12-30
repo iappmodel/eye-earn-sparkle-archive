@@ -667,6 +667,53 @@ export type Database = {
         }
         Relationships: []
       }
+      favorite_locations: {
+        Row: {
+          address: string | null
+          business_name: string
+          category: string | null
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          notes: string | null
+          promotion_id: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          business_name: string
+          category?: string | null
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          notes?: string | null
+          promotion_id?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          business_name?: string
+          category?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          notes?: string | null
+          promotion_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "favorite_locations_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_flags: {
         Row: {
           created_at: string

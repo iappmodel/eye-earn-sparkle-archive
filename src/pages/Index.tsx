@@ -12,6 +12,7 @@ import { BottomNavigation } from '@/components/BottomNavigation';
 import { OnboardingFlow } from '@/components/onboarding';
 import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
+import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { useAuth } from '@/contexts/AuthContext';
@@ -75,6 +76,7 @@ const Index = () => {
   const [showMap, setShowMap] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
   const [showMessages, setShowMessages] = useState(false);
+  const [showThemePresets, setShowThemePresets] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
@@ -282,7 +284,7 @@ const Index = () => {
   };
 
   const handleSettings = () => {
-    toast('Settings', { description: 'Settings panel coming soon...' });
+    setShowThemePresets(true);
   };
 
   const handleTabChange = (tab: string) => {
@@ -500,6 +502,12 @@ const Index = () => {
           isOpen={showOnboarding}
           onClose={closeOnboarding}
           onComplete={completeOnboarding}
+        />
+
+        {/* Theme Presets Bottom Sheet */}
+        <ThemePresetsSheet
+          isOpen={showThemePresets}
+          onClose={() => setShowThemePresets(false)}
         />
       </div>
     </ControlsVisibilityProvider>

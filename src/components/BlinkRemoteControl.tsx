@@ -48,6 +48,7 @@ import { EyeBlinkCalibration, CalibrationResult } from '@/components/EyeBlinkCal
 import { EyeMovementTracking, EyeMovementResult } from '@/components/EyeMovementTracking';
 import FacialExpressionScanning, { FacialExpressionResult } from '@/components/FacialExpressionScanning';
 import { SlowBlinkTraining, SlowBlinkResult } from '@/components/SlowBlinkTraining';
+import { VoiceCalibration, VoiceCalibrationResult } from '@/components/VoiceCalibration';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -118,9 +119,11 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showEyeMovement, setShowEyeMovement] = useState(false);
   const [showFacialExpression, setShowFacialExpression] = useState(false);
   const [showSlowBlinkTraining, setShowSlowBlinkTraining] = useState(false);
+  const [showVoiceCalibration, setShowVoiceCalibration] = useState(false);
   const [blinkCalibrationResult, setBlinkCalibrationResult] = useState<CalibrationResult | null>(null);
   const [eyeMovementResult, setEyeMovementResult] = useState<EyeMovementResult | null>(null);
   const [slowBlinkResult, setSlowBlinkResult] = useState<SlowBlinkResult | null>(null);
+  const [voiceCalibrationResult, setVoiceCalibrationResult] = useState<VoiceCalibrationResult | null>(null);
   
   // Tutorial hook
   const {
@@ -1161,7 +1164,25 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           console.log('[RemoteControl] Slow blink training complete:', result);
           setSlowBlinkResult(result);
           setShowSlowBlinkTraining(false);
-          // Save all calibration data - training complete!
+          // Proceed to Voice Calibration
+          setShowVoiceCalibration(true);
+        }}
+        onSkip={() => {
+          setShowSlowBlinkTraining(false);
+          // Skip to Voice Calibration
+          setShowVoiceCalibration(true);
+        }}
+      />
+
+      {/* Voice Calibration - Step 5 */}
+      <VoiceCalibration
+        isOpen={showVoiceCalibration}
+        onClose={() => setShowVoiceCalibration(false)}
+        onComplete={(result: VoiceCalibrationResult) => {
+          console.log('[RemoteControl] Voice calibration complete:', result);
+          setVoiceCalibrationResult(result);
+          setShowVoiceCalibration(false);
+          // Save all calibration data - all training complete!
           saveCalibrationData({
             offsetX: 0,
             offsetY: 0,
@@ -1174,7 +1195,21 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           });
           haptics.success();
         }}
-        onSkip={() => setShowSlowBlinkTraining(false)}
+        onSkip={() => {
+          setShowVoiceCalibration(false);
+          // Save calibration data even if voice is skipped
+          saveCalibrationData({
+            offsetX: 0,
+            offsetY: 0,
+            scaleX: 1,
+            scaleY: 1,
+            isCalibrated: true,
+            calibratedAt: Date.now(),
+            autoCalibrationEnabled: true,
+            autoAdjustments: 0,
+          });
+          haptics.success();
+        }}
       />
 
       {/* Tutorial overlay */}

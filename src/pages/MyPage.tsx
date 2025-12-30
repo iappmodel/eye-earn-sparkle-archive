@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings, Grid3X3, Video, Camera, Crown, Heart, Eye, Play, ImageIcon } from 'lucide-react';
+import { ArrowLeft, Settings, Grid3X3, Video, Camera, Crown, Heart, Eye, Play, ImageIcon, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { cn } from '@/lib/utils';
 import { AppLogo } from '@/components/AppLogo';
 import { VerificationBadge } from '@/components/VerificationBadge';
 import { SettingsScreen } from '@/components/SettingsScreen';
+import { CreatorDashboard } from '@/components/analytics';
 
-type ContentTab = 'grid' | 'videos' | 'promotions' | 'rewards';
+type ContentTab = 'grid' | 'videos' | 'promotions' | 'rewards' | 'analytics';
 
 // Mock user content data
 const mockContent = [
@@ -39,7 +40,7 @@ const MyPage: React.FC = () => {
   const tabs = [
     { id: 'grid' as const, icon: Grid3X3, label: 'Posts' },
     { id: 'videos' as const, icon: Video, label: 'Videos' },
-    { id: 'promotions' as const, icon: Camera, label: 'Promos' },
+    { id: 'analytics' as const, icon: BarChart3, label: 'Analytics' },
     { id: 'rewards' as const, icon: Crown, label: 'Rewards' },
   ];
 
@@ -172,16 +173,8 @@ const MyPage: React.FC = () => {
               </div>
             </div>
           </div>
-        ) : activeTab === 'promotions' ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Camera className="w-8 h-8 text-primary" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Your Promotions</h3>
-            <p className="text-muted-foreground text-sm">
-              Create and manage your promotional content
-            </p>
-          </div>
+        ) : activeTab === 'analytics' ? (
+          <CreatorDashboard />
         ) : filteredContent.length > 0 ? (
           <div className="grid grid-cols-3 gap-1">
             {filteredContent.map((item) => (

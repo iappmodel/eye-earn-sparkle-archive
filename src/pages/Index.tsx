@@ -14,7 +14,7 @@ import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
 import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
-import { FloatingActionMenu } from '@/components/FloatingActionMenu';
+
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
@@ -533,8 +533,6 @@ const Index = () => {
           onClose={() => setShowThemePresets(false)}
         />
 
-        {/* Floating Action Menu */}
-        <FloatingActionMenu onSettingsClick={handleSettings} />
 
         {/* Comments Panel */}
         <CommentsPanel

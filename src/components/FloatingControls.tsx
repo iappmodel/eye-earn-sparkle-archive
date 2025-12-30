@@ -484,9 +484,14 @@ export const QuickVisibilityToggle: React.FC = () => {
   );
 };
 
-// Double-tap gesture detector component
-export const DoubleTapGestureDetector: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const lastTapRef = useRef<number>(0);
+// Multi-tap gesture detector component (double-tap = toggle visibility, triple-tap = settings)
+interface GestureDetectorProps {
+  children: React.ReactNode;
+  onTripleTap?: () => void;
+}
+
+export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ children, onTripleTap }) => {
+  const tapTimesRef = useRef<number[]>([]);
   const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const handleTap = useCallback((e: React.PointerEvent) => {
@@ -503,25 +508,35 @@ export const DoubleTapGestureDetector: React.FC<{ children: React.ReactNode }> =
     }
     
     const now = Date.now();
-    const timeSinceLastTap = now - lastTapRef.current;
     
-    if (timeSinceLastTap < 300 && timeSinceLastTap > 50) {
-      // Double tap detected
-      if (tapTimeoutRef.current) {
-        clearTimeout(tapTimeoutRef.current);
-        tapTimeoutRef.current = null;
-      }
-      
-      const currentHidden = getButtonsHidden();
-      setButtonsHidden(!currentHidden);
-      window.dispatchEvent(new Event('storage'));
-      
-      // Prevent default to avoid text selection
-      e.preventDefault();
+    // Filter out old taps (older than 500ms)
+    tapTimesRef.current = tapTimesRef.current.filter(t => now - t < 500);
+    tapTimesRef.current.push(now);
+    
+    // Clear any pending timeout
+    if (tapTimeoutRef.current) {
+      clearTimeout(tapTimeoutRef.current);
     }
     
-    lastTapRef.current = now;
-  }, []);
+    // Wait a bit to see if more taps are coming
+    tapTimeoutRef.current = setTimeout(() => {
+      const recentTaps = tapTimesRef.current.filter(t => now - t < 500);
+      
+      if (recentTaps.length >= 3) {
+        // Triple tap - open settings
+        onTripleTap?.();
+        tapTimesRef.current = [];
+      } else if (recentTaps.length === 2) {
+        // Double tap - toggle visibility
+        const currentHidden = getButtonsHidden();
+        setButtonsHidden(!currentHidden);
+        window.dispatchEvent(new Event('storage'));
+        tapTimesRef.current = [];
+      }
+    }, 100);
+    
+    e.preventDefault();
+  }, [onTripleTap]);
 
   return (
     <div 

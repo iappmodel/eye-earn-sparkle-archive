@@ -684,6 +684,47 @@ export const createGroupFromTemplate = (templateId: string, availableButtonIds: 
   return newGroup;
 };
 
+// Reorder button within the same group
+export const reorderButtonInGroup = (groupId: string, fromIndex: number, toIndex: number) => {
+  const groups = loadButtonUIGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (!group || fromIndex < 0 || toIndex < 0 || fromIndex >= group.buttonIds.length) return;
+  
+  const buttonId = group.buttonIds[fromIndex];
+  const newButtonIds = [...group.buttonIds];
+  newButtonIds.splice(fromIndex, 1);
+  newButtonIds.splice(toIndex, 0, buttonId);
+  group.buttonIds = newButtonIds;
+  
+  saveButtonUIGroups(groups);
+  window.dispatchEvent(new Event('buttonUIGroupsChanged'));
+};
+
+// Move button from one group to another
+export const moveButtonBetweenGroups = (
+  sourceGroupId: string, 
+  targetGroupId: string, 
+  buttonId: string, 
+  targetIndex: number
+) => {
+  const groups = loadButtonUIGroups();
+  const sourceGroup = groups.find(g => g.id === sourceGroupId);
+  const targetGroup = groups.find(g => g.id === targetGroupId);
+  
+  if (!sourceGroup || !targetGroup) return;
+  if (!sourceGroup.buttonIds.includes(buttonId)) return;
+  
+  // Remove from source group
+  sourceGroup.buttonIds = sourceGroup.buttonIds.filter(id => id !== buttonId);
+  
+  // Add to target group at specific index
+  const insertIndex = Math.min(targetIndex, targetGroup.buttonIds.length);
+  targetGroup.buttonIds.splice(insertIndex, 0, buttonId);
+  
+  saveButtonUIGroups(groups);
+  window.dispatchEvent(new Event('buttonUIGroupsChanged'));
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {

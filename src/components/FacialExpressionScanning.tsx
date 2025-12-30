@@ -5,18 +5,20 @@ import { Progress } from '@/components/ui/progress';
 import { Camera, Check, X, Smile, Heart, Frown, AlertCircle, PartyPopper } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
-interface FacialExpressionScanningProps {
-  onComplete: (result: ExpressionScanResult) => void;
-  onCancel: () => void;
-}
-
-interface ExpressionScanResult {
+export interface FacialExpressionResult {
   expressions: {
     type: string;
     captured: boolean;
     timestamp: number;
   }[];
-  completedAt: number;
+  completedAt: string;
+}
+
+interface FacialExpressionScanningProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onComplete: (result: FacialExpressionResult) => void;
+  onSkip?: () => void;
 }
 
 interface Expression {
@@ -69,9 +71,11 @@ const HOLD_DURATION = 3000; // 3 seconds
 
 type ScanStep = 'intro' | 'scanning' | 'complete';
 
-const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
+export const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
+  isOpen,
+  onClose,
   onComplete,
-  onCancel
+  onSkip
 }) => {
   const [step, setStep] = useState<ScanStep>('intro');
   const [currentExpressionIndex, setCurrentExpressionIndex] = useState(0);
@@ -252,13 +256,13 @@ const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
   const handleComplete = useCallback(() => {
     stopCamera();
     
-    const result: ExpressionScanResult = {
+    const result: FacialExpressionResult = {
       expressions: EXPRESSIONS.map(exp => ({
         type: exp.id,
         captured: capturedExpressions.includes(exp.id),
         timestamp: Date.now()
       })),
-      completedAt: Date.now()
+      completedAt: new Date().toISOString()
     };
     
     onComplete(result);
@@ -287,9 +291,12 @@ const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
     }
   }, [step, faceDetected, isHolding, showValidation, startHoldTimer, cancelHoldTimer]);
 
+  if (!isOpen) return null;
+
   if (step === 'intro') {
     return (
-      <Card className="p-6 bg-background/95 backdrop-blur-sm border-primary/20">
+      <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
+        <Card className="p-6 w-full max-w-md border-primary/20">
         <div className="text-center space-y-6">
           <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
             <Smile className="w-10 h-10 text-primary" />
@@ -322,7 +329,7 @@ const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
           </div>
           
           <div className="flex gap-3">
-            <Button variant="outline" onClick={onCancel} className="flex-1">
+            <Button variant="outline" onClick={onSkip || onClose} className="flex-1">
               Cancel
             </Button>
             <Button onClick={() => setStep('scanning')} className="flex-1">
@@ -331,50 +338,54 @@ const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
             </Button>
           </div>
         </div>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
   if (step === 'complete') {
     return (
-      <Card className="p-6 bg-background/95 backdrop-blur-sm border-primary/20">
-        <div className="text-center space-y-6">
-          <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
-            <Check className="w-10 h-10 text-green-500" />
+      <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
+        <Card className="p-6 w-full max-w-md border-primary/20">
+          <div className="text-center space-y-6">
+            <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
+              <Check className="w-10 h-10 text-green-500" />
+            </div>
+            
+            <div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">
+                Scanning Complete!
+              </h2>
+              <p className="text-muted-foreground">
+                All {EXPRESSIONS.length} expressions have been captured
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-5 gap-2">
+              {EXPRESSIONS.map((exp) => (
+                <div 
+                  key={exp.id}
+                  className="flex flex-col items-center gap-1 p-2 rounded-lg bg-green-500/10"
+                >
+                  <div className="text-green-500">{exp.icon}</div>
+                  <span className="text-xs text-muted-foreground">{exp.name}</span>
+                  <Check className="w-3 h-3 text-green-500" />
+                </div>
+              ))}
+            </div>
+            
+            <Button onClick={handleComplete} className="w-full">
+              Continue
+            </Button>
           </div>
-          
-          <div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">
-              Scanning Complete!
-            </h2>
-            <p className="text-muted-foreground">
-              All {EXPRESSIONS.length} expressions have been captured
-            </p>
-          </div>
-          
-          <div className="grid grid-cols-5 gap-2">
-            {EXPRESSIONS.map((exp) => (
-              <div 
-                key={exp.id}
-                className="flex flex-col items-center gap-1 p-2 rounded-lg bg-green-500/10"
-              >
-                <div className="text-green-500">{exp.icon}</div>
-                <span className="text-xs text-muted-foreground">{exp.name}</span>
-                <Check className="w-3 h-3 text-green-500" />
-              </div>
-            ))}
-          </div>
-          
-          <Button onClick={handleComplete} className="w-full">
-            Continue
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <Card className="p-4 bg-background/95 backdrop-blur-sm border-primary/20">
+    <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
+      <Card className="p-4 w-full max-w-md border-primary/20">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -502,12 +513,13 @@ const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> = ({
         </div>
         
         {/* Cancel button */}
-        <Button variant="outline" onClick={onCancel} className="w-full">
+        <Button variant="outline" onClick={onSkip || onClose} className="w-full">
           <X className="w-4 h-4 mr-2" />
           Cancel
         </Button>
       </div>
-    </Card>
+      </Card>
+    </div>
   );
 };
 

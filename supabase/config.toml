@@ -81,3 +81,18 @@ verify_jwt = false
 
 [functions.verify-checkin]
 verify_jwt = false
+
+[functions.moderate-content]
+verify_jwt = false
+
+[functions.smart-feed]
+verify_jwt = false
+
+[functions.publish-scheduled]
+verify_jwt = false
+
+[functions.translate-caption]
+verify_jwt = false
+
+[functions.check-verification]
+verify_jwt = false

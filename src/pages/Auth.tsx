@@ -9,6 +9,7 @@ import { Eye, EyeOff, Mail, Lock, User, Loader2, ArrowLeft, Phone } from 'lucide
 import { z } from 'zod';
 import { AppLogo } from '@/components/AppLogo';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { BiometricLoginButton } from '@/components/BiometricLoginButton';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -487,6 +488,10 @@ const Auth: React.FC = () => {
 
                 {/* Social Login Buttons */}
                 <div className="space-y-3">
+                  {/* Biometric Login - shows only when available and enabled */}
+                  {mode === 'login' && (
+                    <BiometricLoginButton onSuccess={() => navigate('/')} />
+                  )}
                   <Button
                     type="button"
                     variant="outline"

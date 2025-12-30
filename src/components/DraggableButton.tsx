@@ -1,8 +1,8 @@
 // Draggable Button Wrapper - Long press to drag any button to a new position
-// Features: Snap-to-edge, grid overlay, position persistence, grouping, magnetic snap points
+// Features: Snap-to-edge, grid overlay, position persistence, grouping, magnetic snap points, layout presets
 import React, { useState, useRef, useCallback, useEffect, createContext, useContext } from 'react';
 import { cn } from '@/lib/utils';
-import { Move, Link2, Unlink, Magnet, Plus, X } from 'lucide-react';
+import { Move, Link2, Unlink, Magnet, X, Save, FolderOpen, Trash2, LayoutGrid, ArrowDownToLine, CornerRightDown, AlignVerticalJustifyCenter } from 'lucide-react';
 
 interface Position {
   x: number;
@@ -21,6 +21,23 @@ interface ButtonGroup {
   name: string;
 }
 
+interface LayoutPreset {
+  id: string;
+  name: string;
+  positions: Record<string, Position>;
+  groups: ButtonGroup[];
+  snapPoints: MagneticSnapPoint[];
+  createdAt: number;
+}
+
+interface GroupLayoutPreset {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  description: string;
+  getPositions: (buttonIds: string[], vw: number, vh: number) => Record<string, Position>;
+}
+
 interface DraggableButtonProps {
   children: React.ReactNode;
   id: string;
@@ -34,6 +51,7 @@ interface DraggableButtonProps {
 const POSITIONS_STORAGE_KEY = 'visuai-button-positions';
 const GROUPS_STORAGE_KEY = 'visuai-button-groups';
 const SNAP_POINTS_STORAGE_KEY = 'visuai-magnetic-snap-points';
+const LAYOUT_PRESETS_STORAGE_KEY = 'visuai-layout-presets';
 
 // Snap configuration
 const SNAP_THRESHOLD = 40;
@@ -166,6 +184,139 @@ export const clearAllMagneticSnapPoints = () => {
   }
 };
 
+// Layout Presets Management
+export const loadLayoutPresets = (): LayoutPreset[] => {
+  try {
+    const saved = localStorage.getItem(LAYOUT_PRESETS_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveLayoutPresets = (presets: LayoutPreset[]) => {
+  try {
+    localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+  } catch (e) {
+    console.error('Failed to save layout presets:', e);
+  }
+};
+
+export const createLayoutPreset = (name: string): LayoutPreset => {
+  const presets = loadLayoutPresets();
+  const newPreset: LayoutPreset = {
+    id: `preset-${Date.now()}`,
+    name,
+    positions: loadSavedPositions(),
+    groups: loadButtonGroups(),
+    snapPoints: loadMagneticSnapPoints(),
+    createdAt: Date.now(),
+  };
+  presets.push(newPreset);
+  saveLayoutPresets(presets);
+  return newPreset;
+};
+
+export const applyLayoutPreset = (preset: LayoutPreset) => {
+  savePositions(preset.positions);
+  saveButtonGroups(preset.groups);
+  saveMagneticSnapPoints(preset.snapPoints);
+};
+
+export const deleteLayoutPreset = (presetId: string) => {
+  const presets = loadLayoutPresets();
+  saveLayoutPresets(presets.filter(p => p.id !== presetId));
+};
+
+// Group Layout Presets (quick arrangements)
+export const GROUP_LAYOUT_PRESETS: GroupLayoutPreset[] = [
+  {
+    id: 'corner-stack',
+    name: 'Corner Stack',
+    icon: <CornerRightDown className="w-4 h-4" />,
+    description: 'Stack buttons in bottom-right corner',
+    getPositions: (buttonIds, vw, vh) => {
+      const positions: Record<string, Position> = {};
+      const spacing = 56;
+      buttonIds.forEach((id, i) => {
+        positions[id] = {
+          x: vw - EDGE_PADDING - 24,
+          y: vh - EDGE_PADDING - 100 - (i * spacing),
+        };
+      });
+      return positions;
+    },
+  },
+  {
+    id: 'bottom-row',
+    name: 'Bottom Row',
+    icon: <ArrowDownToLine className="w-4 h-4" />,
+    description: 'Arrange buttons in a horizontal row at bottom',
+    getPositions: (buttonIds, vw, vh) => {
+      const positions: Record<string, Position> = {};
+      const totalWidth = buttonIds.length * 56;
+      const startX = (vw - totalWidth) / 2 + 28;
+      buttonIds.forEach((id, i) => {
+        positions[id] = {
+          x: startX + (i * 56),
+          y: vh - EDGE_PADDING - 80,
+        };
+      });
+      return positions;
+    },
+  },
+  {
+    id: 'center-column',
+    name: 'Center Column',
+    icon: <AlignVerticalJustifyCenter className="w-4 h-4" />,
+    description: 'Stack buttons vertically in center',
+    getPositions: (buttonIds, vw, vh) => {
+      const positions: Record<string, Position> = {};
+      const spacing = 56;
+      const totalHeight = buttonIds.length * spacing;
+      const startY = (vh - totalHeight) / 2 + 28;
+      buttonIds.forEach((id, i) => {
+        positions[id] = {
+          x: vw / 2,
+          y: startY + (i * spacing),
+        };
+      });
+      return positions;
+    },
+  },
+  {
+    id: 'left-sidebar',
+    name: 'Left Sidebar',
+    icon: <LayoutGrid className="w-4 h-4" />,
+    description: 'Arrange buttons along left edge',
+    getPositions: (buttonIds, vw, vh) => {
+      const positions: Record<string, Position> = {};
+      const spacing = 56;
+      const startY = 150;
+      buttonIds.forEach((id, i) => {
+        positions[id] = {
+          x: EDGE_PADDING + 24,
+          y: startY + (i * spacing),
+        };
+      });
+      return positions;
+    },
+  },
+];
+
+export const applyGroupLayoutPreset = (presetId: string, buttonIds: string[]) => {
+  const preset = GROUP_LAYOUT_PRESETS.find(p => p.id === presetId);
+  if (!preset || buttonIds.length < 2) return;
+  
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const newPositions = preset.getPositions(buttonIds, vw, vh);
+  
+  const currentPositions = loadSavedPositions();
+  Object.assign(currentPositions, newPositions);
+  savePositions(currentPositions);
+};
+
 // Context for global drag state
 interface DragContextType {
   isAnyDragging: boolean;
@@ -240,6 +391,32 @@ export const DragContextProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [isSnapPointMode]);
 
+  // Track button positions for connection lines
+  const [buttonPositionsMap, setButtonPositionsMap] = useState<Record<string, Position>>({});
+  const [groups, setGroups] = useState<ButtonGroup[]>([]);
+
+  useEffect(() => {
+    const updatePositionsAndGroups = () => {
+      setButtonPositionsMap(loadSavedPositions());
+      setGroups(loadButtonGroups());
+    };
+    updatePositionsAndGroups();
+    
+    // Listen for storage changes
+    const handleStorage = () => updatePositionsAndGroups();
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Refresh positions periodically for connection lines
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setButtonPositionsMap(loadSavedPositions());
+      setGroups(loadButtonGroups());
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <DragContext.Provider value={{ 
       isAnyDragging, 
@@ -258,6 +435,9 @@ export const DragContextProvider: React.FC<{ children: React.ReactNode }> = ({ c
         {children}
       </div>
       
+      {/* Group Connection Lines */}
+      <GroupConnectionLines groups={groups} positions={buttonPositionsMap} />
+      
       {/* Grid Overlay */}
       {isAnyDragging && <DragGridOverlay magneticSnapPoints={magneticSnapPoints} />}
       
@@ -270,6 +450,7 @@ export const DragContextProvider: React.FC<{ children: React.ReactNode }> = ({ c
               createButtonGroup(selectedForGrouping);
               clearGroupingSelection();
               setGroupingMode(false);
+              setGroups(loadButtonGroups());
               if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
             }
           }}
@@ -309,37 +490,151 @@ export const DragContextProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
 };
 
+// Group Connection Lines Component
+const GroupConnectionLines: React.FC<{
+  groups: ButtonGroup[];
+  positions: Record<string, Position>;
+}> = ({ groups, positions }) => {
+  if (groups.length === 0) return null;
+
+  const lines: { from: Position; to: Position; groupId: string }[] = [];
+  
+  groups.forEach(group => {
+    const groupPositions = group.buttonIds
+      .map(id => positions[id])
+      .filter(Boolean);
+    
+    // Connect each button to the next in the group
+    for (let i = 0; i < groupPositions.length - 1; i++) {
+      lines.push({
+        from: groupPositions[i],
+        to: groupPositions[i + 1],
+        groupId: group.id,
+      });
+    }
+  });
+
+  if (lines.length === 0) return null;
+
+  return (
+    <svg className="fixed inset-0 z-40 pointer-events-none" style={{ width: '100vw', height: '100vh' }}>
+      <defs>
+        <linearGradient id="groupLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity="0.6" />
+          <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="0.6" />
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+          <feMerge>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      {lines.map((line, i) => (
+        <g key={`${line.groupId}-${i}`}>
+          {/* Glow effect */}
+          <line
+            x1={line.from.x}
+            y1={line.from.y}
+            x2={line.to.x}
+            y2={line.to.y}
+            stroke="hsl(var(--accent))"
+            strokeWidth="4"
+            strokeOpacity="0.3"
+            strokeLinecap="round"
+            filter="url(#glow)"
+          />
+          {/* Main line */}
+          <line
+            x1={line.from.x}
+            y1={line.from.y}
+            x2={line.to.x}
+            y2={line.to.y}
+            stroke="url(#groupLineGradient)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray="8 4"
+            className="animate-pulse"
+          />
+          {/* Connection dots */}
+          <circle
+            cx={line.from.x}
+            cy={line.from.y}
+            r="4"
+            fill="hsl(var(--accent))"
+            opacity="0.8"
+          />
+          <circle
+            cx={line.to.x}
+            cy={line.to.y}
+            r="4"
+            fill="hsl(var(--accent))"
+            opacity="0.8"
+          />
+        </g>
+      ))}
+    </svg>
+  );
+};
+
 // Grouping Mode Overlay
 const GroupingModeOverlay: React.FC<{
   selectedIds: string[];
   onCreateGroup: () => void;
   onCancel: () => void;
 }> = ({ selectedIds, onCreateGroup, onCancel }) => (
-  <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-full bg-card/95 backdrop-blur-md border border-border shadow-lg animate-fade-in">
-    <Link2 className="w-4 h-4 text-primary" />
-    <span className="text-sm font-medium">
-      {selectedIds.length < 2 
-        ? `Select ${2 - selectedIds.length} more buttons` 
-        : `${selectedIds.length} buttons selected`}
-    </span>
-    <button
-      onClick={onCreateGroup}
-      disabled={selectedIds.length < 2}
-      className={cn(
-        "px-3 py-1 rounded-full text-xs font-medium transition-all",
-        selectedIds.length >= 2 
-          ? "bg-primary text-primary-foreground hover:bg-primary/90" 
-          : "bg-muted text-muted-foreground"
-      )}
-    >
-      Group
-    </button>
-    <button
-      onClick={onCancel}
-      className="px-3 py-1 rounded-full text-xs font-medium bg-destructive/20 text-destructive hover:bg-destructive/30"
-    >
-      Cancel
-    </button>
+  <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3 px-4 py-3 rounded-xl bg-card/95 backdrop-blur-md border border-border shadow-lg animate-fade-in">
+    <div className="flex items-center gap-2">
+      <Link2 className="w-4 h-4 text-primary" />
+      <span className="text-sm font-medium">
+        {selectedIds.length < 2 
+          ? `Select ${2 - selectedIds.length} more buttons` 
+          : `${selectedIds.length} buttons selected`}
+      </span>
+    </div>
+    
+    {/* Quick Layout Presets */}
+    {selectedIds.length >= 2 && (
+      <div className="flex gap-2 flex-wrap justify-center">
+        {GROUP_LAYOUT_PRESETS.map(preset => (
+          <button
+            key={preset.id}
+            onClick={() => {
+              applyGroupLayoutPreset(preset.id, selectedIds);
+              if (navigator.vibrate) navigator.vibrate(20);
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
+            title={preset.description}
+          >
+            {preset.icon}
+            <span>{preset.name}</span>
+          </button>
+        ))}
+      </div>
+    )}
+    
+    <div className="flex items-center gap-2">
+      <button
+        onClick={onCreateGroup}
+        disabled={selectedIds.length < 2}
+        className={cn(
+          "px-3 py-1 rounded-full text-xs font-medium transition-all",
+          selectedIds.length >= 2 
+            ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+            : "bg-muted text-muted-foreground"
+        )}
+      >
+        Group
+      </button>
+      <button
+        onClick={onCancel}
+        className="px-3 py-1 rounded-full text-xs font-medium bg-destructive/20 text-destructive hover:bg-destructive/30"
+      >
+        Cancel
+      </button>
+    </div>
   </div>
 );
 

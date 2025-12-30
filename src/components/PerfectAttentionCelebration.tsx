@@ -34,7 +34,7 @@ const COLORS = [
 ];
 
 const PARTICLE_COUNT = 80;
-const DURATION = 3000;
+const DURATION = 2000; // Auto-dismiss after 2 seconds
 
 export const PerfectAttentionCelebration: React.FC<PerfectAttentionCelebrationProps> = ({
   isActive,
@@ -197,14 +197,23 @@ export const PerfectAttentionCelebration: React.FC<PerfectAttentionCelebrationPr
     }
   };
 
+  const handleToggleMessage = useCallback(() => {
+    setShowMessage(prev => !prev);
+    haptic.light();
+  }, [haptic]);
+
   return (
-    <div className="absolute inset-0 z-50 pointer-events-none overflow-hidden">
+    <div className="absolute inset-0 z-50 overflow-hidden pointer-events-none">
       {/* Particles */}
       {particles.map(renderParticle)}
 
-      {/* Central celebration message */}
+      {/* Central celebration message - clickable to dismiss/show */}
       {showMessage && (
-        <div className="absolute inset-0 flex items-center justify-center animate-fade-in">
+        <div 
+          className="absolute inset-0 flex items-center justify-center animate-fade-in pointer-events-auto cursor-pointer"
+          onClick={handleToggleMessage}
+          onTouchEnd={handleToggleMessage}
+        >
           <div className="flex flex-col items-center gap-3">
             <div className="text-5xl animate-bounce">🎯</div>
             <div className="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500/90 to-yellow-500/90 backdrop-blur-sm shadow-2xl">
@@ -219,6 +228,15 @@ export const PerfectAttentionCelebration: React.FC<PerfectAttentionCelebrationPr
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tap area to bring message back when hidden */}
+      {!showMessage && isActive && (
+        <div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 pointer-events-auto cursor-pointer"
+          onClick={handleToggleMessage}
+          onTouchEnd={handleToggleMessage}
+        />
       )}
     </div>
   );

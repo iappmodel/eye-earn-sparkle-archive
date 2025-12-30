@@ -189,6 +189,43 @@ export default {
             filter: "drop-shadow(0 0 20px hsl(320 90% 60% / 0.5))",
           },
         },
+        "fade-in": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "fade-out": {
+          "0%": { opacity: "1", transform: "translateY(0)" },
+          "100%": { opacity: "0", transform: "translateY(8px)" },
+        },
+        "slide-left": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "50%": { transform: "translateX(-8px)" },
+        },
+        "slide-right": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "50%": { transform: "translateX(8px)" },
+        },
+        "tap": {
+          "0%, 100%": { transform: "scale(1)" },
+          "50%": { transform: "scale(0.9)" },
+        },
+        "micro-bounce": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-2px)" },
+        },
+        "stagger-in": {
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "wiggle": {
+          "0%, 100%": { transform: "rotate(0deg)" },
+          "25%": { transform: "rotate(-3deg)" },
+          "75%": { transform: "rotate(3deg)" },
+          "50%": { 
+            transform: "translateY(-10px)",
+            filter: "drop-shadow(0 0 20px hsl(320 90% 60% / 0.5))",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -208,6 +245,14 @@ export default {
         "coin-pulse": "coin-pulse 2.5s ease-in-out infinite",
         "glow-ring-icoin": "glow-ring-icoin 2s ease-in-out infinite",
         "glow-ring-vicoin": "glow-ring-vicoin 2s ease-in-out infinite",
+        "fade-in": "fade-in 0.3s ease-out forwards",
+        "fade-out": "fade-out 0.3s ease-out forwards",
+        "slide-left": "slide-left 1s ease-in-out infinite",
+        "slide-right": "slide-right 1s ease-in-out infinite",
+        "tap": "tap 0.5s ease-in-out infinite",
+        "micro-bounce": "micro-bounce 0.3s ease-out",
+        "stagger-in": "stagger-in 0.4s ease-out forwards",
+        "wiggle": "wiggle 0.5s ease-in-out",
       },
     },
   },

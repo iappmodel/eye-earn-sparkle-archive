@@ -1,10 +1,11 @@
 // Page Layout Editor - Multi-directional navigation design with per-page themes
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Plus, X, RotateCcw, ChevronUp, ChevronDown, 
   ChevronLeft, ChevronRight, Palette, GripVertical,
   Users, Video, Compass, Gift, Heart, Star, Home,
-  MessageCircle, Wallet, Settings, Check, Trash2, Play, Pause, Wand2
+  MessageCircle, Wallet, Settings, Check, Trash2, Play, Pause, Wand2,
+  Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUICustomization, PageSlot, PageDirection } from '@/contexts/UICustomizationContext';
@@ -19,7 +20,12 @@ import { HSLColorPicker } from './HSLColorPicker';
 import { TransitionPreview, MiniTransitionPreview } from './TransitionPreview';
 import { PageEffectsEditor } from './PageEffectsEditor';
 import { LayoutImportExport } from './LayoutImportExport';
+import { LayoutTemplates } from './LayoutTemplates';
+import { LayoutHistoryControls } from './LayoutHistoryControls';
+import { PagePreviewThumbnail } from './PagePreviewThumbnail';
+import { useLayoutHistory } from '@/hooks/useLayoutHistory';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 
 interface PageLayoutEditorProps {
   isOpen: boolean;
@@ -64,6 +70,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
     reorderPages, 
     resetPageLayout,
     advancedSettings,
+    importLayout,
   } = useUICustomization();
   
   const [editingPage, setEditingPage] = useState<string | null>(null);
@@ -71,7 +78,83 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [selectedTransitionType, setSelectedTransitionType] = useState<'slide' | 'fade' | 'zoom'>('slide');
+  const [showTemplates, setShowTemplates] = useState(false);
   const dragDirection = useRef<PageDirection | null>(null);
+  
+  // Undo/Redo history
+  const {
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    pushState,
+    clearHistory,
+    historyLength,
+    currentIndex,
+    getHistory,
+  } = useLayoutHistory(pageLayout);
+  
+  // Track layout changes for history
+  const lastLayoutRef = useRef(JSON.stringify(pageLayout));
+  
+  useEffect(() => {
+    const currentLayout = JSON.stringify(pageLayout);
+    if (currentLayout !== lastLayoutRef.current) {
+      const lastLayout = JSON.parse(lastLayoutRef.current);
+      const pagesChanged = pageLayout.pages.length !== lastLayout.pages.length;
+      const action = pagesChanged 
+        ? (pageLayout.pages.length > lastLayout.pages.length ? 'Add page' : 'Remove page')
+        : 'Update layout';
+      pushState(pageLayout, action);
+      lastLayoutRef.current = currentLayout;
+    }
+  }, [pageLayout, pushState]);
+  
+  // Handle undo/redo with keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canUndo, canRedo]);
+  
+  const handleUndo = useCallback(() => {
+    const prevLayout = undo();
+    if (prevLayout) {
+      // Create import data
+      const importData = JSON.stringify({
+        version: '1.0',
+        pageLayout: prevLayout,
+        exportedAt: new Date().toISOString(),
+      });
+      importLayout(importData);
+      lastLayoutRef.current = JSON.stringify(prevLayout);
+      toast.success('Undone');
+    }
+  }, [undo, importLayout]);
+  
+  const handleRedo = useCallback(() => {
+    const nextLayout = redo();
+    if (nextLayout) {
+      const importData = JSON.stringify({
+        version: '1.0',
+        pageLayout: nextLayout,
+        exportedAt: new Date().toISOString(),
+      });
+      importLayout(importData);
+      lastLayoutRef.current = JSON.stringify(nextLayout);
+      toast.success('Redone');
+    }
+  }, [redo, importLayout]);
 
   // Get pages by direction
   const getPagesByDirection = (direction: PageDirection) => {
@@ -297,7 +380,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header with Import/Export */}
+      {/* Header with History Controls and Templates */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -307,7 +390,33 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
             Design your navigation • Drag to reorder
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          {/* Undo/Redo Controls */}
+          <LayoutHistoryControls
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onClearHistory={clearHistory}
+            historyLength={historyLength}
+            currentIndex={currentIndex}
+            history={getHistory().map(h => ({ action: h.action, timestamp: h.timestamp }))}
+          />
+          
+          <div className="w-px h-6 bg-border mx-1" />
+          
+          {/* Templates Button */}
+          <button
+            onClick={() => setShowTemplates(!showTemplates)}
+            className={cn(
+              'p-2 rounded-lg transition-all duration-200',
+              'hover:bg-muted active:scale-95',
+              showTemplates ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+          
           <LayoutImportExport />
           <button
             onClick={resetPageLayout}
@@ -315,6 +424,29 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
           >
             <RotateCcw className="w-4 h-4" />
           </button>
+        </div>
+      </div>
+      
+      {/* Templates Panel */}
+      {showTemplates && (
+        <div className="p-4 rounded-2xl bg-muted/20 border border-border/30 animate-fade-in">
+          <LayoutTemplates onApply={() => setShowTemplates(false)} />
+        </div>
+      )}
+      
+      {/* Page Preview Thumbnails */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-medium text-muted-foreground">Page Previews</h4>
+        <div className="flex items-center justify-center gap-2 overflow-x-auto py-2 px-1">
+          {pageLayout.pages.map((page) => (
+            <PagePreviewThumbnail
+              key={page.id}
+              page={page}
+              size="md"
+              isActive={editingPage === page.id}
+              onClick={() => setEditingPage(page.id)}
+            />
+          ))}
         </div>
       </div>
 

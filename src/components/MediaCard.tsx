@@ -3,10 +3,13 @@ import { cn } from '@/lib/utils';
 import { Play, Pause, Volume2, VolumeX, SkipForward, Eye, Clock, Award, XCircle } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
 import { EyeTrackingIndicator } from './EyeTrackingIndicator';
+import { AttentionProgressBar } from './AttentionProgressBar';
+import { FocusChallengeMiniGame } from './FocusChallengeMiniGame';
 import { useEyeTracking } from '@/hooks/useEyeTracking';
 import { useMediaSettings } from './MediaSettings';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { notificationSoundService } from '@/services/notificationSound.service';
+import { useControlsVisibility } from './FloatingControls';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -46,13 +49,19 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [videoDuration, setVideoDuration] = useState(duration);
   const [showEndStats, setShowEndStats] = useState(false);
   const [endStats, setEndStats] = useState<{ score: number; totalTime: number; attentiveTime: number; eligible: boolean } | null>(null);
+  const [showFocusChallenge, setShowFocusChallenge] = useState(false);
+  const [attentionLostCount, setAttentionLostCount] = useState(0);
   const hasCompleted = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const startTimeRef = useRef<number>(0);
   const lastWarningTimeRef = useRef<number>(0);
+  const lastChallengeTriggerRef = useRef<number>(0);
+  const attentionLostTimeRef = useRef(0);
+  const lastAttentionCheckRef = useRef(Date.now());
 
   const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
+  const { isVisible: controlsVisible } = useControlsVisibility();
   const haptic = useHapticFeedback();
 
   // Eye tracking for promo content
@@ -68,6 +77,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     onAttentionLost: () => {
       if (isPromoContent) {
         setAttentionWarning(true);
+        setAttentionLostCount(prev => prev + 1);
+        
         // Throttle warning feedback to once per 3 seconds
         const now = Date.now();
         if (now - lastWarningTimeRef.current > 3000) {
@@ -76,6 +87,17 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             notificationSoundService.playAttentionWarning();
           }
           haptic.error();
+        }
+        
+        // Trigger focus challenge after multiple attention losses (every 3rd time, max once per 10 seconds)
+        if (attentionLostCount > 0 && attentionLostCount % 3 === 2 && now - lastChallengeTriggerRef.current > 10000) {
+          lastChallengeTriggerRef.current = now;
+          setShowFocusChallenge(true);
+          // Pause video during challenge
+          setIsPlaying(false);
+          if (videoRef.current) {
+            videoRef.current.pause();
+          }
         }
       }
     },
@@ -96,6 +118,38 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [isPromoContent, isPlaying, attentionPaused]);
 
+  // Track attention lost time and trigger auto-pause if > threshold %
+  useEffect(() => {
+    if (!isTracking || videoDuration <= 0) return;
+
+    const now = Date.now();
+    const elapsed = now - lastAttentionCheckRef.current;
+    lastAttentionCheckRef.current = now;
+
+    const isAttentive = isFaceDetected && attentionScore >= 50;
+
+    if (!isAttentive) {
+      attentionLostTimeRef.current += elapsed;
+    }
+
+    const totalWatchedTime = currentTime * 1000;
+    if (totalWatchedTime > 0) {
+      const lostPercentage = (attentionLostTimeRef.current / totalWatchedTime) * 100;
+      
+      if (lostPercentage > attentionThreshold && !isAttentive) {
+        handleAttentionLostTooLong();
+      }
+    }
+  }, [isTracking, isFaceDetected, attentionScore, videoDuration, currentTime, attentionThreshold, handleAttentionLostTooLong]);
+
+  // Reset attention lost time when tracking starts fresh
+  useEffect(() => {
+    if (isTracking) {
+      attentionLostTimeRef.current = 0;
+      lastAttentionCheckRef.current = Date.now();
+    }
+  }, [isTracking]);
+
   // Resume from attention pause
   const handleResumeFromAttentionPause = useCallback(() => {
     if (attentionPaused) {
@@ -108,6 +162,28 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [attentionPaused]);
 
+  // Handle focus challenge completion
+  const handleFocusChallengeComplete = useCallback(() => {
+    setShowFocusChallenge(false);
+    setAttentionWarning(false);
+    setAttentionLostCount(0);
+    // Resume video
+    setIsPlaying(true);
+    if (videoRef.current) {
+      videoRef.current.play().catch(console.error);
+    }
+    haptic.success();
+  }, [haptic]);
+
+  const handleFocusChallengeDismiss = useCallback(() => {
+    setShowFocusChallenge(false);
+    // Resume video without resetting counts
+    setIsPlaying(true);
+    if (videoRef.current) {
+      videoRef.current.play().catch(console.error);
+    }
+  }, []);
+
   // Reset state when media changes
   useEffect(() => {
     setProgress(0);
@@ -119,9 +195,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     setCurrentTime(0);
     setShowEndStats(false);
     setEndStats(null);
+    setShowFocusChallenge(false);
+    setAttentionLostCount(0);
     hasCompleted.current = false;
     startTimeRef.current = 0;
     lastWarningTimeRef.current = 0;
+    lastChallengeTriggerRef.current = 0;
+    attentionLostTimeRef.current = 0;
+    lastAttentionCheckRef.current = Date.now();
     resetAttention();
   }, [src, resetAttention]);
 
@@ -374,42 +455,72 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Bottom gradient for controls visibility */}
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
-      {/* Eye tracking indicator - very top center edge */}
+      {/* Eye tracking indicator - right side, matching FloatingControls visibility */}
       {isPromoContent && (isPlaying || attentionPaused) && eyeTrackingEnabled && (
-        <>
-          <EyeTrackingIndicator
-            isTracking={isTracking}
-            isFaceDetected={isFaceDetected}
-            attentionScore={attentionScore}
-            position="top-center"
-            onAttentionLostTooLong={handleAttentionLostTooLong}
-            videoDuration={videoDuration}
-            currentTime={currentTime}
-            attentionThreshold={attentionThreshold}
-          />
-          
-          {/* Real-time attention percentage indicator */}
-          {isTracking && !attentionPaused && (
-            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/80 backdrop-blur-sm border border-border/50 animate-fade-in">
-              <div 
-                className={cn(
-                  "w-2 h-2 rounded-full transition-colors",
-                  attentionScore >= 80 ? "bg-green-500" : 
-                  attentionScore >= 50 ? "bg-yellow-500" : 
-                  attentionScore >= 30 ? "bg-orange-500" : "bg-red-500"
-                )}
-              />
-              <span className={cn(
-                "text-xs font-medium tabular-nums transition-colors",
-                attentionScore >= 80 ? "text-green-500" : 
-                attentionScore >= 50 ? "text-yellow-500" : 
-                attentionScore >= 30 ? "text-orange-500" : "text-red-500"
-              )}>
-                {Math.round(attentionScore)}% attention
-              </span>
-            </div>
+        <div 
+          className={cn(
+            'fixed right-4 z-40 transition-all duration-500 ease-out',
+            controlsVisible 
+              ? 'opacity-100 translate-x-0' 
+              : 'opacity-0 translate-x-12 pointer-events-none'
           )}
-        </>
+          style={{ top: 'calc(50% + 180px)' }}
+        >
+          <div className="flex flex-col items-center gap-1">
+            {/* Eye indicator button - matching NeuButton style */}
+            <div className={cn(
+              'w-12 h-12 rounded-2xl',
+              'bg-gradient-to-b from-muted/90 to-muted',
+              'border border-border/50',
+              'flex items-center justify-center',
+              'shadow-[0_4px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.1)]',
+              'backdrop-blur-sm'
+            )}>
+              {/* Animated eye SVG */}
+              <div className="relative w-8 h-8 flex items-center justify-center">
+                <svg
+                  viewBox="0 0 40 40"
+                  className={cn(
+                    'absolute inset-0 w-full h-full transition-all duration-300',
+                    attentionScore >= 80 ? 'stroke-green-500' : 
+                    attentionScore >= 50 ? 'stroke-yellow-500' : 
+                    attentionScore >= 30 ? 'stroke-orange-500' : 'stroke-red-500'
+                  )}
+                  fill="none"
+                  strokeWidth="1.5"
+                >
+                  <circle cx="20" cy="20" r="15" />
+                  <circle cx="20" cy="20" r="8" />
+                </svg>
+                <div className={cn(
+                  'absolute w-2.5 h-2.5 rounded-full',
+                  attentionScore >= 80 ? 'bg-green-500' : 
+                  attentionScore >= 50 ? 'bg-yellow-500' : 
+                  attentionScore >= 30 ? 'bg-orange-500' : 'bg-red-500',
+                  !isFaceDetected && 'animate-pulse'
+                )} />
+              </div>
+            </div>
+            {/* Attention percentage label */}
+            <span className={cn(
+              'text-[10px] font-medium tabular-nums transition-colors',
+              attentionScore >= 80 ? 'text-green-500' : 
+              attentionScore >= 50 ? 'text-yellow-500' : 
+              attentionScore >= 30 ? 'text-orange-500' : 'text-red-500'
+            )}>
+              {Math.round(attentionScore)}%
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Focus Challenge Mini-Game overlay */}
+      {showFocusChallenge && (
+        <FocusChallengeMiniGame
+          isVisible={showFocusChallenge}
+          onComplete={handleFocusChallengeComplete}
+          onDismiss={handleFocusChallengeDismiss}
+        />
       )}
 
       {/* Attention warning overlay */}
@@ -569,8 +680,18 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </div>
       )}
 
-      {/* Progress bar for promos - thin line at very bottom */}
-      {type === 'promo' && (
+      {/* Attention quality progress bar for promos with eye tracking */}
+      {type === 'promo' && eyeTrackingEnabled && isPlaying && (
+        <AttentionProgressBar
+          progress={progress}
+          currentAttentionScore={attentionScore}
+          isTracking={isTracking}
+          className="px-4"
+        />
+      )}
+
+      {/* Progress bar for promos - thin line at very bottom (fallback when no eye tracking) */}
+      {type === 'promo' && (!eyeTrackingEnabled || !isPlaying) && (
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/30 z-30">
           <div 
             className={cn(

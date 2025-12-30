@@ -169,12 +169,34 @@ export const MediaLinkImporter: React.FC<MediaLinkImporterProps> = ({
 
       if (error) throw error;
 
+      const newMedia = data as ImportedMedia;
+      
+      // Trigger metadata extraction in background
+      supabase.functions.invoke('extract-media-metadata', {
+        body: { url: linkInput, mediaId: newMedia.id }
+      }).then(({ data: metaData }) => {
+        if (metaData?.success && metaData.metadata) {
+          // Update local state with extracted metadata
+          setImportedMedia(prev => prev.map(m => 
+            m.id === newMedia.id 
+              ? {
+                  ...m,
+                  title: metaData.metadata.title || m.title,
+                  description: metaData.metadata.description || m.description,
+                  thumbnail_url: metaData.metadata.thumbnail_url || m.thumbnail_url,
+                  duration: metaData.metadata.duration || m.duration,
+                  status: 'processed'
+                }
+              : m
+          ));
+        }
+      }).catch(console.error);
+
       toast({
         title: 'Media imported',
-        description: 'Your media link has been saved and is ready to share',
+        description: 'Extracting metadata... Your media will be ready shortly',
       });
 
-      const newMedia = data as ImportedMedia;
       setImportedMedia(prev => [newMedia, ...prev]);
       onImportComplete?.(newMedia);
       

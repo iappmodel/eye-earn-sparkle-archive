@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { OfflineProvider } from "@/contexts/OfflineContext";
 import { LocalizationProvider } from "@/contexts/LocalizationContext";
 import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
+import { UICustomizationProvider } from "@/contexts/UICustomizationContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import Index from "./pages/Index";
@@ -24,7 +25,8 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <LocalizationProvider>
       <AccessibilityProvider>
-        <TooltipProvider>
+        <UICustomizationProvider>
+          <TooltipProvider>
           <Toaster />
           <Sonner />
           <BrowserRouter>
@@ -80,7 +82,8 @@ const App = () => (
               </OfflineProvider>
             </AuthProvider>
           </BrowserRouter>
-        </TooltipProvider>
+          </TooltipProvider>
+        </UICustomizationProvider>
       </AccessibilityProvider>
     </LocalizationProvider>
   </QueryClientProvider>

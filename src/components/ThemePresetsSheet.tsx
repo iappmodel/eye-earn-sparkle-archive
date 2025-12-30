@@ -4,11 +4,14 @@ import {
   X, Palette, Sparkles, Moon, Sun, Zap, 
   Waves, Flame, Leaf, Star, Diamond,
   Circle, Square, ChevronUp, ChevronDown,
-  Check
+  Check, Sliders, Layout, Settings2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
+import { useUICustomization, ThemeSettings } from '@/contexts/UICustomizationContext';
 import { NeuButton } from './NeuButton';
+import { ButtonFunctionManager } from './ButtonFunctionManager';
+import { LayoutEditor } from './LayoutEditor';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ThemePresetsSheetProps {
   isOpen: boolean;
@@ -26,8 +29,8 @@ interface ThemePreset {
     accent: string;
     glow: string;
   };
-  buttonStyle: 'rounded' | 'pill' | 'sharp' | 'soft';
-  glowIntensity: 'none' | 'subtle' | 'medium' | 'intense';
+  buttonStyle: ThemeSettings['buttonShape'];
+  glowIntensity: ThemeSettings['glowIntensity'];
 }
 
 const themePresets: ThemePreset[] = [
@@ -106,7 +109,7 @@ const themePresets: ThemePreset[] = [
 ];
 
 // Button shape options
-const buttonShapes = [
+const buttonShapes: { id: ThemeSettings['buttonShape']; icon: React.ReactNode; label: string }[] = [
   { id: 'rounded', icon: <Circle className="w-4 h-4" />, label: 'Rounded' },
   { id: 'pill', icon: <div className="w-6 h-3 rounded-full border-2 border-current" />, label: 'Pill' },
   { id: 'sharp', icon: <Square className="w-4 h-4" />, label: 'Sharp' },
@@ -114,7 +117,7 @@ const buttonShapes = [
 ];
 
 // Glow intensity options
-const glowOptions = [
+const glowOptions: { id: ThemeSettings['glowIntensity']; label: string }[] = [
   { id: 'none', label: 'None' },
   { id: 'subtle', label: 'Subtle' },
   { id: 'medium', label: 'Medium' },
@@ -125,30 +128,21 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { themePack, setThemePack } = useAccessibility();
-  const [selectedPreset, setSelectedPreset] = useState<string>('cyberpunk');
-  const [buttonShape, setButtonShape] = useState<string>('rounded');
-  const [glowIntensity, setGlowIntensity] = useState<string>('intense');
+  const { 
+    themeSettings, 
+    setPreset, 
+    setButtonShape, 
+    setGlowIntensity 
+  } = useUICustomization();
+  
   const [sheetHeight, setSheetHeight] = useState<'collapsed' | 'partial' | 'full'>('partial');
+  const [activeTab, setActiveTab] = useState('themes');
 
   // Apply preset
   const applyPreset = (preset: ThemePreset) => {
-    setSelectedPreset(preset.id);
+    setPreset(preset.id, preset.colors);
     setButtonShape(preset.buttonStyle);
     setGlowIntensity(preset.glowIntensity);
-    
-    // Map preset to theme pack if available
-    if (preset.id === 'lunar') {
-      setThemePack('lunar');
-    } else {
-      setThemePack('default');
-    }
-    
-    // Apply custom CSS variables for the preset
-    const root = document.documentElement;
-    root.style.setProperty('--preset-primary', preset.colors.primary);
-    root.style.setProperty('--preset-accent', preset.colors.accent);
-    root.style.setProperty('--preset-glow', preset.colors.glow);
   };
 
   const toggleHeight = () => {
@@ -197,11 +191,11 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
         <div className="flex items-center justify-between px-6 pb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Palette className="w-5 h-5 text-primary" />
+              <Settings2 className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-display text-lg font-bold">Theme Presets</h2>
-              <p className="text-xs text-muted-foreground">Customize buttons & UI</p>
+              <h2 className="font-display text-lg font-bold">Settings</h2>
+              <p className="text-xs text-muted-foreground">Themes, buttons & layout</p>
             </div>
           </div>
           
@@ -225,139 +219,169 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
           </div>
         </div>
 
-        {/* Content - scrollable */}
+        {/* Tabs */}
         <div className={cn(
           'px-6 pb-8 overflow-y-auto',
           sheetHeight === 'collapsed' ? 'hidden' : 'block',
           sheetHeight === 'partial' ? 'max-h-[calc(60vh-100px)]' : 'max-h-[calc(90vh-100px)]'
         )}>
-          {/* Theme Presets Grid */}
-          <section className="mb-6">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-              Presets
-            </h3>
-            <div className="grid grid-cols-4 gap-3">
-              {themePresets.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => applyPreset(preset)}
-                  className={cn(
-                    'relative flex flex-col items-center gap-2 p-3 rounded-2xl',
-                    'border transition-all duration-300',
-                    selectedPreset === preset.id
-                      ? 'border-primary bg-primary/15 shadow-[0_0_20px_hsl(var(--primary)/0.3)]'
-                      : 'border-border/30 bg-muted/30 hover:bg-muted/50 hover:border-border/60'
-                  )}
-                >
-                  {/* Color preview circle */}
-                  <div 
-                    className={cn(
-                      'w-10 h-10 rounded-full flex items-center justify-center',
-                      'transition-all duration-300',
-                      selectedPreset === preset.id && 'ring-2 ring-primary ring-offset-2 ring-offset-card'
-                    )}
-                    style={{ 
-                      background: `linear-gradient(135deg, hsl(${preset.colors.primary}), hsl(${preset.colors.accent}))`,
-                      boxShadow: selectedPreset === preset.id 
-                        ? `0 0 20px hsl(${preset.colors.glow} / 0.5)` 
-                        : 'none'
-                    }}
-                  >
-                    <span className="text-white drop-shadow-md">{preset.icon}</span>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="w-full grid grid-cols-3 mb-4">
+              <TabsTrigger value="themes" className="gap-2">
+                <Palette className="w-4 h-4" />
+                <span className="hidden sm:inline">Themes</span>
+              </TabsTrigger>
+              <TabsTrigger value="buttons" className="gap-2">
+                <Sliders className="w-4 h-4" />
+                <span className="hidden sm:inline">Buttons</span>
+              </TabsTrigger>
+              <TabsTrigger value="layout" className="gap-2">
+                <Layout className="w-4 h-4" />
+                <span className="hidden sm:inline">Layout</span>
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Themes Tab */}
+            <TabsContent value="themes" className="space-y-6">
+              {/* Theme Presets Grid */}
+              <section>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Presets
+                </h3>
+                <div className="grid grid-cols-4 gap-3">
+                  {themePresets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => applyPreset(preset)}
+                      className={cn(
+                        'relative flex flex-col items-center gap-2 p-3 rounded-2xl',
+                        'border transition-all duration-300',
+                        themeSettings.preset === preset.id
+                          ? 'border-primary bg-primary/15 shadow-[0_0_20px_hsl(var(--primary)/0.3)]'
+                          : 'border-border/30 bg-muted/30 hover:bg-muted/50 hover:border-border/60'
+                      )}
+                    >
+                      {/* Color preview circle */}
+                      <div 
+                        className={cn(
+                          'w-10 h-10 rounded-full flex items-center justify-center',
+                          'transition-all duration-300',
+                          themeSettings.preset === preset.id && 'ring-2 ring-primary ring-offset-2 ring-offset-card'
+                        )}
+                        style={{ 
+                          background: `linear-gradient(135deg, hsl(${preset.colors.primary}), hsl(${preset.colors.accent}))`,
+                          boxShadow: themeSettings.preset === preset.id 
+                            ? `0 0 20px hsl(${preset.colors.glow} / 0.5)` 
+                            : 'none'
+                        }}
+                      >
+                        <span className="text-white drop-shadow-md">{preset.icon}</span>
+                      </div>
+                      
+                      {/* Name */}
+                      <span className={cn(
+                        'text-xs font-semibold text-center',
+                        themeSettings.preset === preset.id ? 'text-primary' : 'text-foreground'
+                      )}>
+                        {preset.name}
+                      </span>
+                      
+                      {/* Selected check */}
+                      {themeSettings.preset === preset.id && (
+                        <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* Button Shape */}
+              <section>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Button Shape
+                </h3>
+                <div className="flex gap-2">
+                  {buttonShapes.map((shape) => (
+                    <button
+                      key={shape.id}
+                      onClick={() => setButtonShape(shape.id)}
+                      className={cn(
+                        'flex-1 flex flex-col items-center gap-2 p-3 rounded-xl',
+                        'border transition-all duration-200',
+                        themeSettings.buttonShape === shape.id
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border/30 bg-muted/30 hover:bg-muted/50'
+                      )}
+                    >
+                      <span className={cn(
+                        'transition-colors',
+                        themeSettings.buttonShape === shape.id ? 'text-primary' : 'text-muted-foreground'
+                      )}>
+                        {shape.icon}
+                      </span>
+                      <span className="text-xs font-medium">{shape.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* Glow Intensity */}
+              <section>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Glow Intensity
+                </h3>
+                <div className="flex gap-2">
+                  {glowOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setGlowIntensity(option.id)}
+                      className={cn(
+                        'flex-1 py-3 px-4 rounded-xl text-sm font-medium',
+                        'border transition-all duration-200',
+                        themeSettings.glowIntensity === option.id
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border/30 bg-muted/30 text-foreground hover:bg-muted/50'
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* Preview */}
+              <section>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
+                  Preview
+                </h3>
+                <div className="neu-card rounded-2xl p-6">
+                  <div className="flex items-center justify-center gap-4">
+                    <NeuButton size="sm">Small</NeuButton>
+                    <NeuButton size="md" variant="accent">Medium</NeuButton>
+                    <NeuButton size="lg" variant="gold">Large</NeuButton>
                   </div>
-                  
-                  {/* Name */}
-                  <span className={cn(
-                    'text-xs font-semibold text-center',
-                    selectedPreset === preset.id ? 'text-primary' : 'text-foreground'
-                  )}>
-                    {preset.name}
-                  </span>
-                  
-                  {/* Selected check */}
-                  {selectedPreset === preset.id && (
-                    <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                      <Check className="w-3 h-3 text-primary-foreground" />
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </section>
+                </div>
+              </section>
+            </TabsContent>
 
-          {/* Button Shape */}
-          <section className="mb-6">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-              Button Shape
-            </h3>
-            <div className="flex gap-2">
-              {buttonShapes.map((shape) => (
-                <button
-                  key={shape.id}
-                  onClick={() => setButtonShape(shape.id)}
-                  className={cn(
-                    'flex-1 flex flex-col items-center gap-2 p-3 rounded-xl',
-                    'border transition-all duration-200',
-                    buttonShape === shape.id
-                      ? 'border-primary bg-primary/10'
-                      : 'border-border/30 bg-muted/30 hover:bg-muted/50'
-                  )}
-                >
-                  <span className={cn(
-                    'transition-colors',
-                    buttonShape === shape.id ? 'text-primary' : 'text-muted-foreground'
-                  )}>
-                    {shape.icon}
-                  </span>
-                  <span className="text-xs font-medium">{shape.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+            {/* Buttons Tab */}
+            <TabsContent value="buttons">
+              <ButtonFunctionManager isOpen={true} onClose={() => {}} />
+            </TabsContent>
 
-          {/* Glow Intensity */}
-          <section className="mb-6">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-              Glow Intensity
-            </h3>
-            <div className="flex gap-2">
-              {glowOptions.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => setGlowIntensity(option.id)}
-                  className={cn(
-                    'flex-1 py-3 px-4 rounded-xl text-sm font-medium',
-                    'border transition-all duration-200',
-                    glowIntensity === option.id
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border/30 bg-muted/30 text-foreground hover:bg-muted/50'
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Preview */}
-          <section className="mb-6">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
-              Preview
-            </h3>
-            <div className="neu-card rounded-2xl p-6">
-              <div className="flex items-center justify-center gap-4">
-                <NeuButton size="sm">Small</NeuButton>
-                <NeuButton size="md" variant="accent">Medium</NeuButton>
-                <NeuButton size="lg" variant="gold">Large</NeuButton>
-              </div>
-            </div>
-          </section>
+            {/* Layout Tab */}
+            <TabsContent value="layout">
+              <LayoutEditor isOpen={true} onClose={() => {}} />
+            </TabsContent>
+          </Tabs>
 
           {/* Apply Button */}
           <button
             onClick={onClose}
             className={cn(
-              'w-full py-4 rounded-2xl font-display font-bold text-lg',
+              'w-full py-4 mt-6 rounded-2xl font-display font-bold text-lg',
               'bg-gradient-to-r from-primary to-accent',
               'text-primary-foreground',
               'shadow-[0_0_30px_hsl(var(--primary)/0.4)]',
@@ -366,7 +390,7 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
               'active:scale-[0.98]'
             )}
           >
-            Apply Theme
+            Done
           </button>
         </div>
       </div>

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Play, Pause, Volume2, VolumeX, SkipForward } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, SkipForward, Eye, Clock, Award, XCircle } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
 import { EyeTrackingIndicator } from './EyeTrackingIndicator';
 import { useEyeTracking } from '@/hooks/useEyeTracking';
 import { useMediaSettings } from './MediaSettings';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { notificationSoundService } from '@/services/notificationSound.service';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -42,12 +44,16 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [attentionPaused, setAttentionPaused] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(duration);
+  const [showEndStats, setShowEndStats] = useState(false);
+  const [endStats, setEndStats] = useState<{ score: number; totalTime: number; attentiveTime: number; eligible: boolean } | null>(null);
   const hasCompleted = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const startTimeRef = useRef<number>(0);
+  const lastWarningTimeRef = useRef<number>(0);
 
-  const { attentionThreshold, eyeTrackingEnabled } = useMediaSettings();
+  const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
+  const haptic = useHapticFeedback();
 
   // Eye tracking for promo content
   const isPromoContent = type === 'promo' && !!reward;
@@ -62,6 +68,15 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     onAttentionLost: () => {
       if (isPromoContent) {
         setAttentionWarning(true);
+        // Throttle warning feedback to once per 3 seconds
+        const now = Date.now();
+        if (now - lastWarningTimeRef.current > 3000) {
+          lastWarningTimeRef.current = now;
+          if (soundEffects) {
+            notificationSoundService.playAttentionWarning();
+          }
+          haptic.error();
+        }
       }
     },
     onAttentionRestored: () => {
@@ -102,8 +117,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     setAttentionWarning(false);
     setAttentionPaused(false);
     setCurrentTime(0);
+    setShowEndStats(false);
+    setEndStats(null);
     hasCompleted.current = false;
     startTimeRef.current = 0;
+    lastWarningTimeRef.current = 0;
     resetAttention();
   }, [src, resetAttention]);
 
@@ -123,6 +141,28 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     const attentionResult = getAttentionResult();
     
     console.log('[MediaCard] Promo complete, validating attention...', attentionResult);
+
+    // Calculate stats for display
+    const attentiveTime = (attentionResult.framesDetected / Math.max(attentionResult.totalFrames, 1)) * watchDuration;
+    const isEligible = attentionResult.score >= 70 && eyeTrackingEnabled;
+    
+    setEndStats({
+      score: attentionResult.score,
+      totalTime: watchDuration,
+      attentiveTime: attentiveTime,
+      eligible: isEligible || !eyeTrackingEnabled, // Always eligible if eye tracking disabled
+    });
+    setShowEndStats(true);
+
+    // Play appropriate sound
+    if (soundEffects) {
+      if (isEligible || !eyeTrackingEnabled) {
+        notificationSoundService.playReward();
+      } else {
+        notificationSoundService.playAttentionWarning();
+      }
+    }
+    haptic.success();
 
     try {
       // Validate with backend
@@ -147,16 +187,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       console.log('[MediaCard] Validation result:', data);
 
       if (data?.validated) {
-        // Toast temporarily disabled
-        // toast.success('Reward earned!', {
-        //   description: `Attention score: ${attentionResult.score}%`,
-        // });
         onComplete?.(true);
       } else {
-        // Toast temporarily disabled
-        // toast.error('Reward not earned', {
-        //   description: data?.reasons?.join(', ') || 'Attention requirements not met',
-        // });
         onComplete?.(false);
       }
     } catch (err) {
@@ -407,7 +439,77 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </div>
       )}
 
-      {/* Reward badge - appears for 3 seconds */}
+      {/* End stats overlay - shows cumulative attention stats */}
+      {showEndStats && endStats && isPromoContent && (
+        <div className="absolute inset-0 bg-background/90 backdrop-blur-md z-40 flex flex-col items-center justify-center gap-6 animate-fade-in">
+          <div className="text-center space-y-2">
+            <div className={cn(
+              "w-20 h-20 rounded-full mx-auto flex items-center justify-center mb-4",
+              endStats.eligible ? "bg-green-500/20" : "bg-red-500/20"
+            )}>
+              {endStats.eligible ? (
+                <Award className="w-10 h-10 text-green-500" />
+              ) : (
+                <XCircle className="w-10 h-10 text-red-500" />
+              )}
+            </div>
+            <h3 className={cn(
+              "text-2xl font-bold",
+              endStats.eligible ? "text-green-500" : "text-red-500"
+            )}>
+              {endStats.eligible ? "Reward Earned!" : "Reward Not Earned"}
+            </h3>
+            <p className="text-muted-foreground text-sm">
+              {endStats.eligible 
+                ? "Great focus! Your reward is being processed." 
+                : "Try to maintain focus next time."}
+            </p>
+          </div>
+
+          {/* Stats cards */}
+          {eyeTrackingEnabled && (
+            <div className="grid grid-cols-3 gap-3 px-6 w-full max-w-sm">
+              <div className="bg-muted/50 rounded-xl p-3 text-center">
+                <Eye className="w-5 h-5 mx-auto mb-1 text-primary" />
+                <p className="text-lg font-bold">{Math.round(endStats.score)}%</p>
+                <p className="text-[10px] text-muted-foreground">Attention</p>
+              </div>
+              <div className="bg-muted/50 rounded-xl p-3 text-center">
+                <Clock className="w-5 h-5 mx-auto mb-1 text-primary" />
+                <p className="text-lg font-bold">{Math.round(endStats.attentiveTime)}s</p>
+                <p className="text-[10px] text-muted-foreground">Focused</p>
+              </div>
+              <div className="bg-muted/50 rounded-xl p-3 text-center">
+                <Clock className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
+                <p className="text-lg font-bold">{Math.round(endStats.totalTime)}s</p>
+                <p className="text-[10px] text-muted-foreground">Total</p>
+              </div>
+            </div>
+          )}
+
+          {/* Reward info */}
+          {reward && endStats.eligible && (
+            <div className="flex items-center gap-2 bg-primary/10 rounded-full px-4 py-2">
+              <span className="text-lg">
+                {reward.type === 'icoin' ? '🪙' : '💎'}
+              </span>
+              <span className="font-bold text-primary">+{reward.amount}</span>
+              <span className="text-sm text-muted-foreground">
+                {reward.type === 'icoin' ? 'iCoins' : 'Vicoins'}
+              </span>
+            </div>
+          )}
+
+          {/* Dismiss button */}
+          <button
+            onClick={() => setShowEndStats(false)}
+            className="mt-2 px-6 py-2 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+          >
+            Continue
+          </button>
+        </div>
+      )}
+
       {reward && (
         <RewardBadge
           amount={reward.amount}

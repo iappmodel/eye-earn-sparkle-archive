@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Music, Play, Pause, Plus, Check, TrendingUp, Heart, 
-  Zap, Moon, Sun, Sparkles, Volume2, VolumeX, Crown,
+  Zap, Moon, Sun, Sparkles, Volume2, VolumeX,
   Search, Clock, Music2, Waves, Drum
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -125,7 +125,7 @@ const audioTracks: AudioTrack[] = [
 ];
 
 interface AudioLibraryProps {
-  isPremium: boolean;
+  isPremium?: boolean;
   videoDuration: number;
   aiHighlights?: { startTime: number; endTime: number }[];
   onSelectTrack: (track: AudioTrack) => void;
@@ -143,13 +143,13 @@ const categories = [
 ];
 
 export const AudioLibrary: React.FC<AudioLibraryProps> = ({
-  isPremium,
   videoDuration,
   aiHighlights = [],
   onSelectTrack,
   onSyncBeat,
   selectedTrackId,
 }) => {
+  const isPremium = true; // All features unlocked
   const [activeCategory, setActiveCategory] = useState<string>('trending');
   const [searchQuery, setSearchQuery] = useState('');
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
@@ -184,13 +184,6 @@ export const AudioLibrary: React.FC<AudioLibraryProps> = ({
   }, [playingTrackId]);
 
   const handleSelectTrack = (track: AudioTrack) => {
-    if (track.isPremium && !isPremium) {
-      toast.error('Premium Track', {
-        description: 'Upgrade to Pro to use this track.',
-        action: { label: 'Upgrade', onClick: () => {} }
-      });
-      return;
-    }
     onSelectTrack(track);
     toast.success(`Selected: ${track.name}`, {
       description: `${track.bpm} BPM • ${track.duration}s`
@@ -198,11 +191,6 @@ export const AudioLibrary: React.FC<AudioLibraryProps> = ({
   };
 
   const handleBeatSync = (track: AudioTrack) => {
-    if (track.isPremium && !isPremium) {
-      toast.error('Premium Feature', { description: 'Upgrade to sync beats.' });
-      return;
-    }
-    
     // Calculate beat points that align with video highlights
     const syncedBeats = calculateSyncedBeats(track, videoDuration, aiHighlights);
     onSyncBeat(syncedBeats);
@@ -299,7 +287,7 @@ export const AudioLibrary: React.FC<AudioLibraryProps> = ({
               selectedTrackId === track.id
                 ? 'bg-primary/10 border border-primary/30'
                 : 'bg-muted/30 border border-transparent',
-              track.isPremium && !isPremium && 'opacity-60'
+              false
             )}
           >
             <div className="flex items-start gap-3">
@@ -324,9 +312,6 @@ export const AudioLibrary: React.FC<AudioLibraryProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h4 className="font-medium text-sm truncate">{track.name}</h4>
-                  {track.isPremium && !isPremium && (
-                    <Crown className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                  )}
                   {selectedTrackId === track.id && (
                     <Check className="w-4 h-4 text-primary flex-shrink-0" />
                   )}
@@ -372,7 +357,6 @@ export const AudioLibrary: React.FC<AudioLibraryProps> = ({
                   variant={selectedTrackId === track.id ? "default" : "secondary"}
                   className="h-7 text-xs"
                   onClick={() => handleSelectTrack(track)}
-                  disabled={track.isPremium && !isPremium}
                 >
                   {selectedTrackId === track.id ? (
                     <Check className="w-3 h-3" />
@@ -385,7 +369,6 @@ export const AudioLibrary: React.FC<AudioLibraryProps> = ({
                   variant="ghost"
                   className="h-7 text-xs"
                   onClick={() => handleBeatSync(track)}
-                  disabled={track.isPremium && !isPremium}
                 >
                   <Sparkles className="w-3 h-3" />
                 </Button>

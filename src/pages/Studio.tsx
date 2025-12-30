@@ -2,7 +2,7 @@ import React, { useState, forwardRef, useCallback, useRef, ChangeEvent } from 'r
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeft, Wand2, Sparkles, Play, Pause, Undo, Redo, 
-  Layers, Sliders, Palette, Smile, Zap, Crown, Star, 
+  Layers, Sliders, Palette, Smile, Zap, Star, 
   Lock, Check, ChevronRight, RefreshCw, Download, Share2,
   Scissors, Copy, Trash2, RotateCcw, Sun, Contrast, Droplet,
   Eye, Heart, Users, Video, Image as ImageIcon, Music,
@@ -144,7 +144,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   const location = useLocation();
   const { user } = useAuth();
   const { tier } = useSubscription();
-  const isPremium = tier === 'pro' || tier === 'creator';
+  const isPremium = true; // All features unlocked
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   
@@ -271,38 +271,14 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   };
 
   const handleSelectFilter = (filterId: string) => {
-    const filter = filters.find(f => f.id === filterId);
-    if (filter?.isPremium && !isPremium) {
-      toast.error('Premium filter', {
-        description: 'Upgrade to Pro or Creator plan to unlock this filter.',
-        action: { label: 'Upgrade', onClick: () => navigate('/settings/subscription') }
-      });
-      return;
-    }
     setSelectedFilter(filterId);
   };
 
   const handleBeautyChange = (toolId: string, value: number) => {
-    const tool = beautyTools.find(t => t.id === toolId);
-    if (tool?.isPremium && !isPremium) {
-      toast.error('Premium beauty tool', {
-        description: 'Upgrade to unlock advanced beauty features.',
-        action: { label: 'Upgrade', onClick: () => navigate('/settings/subscription') }
-      });
-      return;
-    }
     setBeautyValues(prev => ({ ...prev, [toolId]: value }));
   };
 
   const handleToggleEffect = (effectId: string) => {
-    const effect = effects.find(e => e.id === effectId);
-    if (effect?.isPremium && !isPremium) {
-      toast.error('Premium effect', {
-        description: 'Upgrade to unlock this effect.',
-        action: { label: 'Upgrade', onClick: () => navigate('/settings/subscription') }
-      });
-      return;
-    }
     setSelectedEffects(prev => 
       prev.includes(effectId) 
         ? prev.filter(id => id !== effectId)
@@ -501,11 +477,6 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                           className="absolute inset-0"
                           style={{ background: filter.preview }}
                         />
-                        {filter.isPremium && !isPremium && (
-                          <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
-                            <Crown className="w-3 h-3 text-white" />
-                          </div>
-                        )}
                         <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/80 to-transparent">
                           <span className="text-xs text-white font-medium">{filter.name}</span>
                         </div>
@@ -559,7 +530,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                           selectedEffects.includes(effect.id)
                             ? 'bg-primary/20 border border-primary/50'
                             : 'bg-muted/50 border border-transparent',
-                          effect.isPremium && !isPremium && 'opacity-60'
+                          false
                         )}
                       >
                         <div className="flex flex-col items-center gap-2">
@@ -573,11 +544,6 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                           </div>
                           <span className="text-xs font-medium">{effect.name}</span>
                         </div>
-                        {effect.isPremium && !isPremium && (
-                          <div className="absolute top-1 right-1">
-                            <Crown className="w-3.5 h-3.5 text-amber-500" />
-                          </div>
-                        )}
                         {selectedEffects.includes(effect.id) && (
                           <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
                             <Check className="w-2.5 h-2.5 text-white" />
@@ -638,12 +604,11 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                     <Timer className="w-5 h-5 text-primary" />
                     <span className="font-medium">AI Smooth Slow-Mo</span>
                   </div>
-                  {!isPremium && <Crown className="w-4 h-4 text-amber-500" />}
                 </div>
                 <p className="text-xs text-muted-foreground mb-3">
                   AI-powered frame interpolation for ultra-smooth slow motion
                 </p>
-                <Switch disabled={!isPremium} />
+                <Switch />
               </div>
             </div>
           </div>

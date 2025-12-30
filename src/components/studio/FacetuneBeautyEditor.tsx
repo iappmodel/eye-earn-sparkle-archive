@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Smile, Eye, Droplet, Sun, Contrast, Target, Users, Layers,
   Sparkles, Heart, CircleDot, Move, Maximize2, Minimize2,
-  Wand2, Crown, RotateCcw, Pipette, Palette, Brush
+  Wand2, RotateCcw, Pipette, Palette, Brush
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -129,28 +129,20 @@ const presetLooks = [
 ];
 
 interface FacetuneBeautyEditorProps {
-  isPremium: boolean;
+  isPremium?: boolean;
   onValuesChange?: (values: Record<string, number>) => void;
 }
 
 export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
-  isPremium,
   onValuesChange
 }) => {
+  const isPremium = true; // All features unlocked
   const [beautyValues, setBeautyValues] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState('face');
   const [autoEnhance, setAutoEnhance] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
 
   const handleValueChange = (toolId: string, value: number, tool: BeautyTool) => {
-    if (tool.isPremium && !isPremium) {
-      toast.error('Premium feature', {
-        description: 'Upgrade to unlock this beauty tool.',
-        action: { label: 'Upgrade', onClick: () => {} }
-      });
-      return;
-    }
-    
     const newValues = { ...beautyValues, [toolId]: value };
     setBeautyValues(newValues);
     onValuesChange?.(newValues);
@@ -163,30 +155,12 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
   };
 
   const applyPreset = (preset: typeof presetLooks[0]) => {
-    const hasPremiumValues = Object.keys(preset.values).some(key => {
-      const tool = beautyCategories.flatMap(c => c.tools).find(t => t.id === key);
-      return tool?.isPremium;
-    });
-
-    if (hasPremiumValues && !isPremium) {
-      toast.error('Premium preset', {
-        description: 'This preset includes premium features.',
-        action: { label: 'Upgrade', onClick: () => {} }
-      });
-      return;
-    }
-
     setBeautyValues(preset.values);
     onValuesChange?.(preset.values);
     toast.success(`Applied "${preset.name}" look`);
   };
 
   const handleAIEnhance = () => {
-    if (!isPremium) {
-      toast.error('Premium feature', { description: 'AI enhancement requires Pro or Creator plan.' });
-      return;
-    }
-    
     const aiValues = {
       'skin-smooth': 30,
       'skin-tone': 20,
@@ -252,7 +226,6 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!isPremium && <Crown className="w-4 h-4 text-amber-500" />}
             <Switch 
               checked={autoEnhance} 
               onCheckedChange={(checked) => {
@@ -263,7 +236,6 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
                   setAutoEnhance(false);
                 }
               }}
-              disabled={!isPremium}
             />
           </div>
         </div>
@@ -318,7 +290,7 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
                   const min = tool.min ?? 0;
                   const max = tool.max ?? 100;
                   const value = beautyValues[tool.id] ?? tool.defaultValue ?? (min < 0 ? 0 : 0);
-                  const isLocked = tool.isPremium && !isPremium;
+                  const isLocked = false; // All features unlocked
 
                   return (
                     <div key={tool.id} className="space-y-2">
@@ -337,7 +309,6 @@ export const FacetuneBeautyEditor: React.FC<FacetuneBeautyEditorProps> = ({
                           <div>
                             <span className="text-sm font-medium flex items-center gap-1">
                               {tool.name}
-                              {isLocked && <Crown className="w-3 h-3 text-amber-500" />}
                             </span>
                             {tool.description && (
                               <span className="text-[10px] text-muted-foreground block">

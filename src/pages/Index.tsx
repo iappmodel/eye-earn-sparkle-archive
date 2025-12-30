@@ -358,7 +358,7 @@ const Index = () => {
 
   return (
     <ControlsVisibilityProvider>
-      <DoubleTapGestureDetector>
+      <DoubleTapGestureDetector onTripleTap={handleSettings}>
         <div 
           className="fixed inset-0 bg-background overflow-hidden touch-none"
           {...handlers}

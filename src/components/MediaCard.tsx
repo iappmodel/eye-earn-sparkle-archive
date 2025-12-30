@@ -342,40 +342,42 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </button>
       )}
 
-      {/* Tap-to-reveal playback controls - bottom right */}
+      {/* Tap-to-reveal playback controls - centered on screen */}
       {showControls && type !== 'image' && (
-        <div className="absolute bottom-24 right-4 z-20 flex flex-col gap-3 animate-fade-in">
-          {/* Play/Pause */}
-          <button
-            onClick={togglePlayPause}
-            className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
-          >
-            {isPlaying ? (
-              <Pause className="w-5 h-5 text-foreground" />
-            ) : (
-              <Play className="w-5 h-5 text-foreground ml-0.5" />
-            )}
-          </button>
+        <div className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in">
+          <div className="flex items-center gap-6">
+            {/* Play/Pause - large center button */}
+            <button
+              onClick={togglePlayPause}
+              className="w-16 h-16 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-xl"
+            >
+              {isPlaying ? (
+                <Pause className="w-7 h-7 text-foreground" />
+              ) : (
+                <Play className="w-7 h-7 text-foreground ml-1" />
+              )}
+            </button>
 
-          {/* Volume */}
-          <button
-            onClick={toggleMute}
-            className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
-          >
-            {isMuted ? (
-              <VolumeX className="w-5 h-5 text-foreground" />
-            ) : (
-              <Volume2 className="w-5 h-5 text-foreground" />
-            )}
-          </button>
+            {/* Volume */}
+            <button
+              onClick={toggleMute}
+              className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-lg"
+            >
+              {isMuted ? (
+                <VolumeX className="w-5 h-5 text-foreground" />
+              ) : (
+                <Volume2 className="w-5 h-5 text-foreground" />
+              )}
+            </button>
 
-          {/* Skip/Next */}
-          <button
-            onClick={handleSkipClick}
-            className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95"
-          >
-            <SkipForward className="w-5 h-5 text-foreground" />
-          </button>
+            {/* Skip/Next */}
+            <button
+              onClick={handleSkipClick}
+              className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-lg"
+            >
+              <SkipForward className="w-5 h-5 text-foreground" />
+            </button>
+          </div>
         </div>
       )}
 

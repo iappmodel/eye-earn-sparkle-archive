@@ -368,6 +368,15 @@ const Index = () => {
       return;
     }
 
+    // Check balance before attempting tip
+    const balance = coinType === 'vicoin' ? (profile.vicoin_balance ?? 0) : (profile.icoin_balance ?? 0);
+    if (balance < amount) {
+      toast.error(`Insufficient ${coinType === 'vicoin' ? 'Vicoin' : 'Icoin'} balance`, {
+        description: `You have ${balance} ${coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}, but need ${amount}`,
+      });
+      return;
+    }
+
     // For demo purposes, use a mock creator ID (in real app, would come from content metadata)
     const mockCreatorId = 'demo-creator-id';
     
@@ -381,9 +390,26 @@ const Index = () => {
         },
       });
 
+      // Handle edge function errors - parse the error context for details
       if (error) {
         console.error('[Index] Tip error:', error);
-        toast.error('Failed to send tip');
+        // Try to extract error details from the error context
+        let errorMessage = 'Failed to send tip';
+        try {
+          const context = error.context;
+          if (context && typeof context === 'object') {
+            const body = await context.json?.();
+            if (body?.error) {
+              errorMessage = body.error;
+              if (body.current_balance !== undefined) {
+                errorMessage += ` (Balance: ${body.current_balance})`;
+              }
+            }
+          }
+        } catch {
+          // Use default error message
+        }
+        toast.error(errorMessage);
         return;
       }
 
@@ -398,7 +424,9 @@ const Index = () => {
         // Haptic feedback
         if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
       } else {
-        toast.error(data?.error || 'Failed to send tip');
+        // Handle non-success response in data
+        const errorMsg = data?.error || 'Failed to send tip';
+        toast.error(errorMsg);
       }
     } catch (err) {
       console.error('[Index] Tip failed:', err);

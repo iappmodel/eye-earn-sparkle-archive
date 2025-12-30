@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  Wand2, Crown, Check, Play, Zap, Heart, Film, Sparkles,
+  Wand2, Check, Play, Zap, Heart, Film, Sparkles,
   Mountain, Music, Clapperboard, Flame, Droplets, Wind, Sun,
   Moon, Star, Ghost, Skull, Laugh, PartyPopper, Medal, Brain,
   RefreshCw, ChevronRight
@@ -53,7 +53,7 @@ const aiStyles: AIStyle[] = [
 ];
 
 interface AIVideoEditorProps {
-  isPremium: boolean;
+  isPremium?: boolean;
   onStyleSelect: (style: AIStyle | null) => void;
   onApplyAI: (style: AIStyle, options: AIEditOptions) => Promise<void>;
   selectedStyleId: string | null;
@@ -68,11 +68,11 @@ export interface AIEditOptions {
 }
 
 export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
-  isPremium,
   onStyleSelect,
   onApplyAI,
   selectedStyleId,
 }) => {
+  const isPremium = true; // All features unlocked
   const [activeCategory, setActiveCategory] = useState<AIStyle['category']>('dynamic');
   const [isProcessing, setIsProcessing] = useState(false);
   const [editOptions, setEditOptions] = useState<AIEditOptions>({
@@ -94,13 +94,6 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
   const selectedStyle = aiStyles.find(s => s.id === selectedStyleId);
 
   const handleSelectStyle = (style: AIStyle) => {
-    if (style.isPremium && !isPremium) {
-      toast.error('Premium AI Style', {
-        description: 'Upgrade to Pro to unlock this style.',
-        action: { label: 'Upgrade', onClick: () => {} }
-      });
-      return;
-    }
     onStyleSelect(selectedStyleId === style.id ? null : style);
   };
 
@@ -155,7 +148,7 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
               selectedStyleId === style.id
                 ? 'ring-2 ring-primary shadow-lg'
                 : 'ring-1 ring-border/50 hover:ring-border',
-              style.isPremium && !isPremium && 'opacity-60'
+              false
             )}
           >
             {/* Background gradient */}
@@ -174,9 +167,6 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
                 </div>
                 
                 <div className="flex items-center gap-1">
-                  {style.isPremium && !isPremium && (
-                    <Crown className="w-4 h-4 text-amber-500" />
-                  )}
                   {selectedStyleId === style.id && (
                     <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
                       <Check className="w-3 h-3 text-white" />

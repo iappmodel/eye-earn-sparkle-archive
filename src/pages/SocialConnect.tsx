@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Link2, Download, Settings, Film } from 'lucide-react';
+import { ArrowLeft, Link2, Download, Settings, Film, CalendarClock, ListPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import LinkedSocialAccounts, { LinkedAccount } from '@/components/LinkedSocialAccounts';
 import MediaLinkImporter from '@/components/MediaLinkImporter';
+import { BulkMediaImporter } from '@/components/BulkMediaImporter';
+import { ScheduledPostingManager } from '@/components/ScheduledPostingManager';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -58,7 +60,7 @@ const SocialConnect: React.FC = () => {
         </div>
 
         <Tabs defaultValue="accounts" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="accounts" className="flex items-center gap-2">
               <Link2 className="w-4 h-4" />
               <span className="hidden sm:inline">Accounts</span>
@@ -66,6 +68,10 @@ const SocialConnect: React.FC = () => {
             <TabsTrigger value="import" className="flex items-center gap-2">
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Import</span>
+            </TabsTrigger>
+            <TabsTrigger value="schedule" className="flex items-center gap-2">
+              <CalendarClock className="w-4 h-4" />
+              <span className="hidden sm:inline">Schedule</span>
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
@@ -96,8 +102,13 @@ const SocialConnect: React.FC = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="import">
+          <TabsContent value="import" className="space-y-6">
             <MediaLinkImporter onEditInStudio={handleEditInStudio} />
+            <BulkMediaImporter />
+          </TabsContent>
+
+          <TabsContent value="schedule">
+            <ScheduledPostingManager />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-4">

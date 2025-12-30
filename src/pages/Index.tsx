@@ -6,6 +6,7 @@ import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { DiscoveryMap } from '@/components/DiscoveryMap';
 import { PersonalizedFeed } from '@/components/PersonalizedFeed';
+import { UnifiedContentFeed } from '@/components/UnifiedContentFeed';
 import { MessagesScreen } from '@/components/MessagesScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
@@ -16,7 +17,8 @@ import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
 import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
 import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from '@/components/AttentionAchievements';
 import { useMediaSettings } from '@/components/MediaSettings';
-
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
@@ -120,6 +122,7 @@ const Index = () => {
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
+  const [useUnifiedFeed, setUseUnifiedFeed] = useState(false);
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
@@ -170,7 +173,7 @@ const Index = () => {
         return <MessagesScreen isOpen={true} onClose={() => {}} />;
       case 'favorites':
       case 'following':
-        return <PersonalizedFeed />;
+        return useUnifiedFeed ? <UnifiedContentFeed /> : <PersonalizedFeed />;
       default:
         return null;
     }
@@ -431,6 +434,18 @@ const Index = () => {
               {/* Cross Navigation hints */}
               <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
 
+              {/* Feed toggle */}
+              <div className="absolute top-16 left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50">
+                <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
+                  Unified Feed
+                </Label>
+                <Switch
+                  id="unified-feed"
+                  checked={useUnifiedFeed}
+                  onCheckedChange={setUseUnifiedFeed}
+                  className="scale-75"
+                />
+              </div>
 
               {/* Floating Controls */}
               <FloatingControls

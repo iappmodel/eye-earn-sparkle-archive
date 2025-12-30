@@ -5,15 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, Mail, Lock, User, Loader2, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Loader2, ArrowLeft, Phone } from 'lucide-react';
 import { z } from 'zod';
 import { AppLogo } from '@/components/AppLogo';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 
 const emailSchema = z.string().email('Please enter a valid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 const usernameSchema = z.string().min(3, 'Username must be at least 3 characters').max(20, 'Username must be less than 20 characters').regex(/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores');
+const phoneSchema = z.string().min(10, 'Please enter a valid phone number').regex(/^\+?[1-9]\d{1,14}$/, 'Phone must be in international format (e.g., +1234567890)');
 
-type AuthMode = 'login' | 'signup' | 'forgot' | 'reset';
+type AuthMode = 'login' | 'signup' | 'forgot' | 'reset' | 'phone' | 'otp';
 
 const Auth: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -25,12 +27,15 @@ const Auth: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string; username?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; username?: string; phone?: string }>({});
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
   
-  const { signIn, signUp, signInWithGoogle, resetPassword, user, loading } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithPhone, verifyOtp, resetPassword, user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -41,7 +46,21 @@ const Auth: React.FC = () => {
   }, [user, loading, navigate]);
 
   const validateForm = () => {
-    const newErrors: { email?: string; password?: string; username?: string } = {};
+    const newErrors: { email?: string; password?: string; username?: string; phone?: string } = {};
+    
+    if (mode === 'phone') {
+      const phoneResult = phoneSchema.safeParse(phone);
+      if (!phoneResult.success) {
+        newErrors.phone = phoneResult.error.errors[0].message;
+      }
+      setErrors(newErrors);
+      return Object.keys(newErrors).length === 0;
+    }
+    
+    if (mode === 'otp') {
+      setErrors(newErrors);
+      return otp.length === 6;
+    }
     
     const emailResult = emailSchema.safeParse(email);
     if (!emailResult.success) {
@@ -74,7 +93,37 @@ const Auth: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      if (mode === 'forgot') {
+      if (mode === 'phone') {
+        const { error } = await signInWithPhone(phone);
+        if (error) {
+          toast({
+            title: 'Failed to send OTP',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } else {
+          setOtpSent(true);
+          setMode('otp');
+          toast({
+            title: 'OTP Sent',
+            description: 'Check your phone for the verification code.',
+          });
+        }
+      } else if (mode === 'otp') {
+        const { error } = await verifyOtp(phone, otp);
+        if (error) {
+          toast({
+            title: 'Verification Failed',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Welcome!',
+            description: 'You have successfully logged in.',
+          });
+        }
+      } else if (mode === 'forgot') {
         const { error } = await resetPassword(email);
         if (error) {
           toast({
@@ -171,6 +220,8 @@ const Auth: React.FC = () => {
     setMode(newMode);
     setErrors({});
     setResetEmailSent(false);
+    setOtpSent(false);
+    setOtp('');
   };
 
   if (loading) {
@@ -187,6 +238,8 @@ const Auth: React.FC = () => {
       case 'signup': return 'Join viewi';
       case 'forgot': return 'Reset Password';
       case 'reset': return 'Set New Password';
+      case 'phone': return 'Phone Login';
+      case 'otp': return 'Enter Code';
     }
   };
 
@@ -196,6 +249,8 @@ const Auth: React.FC = () => {
       case 'signup': return 'Start earning by watching & creating';
       case 'forgot': return 'Enter your email to receive a reset link';
       case 'reset': return 'Enter your new password';
+      case 'phone': return 'Enter your phone number to receive a code';
+      case 'otp': return `Enter the 6-digit code sent to ${phone}`;
     }
   };
 
@@ -216,15 +271,15 @@ const Auth: React.FC = () => {
 
       {/* Auth Form */}
       <div className="w-full max-w-sm">
-        {/* Back button for forgot password */}
-        {mode === 'forgot' && (
+        {/* Back button for forgot password or phone login */}
+        {(mode === 'forgot' || mode === 'phone' || mode === 'otp') && (
           <button
             type="button"
-            onClick={() => switchMode('login')}
+            onClick={() => mode === 'otp' ? switchMode('phone') : switchMode('login')}
             className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to login
+            {mode === 'otp' ? 'Change phone number' : 'Back to login'}
           </button>
         )}
 
@@ -243,6 +298,83 @@ const Auth: React.FC = () => {
               Back to Login
             </Button>
           </div>
+        ) : mode === 'otp' ? (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex flex-col items-center space-y-4">
+              <Label className="text-foreground">Verification Code</Label>
+              <InputOTP
+                value={otp}
+                onChange={setOtp}
+                maxLength={6}
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+            
+            <Button
+              type="submit"
+              disabled={isSubmitting || otp.length !== 6}
+              className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-lg"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                'Verify Code'
+              )}
+            </Button>
+            
+            <button
+              type="button"
+              onClick={() => {
+                setOtp('');
+                handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+              }}
+              disabled={isSubmitting}
+              className="w-full text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              Resend code
+            </button>
+          </form>
+        ) : mode === 'phone' ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="text-foreground">Phone Number</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+1234567890"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="pl-10 bg-secondary border-border focus:border-primary"
+                />
+              </div>
+              {errors.phone && (
+                <p className="text-sm text-destructive">{errors.phone}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Enter phone in international format (e.g., +1234567890)</p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-lg"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                'Send Code'
+              )}
+            </Button>
+          </form>
         ) : (
           <>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -381,6 +513,17 @@ const Auth: React.FC = () => {
                       />
                     </svg>
                     Continue with Google
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => switchMode('phone')}
+                    disabled={isSubmitting}
+                    className="w-full h-12 border-border hover:bg-secondary"
+                  >
+                    <Phone className="w-5 h-5 mr-2" />
+                    Continue with Phone
                   </Button>
 
                   <Button

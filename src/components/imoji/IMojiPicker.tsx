@@ -13,12 +13,21 @@ interface IMojiPickerProps {
   onSelect: (imoji: IMoji) => void;
   triggerClassName?: string;
   compact?: boolean;
+
+  /** Control the sheet open state (optional). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the internal trigger button (useful when opening from another UI). */
+  showTrigger?: boolean;
 }
 
 export const IMojiPicker: React.FC<IMojiPickerProps> = ({
   onSelect,
   triggerClassName,
-  compact = false
+  compact = false,
+  open,
+  onOpenChange,
+  showTrigger = true,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showCreator, setShowCreator] = useState(false);
@@ -27,17 +36,21 @@ export const IMojiPicker: React.FC<IMojiPickerProps> = ({
   const [selectedTab, setSelectedTab] = useState('my-imojis');
   const [editingImoji, setEditingImoji] = useState<IMoji | undefined>();
 
+  const isControlled = open !== undefined;
+  const actualOpen = isControlled ? open : isOpen;
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setIsOpen;
+
   // Load iMojis from local storage
   useEffect(() => {
     const stored = localStorage.getItem('user_imojis');
     if (stored) {
       setImojis(JSON.parse(stored));
     }
-  }, [isOpen]);
+  }, [actualOpen]);
 
   const handleSelect = (imoji: IMoji) => {
     onSelect(imoji);
-    setIsOpen(false);
+    setOpen(false);
   };
 
   const handleEdit = (imoji: IMoji) => {
@@ -82,21 +95,23 @@ export const IMojiPicker: React.FC<IMojiPickerProps> = ({
 
   return (
     <>
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetTrigger asChild>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className={cn("relative", triggerClassName)}
-          >
-            <Sparkles className="w-5 h-5" />
-            {imojis.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-[10px] text-primary-foreground rounded-full flex items-center justify-center">
-                {imojis.length}
-              </span>
-            )}
-          </Button>
-        </SheetTrigger>
+      <Sheet open={actualOpen} onOpenChange={setOpen}>
+        {showTrigger && (
+          <SheetTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className={cn("relative", triggerClassName)}
+            >
+              <Sparkles className="w-5 h-5" />
+              {imojis.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-[10px] text-primary-foreground rounded-full flex items-center justify-center">
+                  {imojis.length}
+                </span>
+              )}
+            </Button>
+          </SheetTrigger>
+        )}
         
         <SheetContent side="bottom" className="h-[70vh] rounded-t-3xl">
           <SheetHeader className="pb-4">
@@ -192,7 +207,7 @@ export const IMojiPicker: React.FC<IMojiPickerProps> = ({
                         sourceType: 'gallery'
                       };
                       onSelect(standardImoji);
-                      setIsOpen(false);
+                      setOpen(false);
                     }}
                   >
                     {emoji}

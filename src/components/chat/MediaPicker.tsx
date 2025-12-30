@@ -13,6 +13,7 @@ interface MediaPickerProps {
 export const MediaPicker: React.FC<MediaPickerProps> = ({ onSelect, onIMojiSelect, disabled }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
   const [showIMojiPicker, setShowIMojiPicker] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,7 +31,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ onSelect, onIMojiSelec
 
   return (
     <>
-      <Popover>
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <Button variant="ghost" size="icon" disabled={disabled} className="shrink-0">
             <Image className="w-5 h-5" />
@@ -60,7 +61,10 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ onSelect, onIMojiSelec
               <span>Document</span>
             </button>
             <button
-              onClick={() => setShowIMojiPicker(true)}
+              onClick={() => {
+                setPopoverOpen(false);
+                setShowIMojiPicker(true);
+              }}
               className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm text-primary"
             >
               <Sparkles className="w-4 h-4" />
@@ -86,12 +90,13 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({ onSelect, onIMojiSelec
         </PopoverContent>
       </Popover>
 
-      {showIMojiPicker && (
-        <IMojiPicker
-          onSelect={handleIMojiSelect}
-          compact={false}
-        />
-      )}
+      <IMojiPicker
+        onSelect={handleIMojiSelect}
+        compact={false}
+        open={showIMojiPicker}
+        onOpenChange={setShowIMojiPicker}
+        showTrigger={false}
+      />
     </>
   );
 };

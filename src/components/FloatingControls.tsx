@@ -22,6 +22,26 @@ export const useControlsVisibility = () => {
   return context;
 };
 
+// Storage key for auto-hide preference
+const AUTO_HIDE_STORAGE_KEY = 'visuai-buttons-auto-hide';
+
+export const getAutoHideEnabled = (): boolean => {
+  try {
+    const saved = localStorage.getItem(AUTO_HIDE_STORAGE_KEY);
+    return saved === null ? true : saved === 'true';
+  } catch {
+    return true;
+  }
+};
+
+export const setAutoHideEnabled = (enabled: boolean) => {
+  try {
+    localStorage.setItem(AUTO_HIDE_STORAGE_KEY, String(enabled));
+  } catch (e) {
+    console.error('Failed to save auto-hide preference:', e);
+  }
+};
+
 interface ControlsVisibilityProviderProps {
   children: React.ReactNode;
   autoHideDelay?: number;
@@ -29,23 +49,47 @@ interface ControlsVisibilityProviderProps {
 
 export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProps> = ({
   children,
-  autoHideDelay = 5000, // Increased to 5 seconds for better usability
+  autoHideDelay = 5000,
 }) => {
   const [isVisible, setIsVisible] = useState(true);
+  const [autoHideEnabled, setAutoHideEnabledState] = useState(() => getAutoHideEnabled());
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Listen for storage changes to sync auto-hide preference
+  useEffect(() => {
+    const handleStorage = () => {
+      setAutoHideEnabledState(getAutoHideEnabled());
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   const showControls = useCallback(() => {
     setIsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => {
-      setIsVisible(false);
-    }, autoHideDelay);
-  }, [autoHideDelay]);
+    
+    // Only set hide timer if auto-hide is enabled
+    if (autoHideEnabled) {
+      hideTimerRef.current = setTimeout(() => {
+        setIsVisible(false);
+      }, autoHideDelay);
+    }
+  }, [autoHideDelay, autoHideEnabled]);
+
+  // When auto-hide is disabled, ensure controls are always visible
+  useEffect(() => {
+    if (!autoHideEnabled) {
+      setIsVisible(true);
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
+    }
+  }, [autoHideEnabled]);
 
   useEffect(() => {
     showControls();
 
-    // Don't use a full-screen overlay (it blocks clicks). Instead, listen globally.
     const onUserActivity = () => showControls();
 
     window.addEventListener('pointerdown', onUserActivity, { passive: true });
@@ -59,7 +103,7 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
   }, [showControls]);
 
   return (
-    <ControlsVisibilityContext.Provider value={{ isVisible, showControls }}>
+    <ControlsVisibilityContext.Provider value={{ isVisible: autoHideEnabled ? isVisible : true, showControls }}>
       {children}
     </ControlsVisibilityContext.Provider>
   );

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Image, Camera, File, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -10,68 +10,89 @@ interface MediaPickerProps {
   disabled?: boolean;
 }
 
-export const MediaPicker: React.FC<MediaPickerProps> = ({ onSelect, disabled }) => {
+export const MediaPicker: React.FC<MediaPickerProps> = ({ onSelect, onIMojiSelect, disabled }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [showIMojiPicker, setShowIMojiPicker] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       onSelect(file);
     }
-    // Reset input
     e.target.value = '';
   };
 
+  const handleIMojiSelect = (imoji: IMoji) => {
+    onIMojiSelect?.(imoji);
+    setShowIMojiPicker(false);
+  };
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" disabled={disabled} className="shrink-0">
-          <Image className="w-5 h-5" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-48 p-2" side="top" align="start">
-        <div className="flex flex-col gap-1">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
-          >
-            <Image className="w-4 h-4" />
-            <span>Photo/Video</span>
-          </button>
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
-          >
-            <Camera className="w-4 h-4" />
-            <span>Camera</span>
-          </button>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
-          >
-            <File className="w-4 h-4" />
-            <span>Document</span>
-          </button>
-        </div>
-        
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*"
-          onChange={handleFileChange}
-          className="hidden"
+    <>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="icon" disabled={disabled} className="shrink-0">
+            <Image className="w-5 h-5" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-48 p-2" side="top" align="start">
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            >
+              <Image className="w-4 h-4" />
+              <span>Photo/Video</span>
+            </button>
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            >
+              <Camera className="w-4 h-4" />
+              <span>Camera</span>
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm"
+            >
+              <File className="w-4 h-4" />
+              <span>Document</span>
+            </button>
+            <button
+              onClick={() => setShowIMojiPicker(true)}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm text-primary"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>iMoji</span>
+            </button>
+          </div>
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </PopoverContent>
+      </Popover>
+
+      {showIMojiPicker && (
+        <IMojiPicker
+          onSelect={handleIMojiSelect}
+          compact={false}
         />
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-      </PopoverContent>
-    </Popover>
+      )}
+    </>
   );
 };
 

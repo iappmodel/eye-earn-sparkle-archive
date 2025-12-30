@@ -1,9 +1,16 @@
 // Long Press Button Wrapper - Enables editing and repositioning any button via 1s long-press
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw, Grid3X3, Zap, Maximize2 } from 'lucide-react';
+import { 
+  Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw, Grid3X3, Zap, Maximize2, Palette,
+  Heart, MessageCircle, Share2, UserPlus, Wallet, User, Cog, Gift, Bookmark, Flag, VolumeX,
+  Bell, Star, ThumbsUp, ThumbsDown, Send, Camera, Video, Music, Image, Home, Search, Plus,
+  Sparkles, Flame, Trophy, Crown, Diamond, Gem, Coins, Award, Target, Lightbulb,
+  type LucideIcon
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { loadSavedPositions, savePositions, clearAllPositions } from './DraggableButton';
+import { HSLColorPicker } from './HSLColorPicker';
 
 interface Position {
   x: number;
@@ -39,6 +46,8 @@ const GRID_SNAP_KEY = 'visuai-grid-snap-enabled';
 const HIDDEN_BUTTONS_KEY = 'visuai-hidden-buttons';
 const BUTTON_ACTIONS_KEY = 'visuai-button-actions';
 const BUTTON_SIZES_KEY = 'visuai-button-sizes';
+const BUTTON_ICONS_KEY = 'visuai-button-icons';
+const BUTTON_COLORS_KEY = 'visuai-button-colors';
 
 // Grid snap configuration
 const GRID_SIZE = 40;
@@ -50,6 +59,55 @@ export const BUTTON_SIZE_OPTIONS: { value: ButtonSizeOption; label: string }[] =
   { value: 'sm', label: 'Small' },
   { value: 'md', label: 'Medium' },
   { value: 'lg', label: 'Large' },
+];
+
+// Icon options for button customization
+export const BUTTON_ICON_OPTIONS: { value: string; label: string; Icon: LucideIcon }[] = [
+  { value: 'heart', label: 'Heart', Icon: Heart },
+  { value: 'thumbs-up', label: 'Thumbs Up', Icon: ThumbsUp },
+  { value: 'thumbs-down', label: 'Thumbs Down', Icon: ThumbsDown },
+  { value: 'star', label: 'Star', Icon: Star },
+  { value: 'message-circle', label: 'Message', Icon: MessageCircle },
+  { value: 'share', label: 'Share', Icon: Share2 },
+  { value: 'send', label: 'Send', Icon: Send },
+  { value: 'user-plus', label: 'Follow', Icon: UserPlus },
+  { value: 'user', label: 'Profile', Icon: User },
+  { value: 'wallet', label: 'Wallet', Icon: Wallet },
+  { value: 'gift', label: 'Gift', Icon: Gift },
+  { value: 'bookmark', label: 'Bookmark', Icon: Bookmark },
+  { value: 'bell', label: 'Bell', Icon: Bell },
+  { value: 'settings', label: 'Settings', Icon: Cog },
+  { value: 'flag', label: 'Flag', Icon: Flag },
+  { value: 'mute', label: 'Mute', Icon: VolumeX },
+  { value: 'camera', label: 'Camera', Icon: Camera },
+  { value: 'video', label: 'Video', Icon: Video },
+  { value: 'music', label: 'Music', Icon: Music },
+  { value: 'image', label: 'Image', Icon: Image },
+  { value: 'home', label: 'Home', Icon: Home },
+  { value: 'search', label: 'Search', Icon: Search },
+  { value: 'plus', label: 'Plus', Icon: Plus },
+  { value: 'sparkles', label: 'Sparkles', Icon: Sparkles },
+  { value: 'flame', label: 'Flame', Icon: Flame },
+  { value: 'trophy', label: 'Trophy', Icon: Trophy },
+  { value: 'crown', label: 'Crown', Icon: Crown },
+  { value: 'diamond', label: 'Diamond', Icon: Diamond },
+  { value: 'gem', label: 'Gem', Icon: Gem },
+  { value: 'coins', label: 'Coins', Icon: Coins },
+  { value: 'award', label: 'Award', Icon: Award },
+  { value: 'target', label: 'Target', Icon: Target },
+  { value: 'lightbulb', label: 'Lightbulb', Icon: Lightbulb },
+];
+
+// Preset colors for quick selection
+export const PRESET_COLORS: { label: string; value: string }[] = [
+  { label: 'Primary', value: '270 95% 65%' },
+  { label: 'Magenta', value: '300 85% 60%' },
+  { label: 'Cyan', value: '180 90% 50%' },
+  { label: 'Gold', value: '45 95% 55%' },
+  { label: 'Emerald', value: '150 80% 45%' },
+  { label: 'Rose', value: '340 85% 60%' },
+  { label: 'Orange', value: '25 95% 55%' },
+  { label: 'Blue', value: '210 100% 50%' },
 ];
 
 // Load/save button settings
@@ -193,6 +251,80 @@ export const getButtonSize = (buttonId: string, defaultSize: ButtonSizeOption = 
   return sizes[buttonId] || defaultSize;
 };
 
+// Button icons management
+export const getButtonIcons = (): Record<string, string> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_ICONS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonIcon = (buttonId: string, icon: string) => {
+  try {
+    const icons = getButtonIcons();
+    icons[buttonId] = icon;
+    localStorage.setItem(BUTTON_ICONS_KEY, JSON.stringify(icons));
+    window.dispatchEvent(new CustomEvent('buttonIconsChanged', { detail: icons }));
+  } catch (e) {
+    console.error('Failed to save button icon:', e);
+  }
+};
+
+export const getButtonIcon = (buttonId: string): string | undefined => {
+  const icons = getButtonIcons();
+  return icons[buttonId];
+};
+
+export const clearButtonIcon = (buttonId: string) => {
+  try {
+    const icons = getButtonIcons();
+    delete icons[buttonId];
+    localStorage.setItem(BUTTON_ICONS_KEY, JSON.stringify(icons));
+    window.dispatchEvent(new CustomEvent('buttonIconsChanged', { detail: icons }));
+  } catch (e) {
+    console.error('Failed to clear button icon:', e);
+  }
+};
+
+// Button colors management
+export const getButtonColors = (): Record<string, string> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_COLORS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonColor = (buttonId: string, color: string) => {
+  try {
+    const colors = getButtonColors();
+    colors[buttonId] = color;
+    localStorage.setItem(BUTTON_COLORS_KEY, JSON.stringify(colors));
+    window.dispatchEvent(new CustomEvent('buttonColorsChanged', { detail: colors }));
+  } catch (e) {
+    console.error('Failed to save button color:', e);
+  }
+};
+
+export const getButtonColor = (buttonId: string): string | undefined => {
+  const colors = getButtonColors();
+  return colors[buttonId];
+};
+
+export const clearButtonColor = (buttonId: string) => {
+  try {
+    const colors = getButtonColors();
+    delete colors[buttonId];
+    localStorage.setItem(BUTTON_COLORS_KEY, JSON.stringify(colors));
+    window.dispatchEvent(new CustomEvent('buttonColorsChanged', { detail: colors }));
+  } catch (e) {
+    console.error('Failed to clear button color:', e);
+  }
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {
@@ -290,6 +422,10 @@ const ButtonSettingsPopover: React.FC<{
   const [isHidden, setIsHidden] = useState(() => isButtonHidden(buttonId));
   const [selectedAction, setSelectedAction] = useState(currentAction || 'none');
   const [selectedSize, setSelectedSize] = useState<ButtonSizeOption>(() => getButtonSize(buttonId, currentSize));
+  const [selectedIcon, setSelectedIcon] = useState<string | undefined>(() => getButtonIcon(buttonId));
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(() => getButtonColor(buttonId));
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -333,6 +469,29 @@ const ButtonSettingsPopover: React.FC<{
     setSelectedSize(size);
     setButtonSize(buttonId, size);
     onSizeChange?.(size);
+  };
+
+  const handleIconChange = (icon: string) => {
+    light();
+    if (icon === 'default') {
+      setSelectedIcon(undefined);
+      clearButtonIcon(buttonId);
+    } else {
+      setSelectedIcon(icon);
+      setButtonIcon(buttonId, icon);
+    }
+  };
+
+  const handleColorChange = (color: string) => {
+    light();
+    setSelectedColor(color);
+    setButtonColor(buttonId, color);
+  };
+
+  const handleClearColor = () => {
+    light();
+    setSelectedColor(undefined);
+    clearButtonColor(buttonId);
   };
 
   const handleResetPosition = () => {
@@ -467,6 +626,149 @@ const ButtonSettingsPopover: React.FC<{
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Icon Picker */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowIconPicker(!showIconPicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  {selectedIcon ? (
+                    (() => {
+                      const iconOption = BUTTON_ICON_OPTIONS.find(opt => opt.value === selectedIcon);
+                      const IconComponent = iconOption?.Icon || Settings;
+                      return <IconComponent className="w-5 h-5 text-primary" />;
+                    })()
+                  ) : (
+                    <Sparkles className="w-5 h-5 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {selectedIcon ? 'Change Icon' : 'Choose Icon'}
+                  </span>
+                </div>
+                <X 
+                  className={cn(
+                    'w-4 h-4 transition-transform',
+                    showIconPicker ? 'rotate-0' : 'rotate-45'
+                  )} 
+                />
+              </button>
+              
+              {showIconPicker && (
+                <div className="space-y-2 animate-fade-in">
+                  <div className="grid grid-cols-6 gap-1.5 p-2 rounded-xl bg-muted/30 max-h-36 overflow-y-auto">
+                    {/* Default option */}
+                    <button
+                      onClick={() => handleIconChange('default')}
+                      className={cn(
+                        'p-2 rounded-lg transition-all flex items-center justify-center',
+                        !selectedIcon
+                          ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                          : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                      )}
+                      title="Default"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                    {BUTTON_ICON_OPTIONS.map(option => {
+                      const IconComponent = option.Icon;
+                      return (
+                        <button
+                          key={option.value}
+                          onClick={() => handleIconChange(option.value)}
+                          className={cn(
+                            'p-2 rounded-lg transition-all flex items-center justify-center',
+                            selectedIcon === option.value
+                              ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                              : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                          )}
+                          title={option.label}
+                        >
+                          <IconComponent className="w-4 h-4" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Color Picker */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowColorPicker(!showColorPicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-5 h-5 rounded-full border-2 border-white/20 shadow-sm"
+                    style={{ 
+                      backgroundColor: selectedColor ? `hsl(${selectedColor})` : 'hsl(var(--primary))',
+                      boxShadow: selectedColor ? `0 0 10px hsl(${selectedColor} / 0.5)` : undefined
+                    }}
+                  />
+                  <span className="text-sm font-medium">
+                    {selectedColor ? 'Change Color' : 'Custom Color'}
+                  </span>
+                </div>
+                <Palette 
+                  className={cn(
+                    'w-4 h-4 transition-colors',
+                    showColorPicker ? 'text-primary' : 'text-muted-foreground'
+                  )} 
+                />
+              </button>
+              
+              {showColorPicker && (
+                <div className="space-y-3 animate-fade-in p-2 rounded-xl bg-muted/30">
+                  {/* Quick Color Presets */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] text-muted-foreground">Quick Colors</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PRESET_COLORS.map(preset => (
+                        <button
+                          key={preset.value}
+                          onClick={() => handleColorChange(preset.value)}
+                          className={cn(
+                            'w-7 h-7 rounded-full border-2 transition-all hover:scale-110',
+                            selectedColor === preset.value
+                              ? 'border-white ring-2 ring-primary/50 scale-110'
+                              : 'border-transparent'
+                          )}
+                          style={{ 
+                            backgroundColor: `hsl(${preset.value})`,
+                            boxShadow: `0 0 8px hsl(${preset.value} / 0.4)`
+                          }}
+                          title={preset.label}
+                        />
+                      ))}
+                      {selectedColor && (
+                        <button
+                          onClick={handleClearColor}
+                          className="w-7 h-7 rounded-full border-2 border-dashed border-muted-foreground/50 flex items-center justify-center hover:border-destructive hover:bg-destructive/10 transition-all"
+                          title="Reset to default"
+                        >
+                          <X className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Full HSL Color Picker */}
+                  <HSLColorPicker
+                    value={selectedColor || '270 95% 65%'}
+                    onChange={handleColorChange}
+                    label="Custom Color"
+                    showPreview={true}
+                  />
+                </div>
+              )}
             </div>
           )}
 

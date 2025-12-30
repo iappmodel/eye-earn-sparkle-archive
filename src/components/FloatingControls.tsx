@@ -4,6 +4,7 @@ import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
+import { LongPressButtonWrapper } from './LongPressButtonWrapper';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
 
@@ -229,22 +230,28 @@ const VisibilityToggleButton: React.FC = () => {
       {/* Separator line */}
       <div className="w-8 h-px bg-white/20 my-1" />
       
-      <NeuButton 
-        onClick={toggleVisibility}
-        variant={isHidden ? 'accent' : 'default'}
-        tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
+      <LongPressButtonWrapper
+        buttonId="visibility-toggle"
+        buttonLabel="Visibility Toggle"
+        showAutoHideSettings={true}
       >
-        <span className={cn(
-          'transition-all duration-300',
-          isAnimating && 'rotate-180 scale-110'
-        )}>
-          {isHidden ? (
-            <Eye className="w-6 h-6" />
-          ) : (
-            <EyeOff className="w-6 h-6" />
-          )}
-        </span>
-      </NeuButton>
+        <NeuButton 
+          onClick={toggleVisibility}
+          variant={isHidden ? 'accent' : 'default'}
+          tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
+        >
+          <span className={cn(
+            'transition-all duration-300',
+            isAnimating && 'rotate-180 scale-110'
+          )}>
+            {isHidden ? (
+              <Eye className="w-6 h-6" />
+            ) : (
+              <EyeOff className="w-6 h-6" />
+            )}
+          </span>
+        </NeuButton>
+      </LongPressButtonWrapper>
     </>
   );
 };
@@ -372,6 +379,25 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     setRepositionedButtons(prev => new Set([...prev, id]));
   }, []);
 
+  // Get button label for settings
+  const getButtonLabel = (action: ButtonAction): string => {
+    const labels: Record<ButtonAction, string> = {
+      like: 'Like Button',
+      comment: 'Comments',
+      share: 'Share',
+      follow: 'Follow',
+      wallet: 'Wallet',
+      profile: 'Profile',
+      settings: 'Settings',
+      tip: 'Tip',
+      save: 'Save',
+      report: 'Report',
+      mute: 'Mute',
+      none: '',
+    };
+    return labels[action];
+  };
+
   // Render a button based on its configuration
   const renderButton = (button: ButtonPosition, isRepositioned: boolean = false) => {
     const { id, action, size } = button;
@@ -380,6 +406,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     const state = getButtonState(action);
     const tooltip = getTooltip(action);
     const count = getCount(action);
+    const buttonLabel = getButtonLabel(action);
 
     if (action === 'none' || !icon) return null;
     if (!handler) return null;
@@ -387,13 +414,17 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     // Special rendering for like button with morphing behavior
     if (action === 'like') {
       const likeButton = (
-        <MorphingLikeButton
-          key={id}
-          isLiked={isLiked}
-          likeCount={likeCount}
-          onLike={onLikeClick}
-          onTip={onTip}
-        />
+        <LongPressButtonWrapper
+          buttonId={id}
+          buttonLabel={buttonLabel}
+        >
+          <MorphingLikeButton
+            isLiked={isLiked}
+            likeCount={likeCount}
+            onLike={onLikeClick}
+            onTip={onTip}
+          />
+        </LongPressButtonWrapper>
       );
       
       // Wrap in draggable if not already repositioned in the flow
@@ -408,7 +439,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           </DraggableButton>
         );
       }
-      return likeButton;
+      return <React.Fragment key={id}>{likeButton}</React.Fragment>;
     }
 
     const buttonElement = (
@@ -423,10 +454,20 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       </NeuButton>
     );
 
+    // Wrap with LongPressButtonWrapper
+    const buttonWithLongPress = (
+      <LongPressButtonWrapper
+        buttonId={id}
+        buttonLabel={buttonLabel}
+      >
+        {buttonElement}
+      </LongPressButtonWrapper>
+    );
+
     // Wrap with count if applicable
     const buttonWithCount = count !== null ? (
       <div className="flex flex-col items-center gap-1">
-        {buttonElement}
+        {buttonWithLongPress}
         <span 
           className="text-xs font-medium text-foreground/70"
           style={{ fontSize: `${Math.max(10, advancedSettings.fontSize - 2)}px` }}
@@ -434,7 +475,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           {formatCount(count)}
         </span>
       </div>
-    ) : buttonElement;
+    ) : buttonWithLongPress;
 
     // Wrap in draggable if not already repositioned
     if (!isRepositioned) {
@@ -485,16 +526,21 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
         {/* Achievements button - show when enabled */}
         {showAchievements && onAchievementsClick && (
-          <div className="relative">
-            <NeuButton onClick={onAchievementsClick} tooltip="Achievements">
-              <Trophy className="w-6 h-6 text-amber-500" />
-            </NeuButton>
-            {achievementsCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
-                {achievementsCount}
-              </span>
-            )}
-          </div>
+          <LongPressButtonWrapper
+            buttonId="achievements-button"
+            buttonLabel="Achievements"
+          >
+            <div className="relative">
+              <NeuButton onClick={onAchievementsClick} tooltip="Achievements">
+                <Trophy className="w-6 h-6 text-amber-500" />
+              </NeuButton>
+              {achievementsCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-[8px] font-bold text-black flex items-center justify-center">
+                  {achievementsCount}
+                </span>
+              )}
+            </div>
+          </LongPressButtonWrapper>
         )}
 
         {/* Separator - only show if we have both groups */}

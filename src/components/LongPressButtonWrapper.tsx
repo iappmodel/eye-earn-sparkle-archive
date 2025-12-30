@@ -1,6 +1,6 @@
 // Long Press Button Wrapper - Enables editing and repositioning any button via 1s long-press
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw } from 'lucide-react';
+import { Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw, Grid3X3, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { loadSavedPositions, savePositions, clearAllPositions } from './DraggableButton';
@@ -12,23 +12,36 @@ interface Position {
 
 interface ButtonSettings {
   isVisible: boolean;
-  customLabel?: string;
+  customAction?: string;
 }
 
 interface LongPressButtonWrapperProps {
   children: React.ReactNode;
   buttonId: string;
   buttonLabel?: string;
+  currentAction?: string;
+  availableActions?: { value: string; label: string }[];
+  onActionChange?: (action: string) => void;
+  onVisibilityChange?: (visible: boolean) => void;
   onSettingsChange?: (settings: ButtonSettings) => void;
   longPressDelay?: number;
   enableDrag?: boolean;
   className?: string;
   showAutoHideSettings?: boolean;
+  showVisibilityToggle?: boolean;
+  showActionSelector?: boolean;
 }
 
 // Storage keys
 const BUTTON_SETTINGS_KEY = 'visuai-button-settings';
 const AUTO_HIDE_DELAY_KEY = 'visuai-auto-hide-delay';
+const GRID_SNAP_KEY = 'visuai-grid-snap-enabled';
+const HIDDEN_BUTTONS_KEY = 'visuai-hidden-buttons';
+const BUTTON_ACTIONS_KEY = 'visuai-button-actions';
+
+// Grid snap configuration
+const GRID_SIZE = 40;
+const EDGE_PADDING = 16;
 
 // Load/save button settings
 export const loadButtonSettings = (): Record<string, ButtonSettings> => {
@@ -67,6 +80,139 @@ export const setAutoHideDelay = (delay: number) => {
   }
 };
 
+// Grid snap management
+export const getGridSnapEnabled = (): boolean => {
+  try {
+    const saved = localStorage.getItem(GRID_SNAP_KEY);
+    return saved ? JSON.parse(saved) : true;
+  } catch {
+    return true;
+  }
+};
+
+export const setGridSnapEnabled = (enabled: boolean) => {
+  try {
+    localStorage.setItem(GRID_SNAP_KEY, JSON.stringify(enabled));
+  } catch (e) {
+    console.error('Failed to save grid snap setting:', e);
+  }
+};
+
+// Hidden buttons management
+export const getHiddenButtons = (): string[] => {
+  try {
+    const saved = localStorage.getItem(HIDDEN_BUTTONS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const setHiddenButtons = (buttons: string[]) => {
+  try {
+    localStorage.setItem(HIDDEN_BUTTONS_KEY, JSON.stringify(buttons));
+    window.dispatchEvent(new CustomEvent('hiddenButtonsChanged', { detail: buttons }));
+  } catch (e) {
+    console.error('Failed to save hidden buttons:', e);
+  }
+};
+
+export const isButtonHidden = (buttonId: string): boolean => {
+  return getHiddenButtons().includes(buttonId);
+};
+
+export const toggleButtonVisibility = (buttonId: string): boolean => {
+  const hidden = getHiddenButtons();
+  const isHidden = hidden.includes(buttonId);
+  if (isHidden) {
+    setHiddenButtons(hidden.filter(id => id !== buttonId));
+  } else {
+    setHiddenButtons([...hidden, buttonId]);
+  }
+  return !isHidden;
+};
+
+// Button action overrides management
+export const getButtonActions = (): Record<string, string> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_ACTIONS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonAction = (buttonId: string, action: string) => {
+  try {
+    const actions = getButtonActions();
+    actions[buttonId] = action;
+    localStorage.setItem(BUTTON_ACTIONS_KEY, JSON.stringify(actions));
+    window.dispatchEvent(new CustomEvent('buttonActionsChanged', { detail: actions }));
+  } catch (e) {
+    console.error('Failed to save button action:', e);
+  }
+};
+
+export const getButtonAction = (buttonId: string, defaultAction: string): string => {
+  const actions = getButtonActions();
+  return actions[buttonId] || defaultAction;
+};
+
+// Snap position to grid
+const snapToGrid = (pos: Position): Position => {
+  return {
+    x: Math.round(pos.x / GRID_SIZE) * GRID_SIZE,
+    y: Math.round(pos.y / GRID_SIZE) * GRID_SIZE,
+  };
+};
+
+// Available button actions
+const ALL_BUTTON_ACTIONS = [
+  { value: 'like', label: 'Like' },
+  { value: 'comment', label: 'Comments' },
+  { value: 'share', label: 'Share' },
+  { value: 'follow', label: 'Follow' },
+  { value: 'wallet', label: 'Wallet' },
+  { value: 'profile', label: 'Profile' },
+  { value: 'settings', label: 'Settings' },
+  { value: 'tip', label: 'Tip' },
+  { value: 'save', label: 'Save' },
+  { value: 'report', label: 'Report' },
+  { value: 'mute', label: 'Mute' },
+];
+
+// Grid Overlay Component for drag mode
+const DragGridOverlay: React.FC<{ snapEnabled: boolean }> = ({ snapEnabled }) => {
+  if (!snapEnabled) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9997] pointer-events-none animate-fade-in">
+      <div className="absolute inset-0 bg-background/10 backdrop-blur-[1px]" />
+      
+      <svg className="absolute inset-0 w-full h-full opacity-30">
+        <defs>
+          <pattern id="dragGrid" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
+            <path 
+              d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} 
+              fill="none" 
+              stroke="hsl(var(--primary))" 
+              strokeWidth="0.5"
+              strokeOpacity="0.5"
+            />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dragGrid)" />
+      </svg>
+      
+      {/* Edge indicators */}
+      <div className="absolute top-0 left-0 right-0 h-4 border-b-2 border-dashed border-primary/30" />
+      <div className="absolute bottom-0 left-0 right-0 h-4 border-t-2 border-dashed border-primary/30" />
+      <div className="absolute top-0 bottom-0 left-0 w-4 border-r-2 border-dashed border-primary/30" />
+      <div className="absolute top-0 bottom-0 right-0 w-4 border-l-2 border-dashed border-primary/30" />
+    </div>
+  );
+};
+
 // Settings Popover Component
 const ButtonSettingsPopover: React.FC<{
   buttonId: string;
@@ -75,14 +221,33 @@ const ButtonSettingsPopover: React.FC<{
   onClose: () => void;
   position: Position;
   showAutoHideSettings?: boolean;
-  onDragMode: () => void;
-}> = ({ buttonId, buttonLabel, isOpen, onClose, position, showAutoHideSettings, onDragMode }) => {
+  showVisibilityToggle?: boolean;
+  showActionSelector?: boolean;
+  currentAction?: string;
+  availableActions?: { value: string; label: string }[];
+  onActionChange?: (action: string) => void;
+  onVisibilityChange?: (visible: boolean) => void;
+  onDragMode: (snapEnabled: boolean) => void;
+}> = ({ 
+  buttonId, 
+  buttonLabel, 
+  isOpen, 
+  onClose, 
+  position, 
+  showAutoHideSettings, 
+  showVisibilityToggle = true,
+  showActionSelector = true,
+  currentAction,
+  availableActions = ALL_BUTTON_ACTIONS,
+  onActionChange,
+  onVisibilityChange,
+  onDragMode 
+}) => {
   const { light, success } = useHapticFeedback();
   const [autoHideDelay, setDelay] = useState(getAutoHideDelay());
-  const [settings, setSettings] = useState<ButtonSettings>(() => {
-    const allSettings = loadButtonSettings();
-    return allSettings[buttonId] || { isVisible: true };
-  });
+  const [gridSnapEnabled, setGridSnap] = useState(getGridSnapEnabled());
+  const [isHidden, setIsHidden] = useState(() => isButtonHidden(buttonId));
+  const [selectedAction, setSelectedAction] = useState(currentAction || 'none');
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -98,6 +263,27 @@ const ButtonSettingsPopover: React.FC<{
     light();
     setDelay(value);
     setAutoHideDelay(value);
+  };
+
+  const handleGridSnapToggle = () => {
+    light();
+    const newValue = !gridSnapEnabled;
+    setGridSnap(newValue);
+    setGridSnapEnabled(newValue);
+  };
+
+  const handleVisibilityToggle = () => {
+    light();
+    const newHidden = toggleButtonVisibility(buttonId);
+    setIsHidden(newHidden);
+    onVisibilityChange?.(!newHidden);
+  };
+
+  const handleActionChange = (action: string) => {
+    light();
+    setSelectedAction(action);
+    setButtonAction(buttonId, action);
+    onActionChange?.(action);
   };
 
   const handleResetPosition = () => {
@@ -122,8 +308,8 @@ const ButtonSettingsPopover: React.FC<{
   const popoverStyle: React.CSSProperties = {
     position: 'fixed',
     zIndex: 9999,
-    left: Math.min(position.x, window.innerWidth - 260),
-    top: Math.min(position.y + 60, window.innerHeight - 300),
+    left: Math.min(Math.max(10, position.x - 120), window.innerWidth - 270),
+    top: Math.min(position.y + 60, window.innerHeight - 450),
   };
 
   return (
@@ -137,10 +323,10 @@ const ButtonSettingsPopover: React.FC<{
       {/* Popover */}
       <div 
         style={popoverStyle}
-        className="w-60 rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-2xl animate-scale-in overflow-hidden"
+        className="w-64 rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-2xl animate-scale-in overflow-hidden max-h-[80vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b border-border/50 bg-muted/30">
+        <div className="flex items-center justify-between p-3 border-b border-border/50 bg-muted/30 sticky top-0">
           <div className="flex items-center gap-2">
             <Settings className="w-4 h-4 text-primary" />
             <span className="text-sm font-semibold truncate">{buttonLabel}</span>
@@ -154,17 +340,99 @@ const ButtonSettingsPopover: React.FC<{
         </div>
 
         <div className="p-3 space-y-4">
-          {/* Move Button */}
-          <button
-            onClick={() => {
-              light();
-              onDragMode();
-            }}
-            className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-          >
-            <Move className="w-5 h-5" />
-            <span className="text-sm font-medium">Move Button</span>
-          </button>
+          {/* Visibility Toggle */}
+          {showVisibilityToggle && (
+            <button
+              onClick={handleVisibilityToggle}
+              className={cn(
+                'w-full flex items-center justify-between p-2.5 rounded-xl transition-colors',
+                isHidden 
+                  ? 'bg-destructive/10 text-destructive' 
+                  : 'bg-muted/50 hover:bg-muted text-foreground/80'
+              )}
+            >
+              <div className="flex items-center gap-3">
+                {isHidden ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                <span className="text-sm font-medium">
+                  {isHidden ? 'Button Hidden' : 'Button Visible'}
+                </span>
+              </div>
+              <div className={cn(
+                'w-10 h-6 rounded-full p-1 transition-colors',
+                isHidden ? 'bg-destructive/30' : 'bg-primary'
+              )}>
+                <div className={cn(
+                  'w-4 h-4 rounded-full bg-white transition-transform',
+                  isHidden ? 'translate-x-0' : 'translate-x-4'
+                )} />
+              </div>
+            </button>
+          )}
+
+          {/* Action Selector */}
+          {showActionSelector && !showAutoHideSettings && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Zap className="w-3.5 h-3.5" />
+                <span>Button Action</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1 max-h-32 overflow-y-auto">
+                {availableActions.map(action => (
+                  <button
+                    key={action.value}
+                    onClick={() => handleActionChange(action.value)}
+                    className={cn(
+                      'px-2 py-1.5 rounded-lg text-xs font-medium transition-all',
+                      selectedAction === action.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                    )}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Move Button with Grid Snap */}
+          <div className="space-y-2">
+            <button
+              onClick={() => {
+                light();
+                onDragMode(gridSnapEnabled);
+              }}
+              className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+            >
+              <Move className="w-5 h-5" />
+              <span className="text-sm font-medium">Move Button</span>
+            </button>
+            
+            {/* Grid Snap Toggle */}
+            <button
+              onClick={handleGridSnapToggle}
+              className={cn(
+                'w-full flex items-center justify-between p-2 rounded-lg transition-colors text-xs',
+                gridSnapEnabled 
+                  ? 'bg-accent/20 text-accent-foreground' 
+                  : 'bg-muted/30 text-muted-foreground'
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Grid3X3 className="w-4 h-4" />
+                <span>Snap to Grid</span>
+              </div>
+              <div className={cn(
+                'w-8 h-4 rounded-full p-0.5 transition-colors',
+                gridSnapEnabled ? 'bg-accent' : 'bg-muted'
+              )}>
+                <div className={cn(
+                  'w-3 h-3 rounded-full bg-white transition-transform',
+                  gridSnapEnabled ? 'translate-x-4' : 'translate-x-0'
+                )} />
+              </div>
+            </button>
+          </div>
 
           {/* Reset Position */}
           <button
@@ -237,13 +505,14 @@ const GearIconOverlay: React.FC<{
   );
 };
 
-// Drag Mode Overlay
+// Drag Mode Overlay with controls
 const DragModeOverlay: React.FC<{
   isActive: boolean;
-  position: Position;
+  snapEnabled: boolean;
+  onToggleSnap: () => void;
   onConfirm: () => void;
   onCancel: () => void;
-}> = ({ isActive, position, onConfirm, onCancel }) => {
+}> = ({ isActive, snapEnabled, onToggleSnap, onConfirm, onCancel }) => {
   if (!isActive) return null;
 
   return (
@@ -251,6 +520,19 @@ const DragModeOverlay: React.FC<{
       <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-2xl">
         <Move className="w-5 h-5 text-primary animate-pulse" />
         <span className="text-sm font-medium">Drag to reposition</span>
+        
+        {/* Grid snap toggle */}
+        <button
+          onClick={onToggleSnap}
+          className={cn(
+            'p-2 rounded-full transition-colors',
+            snapEnabled ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'
+          )}
+          title={snapEnabled ? 'Grid snap on' : 'Grid snap off'}
+        >
+          <Grid3X3 className="w-4 h-4" />
+        </button>
+        
         <div className="flex gap-2 ml-2">
           <button
             onClick={onConfirm}
@@ -274,21 +556,28 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
   children,
   buttonId,
   buttonLabel = 'Button',
+  currentAction,
+  availableActions,
+  onActionChange,
+  onVisibilityChange,
   onSettingsChange,
   longPressDelay = 1000,
   enableDrag = true,
   className,
   showAutoHideSettings = false,
+  showVisibilityToggle = true,
+  showActionSelector = true,
 }) => {
   const [showGear, setShowGear] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isDragMode, setIsDragMode] = useState(false);
   const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
   const [dragPosition, setDragPosition] = useState<Position | null>(null);
+  const [snapEnabled, setSnapEnabled] = useState(getGridSnapEnabled());
   
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const { heavy, success } = useHapticFeedback();
+  const { heavy, success, light } = useHapticFeedback();
 
   // Get initial position from saved positions or element position
   useEffect(() => {
@@ -337,20 +626,45 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
     setShowGear(false);
   }, []);
 
-  const handleDragMode = useCallback(() => {
+  const handleDragMode = useCallback((gridSnap: boolean) => {
     setIsDragMode(true);
     setShowSettings(false);
+    setSnapEnabled(gridSnap);
     setDragPosition(position);
   }, [position]);
 
   const handleDragMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragMode || !dragPosition) return;
+    if (!isDragMode) return;
     
-    setDragPosition({
+    let newPos = {
       x: e.clientX - 28, // Half button width
       y: e.clientY - 28, // Half button height
-    });
-  }, [isDragMode, dragPosition]);
+    };
+    
+    // Apply grid snap if enabled
+    if (snapEnabled) {
+      newPos = snapToGrid(newPos);
+      // Provide haptic feedback when snapping
+      if (dragPosition && 
+          (Math.abs(newPos.x - dragPosition.x) >= GRID_SIZE || 
+           Math.abs(newPos.y - dragPosition.y) >= GRID_SIZE)) {
+        light();
+      }
+    }
+    
+    // Constrain to screen bounds
+    newPos.x = Math.max(EDGE_PADDING, Math.min(window.innerWidth - 56 - EDGE_PADDING, newPos.x));
+    newPos.y = Math.max(EDGE_PADDING, Math.min(window.innerHeight - 56 - EDGE_PADDING, newPos.y));
+    
+    setDragPosition(newPos);
+  }, [isDragMode, snapEnabled, dragPosition, light]);
+
+  const handleToggleSnap = useCallback(() => {
+    light();
+    const newValue = !snapEnabled;
+    setSnapEnabled(newValue);
+    setGridSnapEnabled(newValue);
+  }, [snapEnabled, light]);
 
   const handleDragConfirm = useCallback(() => {
     if (dragPosition) {
@@ -390,6 +704,9 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
   if (isDragMode && dragPosition) {
     return (
       <>
+        {/* Grid overlay */}
+        <DragGridOverlay snapEnabled={snapEnabled} />
+        
         <div
           className="fixed z-[9999] cursor-move"
           style={{ 
@@ -399,8 +716,11 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
           }}
           onPointerMove={handleDragMove}
         >
-          <div className="relative animate-pulse">
-            <div className="absolute -inset-4 rounded-full border-2 border-dashed border-primary animate-spin-slow" />
+          <div className="relative">
+            <div className={cn(
+              "absolute -inset-4 rounded-full border-2 border-dashed border-primary",
+              snapEnabled ? "animate-pulse" : "animate-spin-slow"
+            )} />
             {children}
           </div>
         </div>
@@ -414,7 +734,8 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
         
         <DragModeOverlay
           isActive={true}
-          position={dragPosition}
+          snapEnabled={snapEnabled}
+          onToggleSnap={handleToggleSnap}
           onConfirm={handleDragConfirm}
           onCancel={handleDragCancel}
         />
@@ -447,6 +768,12 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
         onClose={handleCloseSettings}
         position={position}
         showAutoHideSettings={showAutoHideSettings}
+        showVisibilityToggle={showVisibilityToggle}
+        showActionSelector={showActionSelector}
+        currentAction={currentAction}
+        availableActions={availableActions}
+        onActionChange={onActionChange}
+        onVisibilityChange={onVisibilityChange}
         onDragMode={handleDragMode}
       />
     </>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe, Crown, Gift } from 'lucide-react';
+import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe, Crown, Gift, QrCode, UserX, History } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
@@ -15,6 +15,10 @@ import { NotificationCenter } from './NotificationCenter';
 import { NotificationPreferences } from './NotificationPreferences';
 import { SettingsScreen } from './SettingsScreen';
 import { PremiumScreen } from './PremiumScreen';
+import { ProfileEditScreen } from './ProfileEditScreen';
+import { ProfileQRCode } from './ProfileQRCode';
+import { BlockMuteManager } from './BlockMuteManager';
+import { AccountActivityLog } from './AccountActivityLog';
 import ConnectionStatusDot from './ConnectionStatusDot';
 import SyncStatusPanel from './SyncStatusPanel';
 import { 
@@ -47,6 +51,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPremium, setShowPremium] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [showBlockMute, setShowBlockMute] = useState(false);
+  const [showActivityLog, setShowActivityLog] = useState(false);
   const { role, isCreator, isAdmin, isModerator } = useUserRole();
   const { unreadCount } = useNotifications();
   const { t, localeConfig } = useLocalization();
@@ -145,10 +153,31 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mb-2">Account</p>
           
-          <EditProfileButton onClick={() => {}} />
+          <EditProfileButton onClick={() => setShowEditProfile(true)} />
+          <MenuButton 
+            icon={<QrCode className="w-5 h-5 text-primary" />}
+            label="Profile QR Code"
+            description="Share your profile via QR"
+            onClick={() => setShowQRCode(true)}
+          />
           <KYCVerificationButton status={kycStatus} onClick={() => setShowKycFlow(true)} />
           <SeeEarningsButton todayEarnings={25} onClick={() => {}} />
           <InviteFriendsButton bonus={100} onClick={() => setShowPremium(true)} />
+
+          {/* Privacy */}
+          <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Privacy & Security</p>
+          <MenuButton 
+            icon={<UserX className="w-5 h-5 text-primary" />}
+            label="Blocked & Muted"
+            description="Manage blocked and muted users"
+            onClick={() => setShowBlockMute(true)}
+          />
+          <MenuButton 
+            icon={<History className="w-5 h-5 text-primary" />}
+            label="Account Activity"
+            description="View login history and security events"
+            onClick={() => setShowActivityLog(true)}
+          />
 
           {/* Premium/Subscription */}
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mt-6 mb-2">Premium</p>
@@ -273,6 +302,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <PremiumScreen
         isOpen={showPremium}
         onClose={() => setShowPremium(false)}
+      />
+
+      <ProfileEditScreen
+        isOpen={showEditProfile}
+        onClose={() => setShowEditProfile(false)}
+      />
+
+      <ProfileQRCode
+        isOpen={showQRCode}
+        onClose={() => setShowQRCode(false)}
+      />
+
+      <BlockMuteManager
+        isOpen={showBlockMute}
+        onClose={() => setShowBlockMute(false)}
+      />
+
+      <AccountActivityLog
+        isOpen={showActivityLog}
+        onClose={() => setShowActivityLog(false)}
       />
     </div>
   );

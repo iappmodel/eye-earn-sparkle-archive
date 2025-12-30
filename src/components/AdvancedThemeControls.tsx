@@ -293,27 +293,54 @@ export const AdvancedThemeControls: React.FC<AdvancedThemeControlsProps> = ({ cl
       {/* Animation Section */}
       {activeSection === 'animation' && (
         <div className="space-y-6 p-4 rounded-2xl bg-muted/20 border border-border/30">
+          {/* Animation Presets */}
+          <div className="space-y-3">
+            <span className="text-sm font-medium">Animation Profile</span>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { id: 'relaxed', label: 'Relaxed', speed: 0.5, icon: '🌊', desc: 'Slow & smooth' },
+                { id: 'smooth', label: 'Smooth', speed: 0.75, icon: '✨', desc: 'Balanced flow' },
+                { id: 'snappy', label: 'Snappy', speed: 1.5, icon: '⚡', desc: 'Quick & responsive' },
+                { id: 'cinematic', label: 'Cinema', speed: 0.6, icon: '🎬', desc: 'Dramatic timing' },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => setAnimationSpeed(preset.speed)}
+                  className={cn(
+                    'flex flex-col items-center gap-1 p-3 rounded-xl',
+                    'border transition-all duration-200',
+                    Math.abs(advancedSettings.animationSpeed - preset.speed) < 0.1
+                      ? 'border-primary bg-primary/15 shadow-[0_0_15px_hsl(var(--primary)/0.2)]'
+                      : 'border-border/30 bg-muted/30 hover:bg-muted/50'
+                  )}
+                >
+                  <span className="text-xl">{preset.icon}</span>
+                  <span className="text-xs font-semibold">{preset.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fine-tune slider */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Animation Speed</span>
+              <span className="text-sm font-medium">Fine-tune Speed</span>
               <span className="text-sm text-muted-foreground">
-                {advancedSettings.animationSpeed === 0.5 ? 'Slow' : 
-                 advancedSettings.animationSpeed === 1 ? 'Normal' : 
-                 advancedSettings.animationSpeed === 1.5 ? 'Fast' : 'Very Fast'}
+                {advancedSettings.animationSpeed.toFixed(2)}x
               </span>
             </div>
             <Slider
               value={[advancedSettings.animationSpeed]}
-              min={0.5}
+              min={0.25}
               max={2}
-              step={0.5}
+              step={0.05}
               onValueChange={([v]) => setAnimationSpeed(v)}
               className="[&_[role=slider]]:bg-primary"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Slow</span>
-              <span>Normal</span>
-              <span>Fast</span>
+              <span>Slower</span>
+              <span>1x</span>
+              <span>Faster</span>
             </div>
           </div>
 

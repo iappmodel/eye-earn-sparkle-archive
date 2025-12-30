@@ -17,6 +17,8 @@ import { AISoundGenerator, GeneratedAudio } from '@/components/studio/AISoundGen
 import { AIVoiceoverGenerator } from '@/components/studio/AIVoiceoverGenerator';
 import { AISubtitleGenerator } from '@/components/studio/AISubtitleGenerator';
 import { FacetuneBeautyEditor } from '@/components/studio/FacetuneBeautyEditor';
+import { MediaBlurEditor, BlurSegment } from '@/components/studio/MediaBlurEditor';
+import { CAFConfigPanel } from '@/components/studio/CAFConfigPanel';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -30,7 +32,7 @@ import { toast } from 'sonner';
 import { PublishToFeedButton } from '@/components/PublishToFeedButton';
 
 type EditorMode = 'manual' | 'ai' | 'hybrid';
-type EditingTool = 'trim' | 'filters' | 'beauty' | 'effects' | 'audio' | 'text' | 'stickers' | 'speed';
+type EditingTool = 'trim' | 'filters' | 'beauty' | 'effects' | 'audio' | 'text' | 'stickers' | 'speed' | 'blur';
 
 interface Filter {
   id: string;
@@ -134,6 +136,7 @@ const editingTools: { id: EditingTool; icon: React.ReactNode; label: string }[] 
   { id: 'filters', icon: <Palette className="w-5 h-5" />, label: 'Filters' },
   { id: 'beauty', icon: <Smile className="w-5 h-5" />, label: 'Beauty' },
   { id: 'effects', icon: <Sparkles className="w-5 h-5" />, label: 'Effects' },
+  { id: 'blur', icon: <Eye className="w-5 h-5" />, label: 'Blur/CAF' },
   { id: 'audio', icon: <Music className="w-5 h-5" />, label: 'Audio' },
   { id: 'text', icon: <span className="text-lg font-bold">T</span>, label: 'Text' },
   { id: 'stickers', icon: <Smile className="w-5 h-5" />, label: 'Stickers' },
@@ -250,6 +253,10 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   
   // Trim state
   const [trimClips, setTrimClips] = useState<TrimClip[]>([]);
+  
+  // Blur/CAF state
+  const [blurSegments, setBlurSegments] = useState<BlurSegment[]>([]);
+  const [autoShowProfiles, setAutoShowProfiles] = useState<any[]>([]);
   
   // Playback
   const [speed, setSpeed] = useState([1]);
@@ -762,6 +769,30 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               </div>
             </TabsContent>
           </Tabs>
+        );
+        
+      case 'blur':
+        return (
+          <div className="space-y-6">
+            <MediaBlurEditor
+              duration={duration}
+              currentTime={currentTime}
+              segments={blurSegments}
+              onSegmentsChange={setBlurSegments}
+              onTimeChange={handleTimeChange}
+            />
+            <CAFConfigPanel
+              segment={blurSegments.find(s => currentTime >= s.startTime && currentTime <= s.endTime) || blurSegments[blurSegments.length - 1] || null}
+              onUpdateSegment={(updates) => {
+                const targetSegment = blurSegments.find(s => currentTime >= s.startTime && currentTime <= s.endTime) || blurSegments[blurSegments.length - 1];
+                if (targetSegment) {
+                  setBlurSegments(prev => prev.map(s => s.id === targetSegment.id ? { ...s, ...updates } : s));
+                }
+              }}
+              autoShowProfiles={autoShowProfiles}
+              onAutoShowProfilesChange={setAutoShowProfiles}
+            />
+          </div>
         );
         
       default:

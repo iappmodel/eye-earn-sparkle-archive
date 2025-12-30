@@ -105,3 +105,15 @@ verify_jwt = false
 
 [functions.stripe-webhook-coins]
 verify_jwt = false
+
+[functions.validate-content]
+verify_jwt = false
+
+[functions.check-spam]
+verify_jwt = false
+
+[functions.update-device-trust]
+verify_jwt = false
+
+[functions.session-security]
+verify_jwt = false

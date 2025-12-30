@@ -13,11 +13,17 @@ import { OnboardingFlow } from '@/components/onboarding';
 import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
+import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
+import { FloatingActionMenu } from '@/components/FloatingActionMenu';
+import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
+import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
+import { PullToRefresh } from '@/components/ui/PullToRefresh';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -70,6 +76,10 @@ const Index = () => {
   const { profile, refreshProfile } = useAuth();
   const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
   const { pageLayout, getPagesByDirection } = useUICustomization();
+  const { showTutorial, completeTutorial } = useGestureTutorial();
+  const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useCelebration();
+  const { light, medium } = useHapticFeedback();
+  const [isLoading, setIsLoading] = useState(true);
   
   // Page navigation from configured layout
   const {
@@ -102,6 +112,18 @@ const Index = () => {
   
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
+  
+  // Simulate initial load
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
+  
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    await refreshProfile();
+    toast.success('Feed refreshed!');
+  }, [refreshProfile]);
 
   const currentMedia = mockMedia[currentIndex];
   
@@ -499,6 +521,24 @@ const Index = () => {
         <ThemePresetsSheet
           isOpen={showThemePresets}
           onClose={() => setShowThemePresets(false)}
+        />
+
+        {/* Floating Action Menu */}
+        <FloatingActionMenu onSettingsClick={handleSettings} />
+
+        {/* Gesture Tutorial for new users */}
+        {showTutorial && (
+          <GestureTutorial
+            onComplete={completeTutorial}
+            onSkip={completeTutorial}
+          />
+        )}
+
+        {/* Confetti Celebration */}
+        <ConfettiCelebration
+          isActive={showCelebration}
+          type={celebrationType}
+          onComplete={stopCelebration}
         />
         </div>
       </DoubleTapGestureDetector>

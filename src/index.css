@@ -455,6 +455,118 @@
     transition: opacity 0s, transform 0s;
   }
 
+  /* Directional slide animations for page transitions */
+  @keyframes slide-out-up {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(-100%); opacity: 0; }
+  }
+
+  @keyframes slide-out-down {
+    from { transform: translateY(0); opacity: 1; }
+    to { transform: translateY(100%); opacity: 0; }
+  }
+
+  @keyframes slide-out-left {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(-100%); opacity: 0; }
+  }
+
+  @keyframes slide-out-right {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+  }
+
+  @keyframes slide-in-from-top {
+    from { transform: translateY(-100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-from-bottom {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-from-left {
+    from { transform: translateX(-100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  @keyframes slide-in-from-right {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Zoom animations */
+  @keyframes zoom-in {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes zoom-out {
+    from { transform: scale(1); opacity: 1; }
+    to { transform: scale(0.9); opacity: 0; }
+  }
+
+  /* Flip animations */
+  @keyframes flip-in-x {
+    from { transform: perspective(400px) rotateX(90deg); opacity: 0; }
+    to { transform: perspective(400px) rotateX(0); opacity: 1; }
+  }
+
+  @keyframes flip-out-x {
+    from { transform: perspective(400px) rotateX(0); opacity: 1; }
+    to { transform: perspective(400px) rotateX(-90deg); opacity: 0; }
+  }
+
+  /* Animation utility classes with speed control */
+  .animate-slide-out-up {
+    animation: slide-out-up calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-out-down {
+    animation: slide-out-down calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-out-left {
+    animation: slide-out-left calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-out-right {
+    animation: slide-out-right calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-in-from-top {
+    animation: slide-in-from-top calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-in-from-bottom {
+    animation: slide-in-from-bottom calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-in-from-left {
+    animation: slide-in-from-left calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-slide-in-from-right {
+    animation: slide-in-from-right calc(0.3s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-zoom-in {
+    animation: zoom-in calc(0.4s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-zoom-out {
+    animation: zoom-out calc(0.4s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-flip-in-x {
+    animation: flip-in-x calc(0.5s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
+  .animate-flip-out-x {
+    animation: flip-out-x calc(0.5s * var(--animation-speed, 1)) ease-out forwards;
+  }
+
   /* Coin animations */
   @keyframes coin-pulse {
     0%, 100% { transform: scale(1); opacity: 1; }
@@ -497,7 +609,7 @@
       transform: translateY(0) perspective(500px) rotateX(0); 
     }
     50% { 
-      transform: translateY(-15px) perspective(500px) rotateX(10deg); 
+      transform: translateY(-15px) perspective(500px) rotateX(10deg);
     }
   }
   

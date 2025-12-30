@@ -293,6 +293,42 @@ export type Database = {
         }
         Relationships: []
       }
+      content_contributors: {
+        Row: {
+          content_id: string
+          created_at: string
+          id: string
+          interaction_count: number | null
+          last_interaction_at: string | null
+          total_icoin_contributed: number | null
+          total_vicoin_contributed: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          created_at?: string
+          id?: string
+          interaction_count?: number | null
+          last_interaction_at?: string | null
+          total_icoin_contributed?: number | null
+          total_vicoin_contributed?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          created_at?: string
+          id?: string
+          interaction_count?: number | null
+          last_interaction_at?: string | null
+          total_icoin_contributed?: number | null
+          total_vicoin_contributed?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       content_flags: {
         Row: {
           action_taken: string | null
@@ -1231,6 +1267,8 @@ export type Database = {
           phone_number: string | null
           phone_verified: boolean | null
           referred_by: string | null
+          show_contributor_badges: boolean | null
+          show_timed_interactions: boolean | null
           social_links: Json | null
           total_likes: number | null
           total_views: number | null
@@ -1254,6 +1292,8 @@ export type Database = {
           phone_number?: string | null
           phone_verified?: boolean | null
           referred_by?: string | null
+          show_contributor_badges?: boolean | null
+          show_timed_interactions?: boolean | null
           social_links?: Json | null
           total_likes?: number | null
           total_views?: number | null
@@ -1277,6 +1317,8 @@ export type Database = {
           phone_number?: string | null
           phone_verified?: boolean | null
           referred_by?: string | null
+          show_contributor_badges?: boolean | null
+          show_timed_interactions?: boolean | null
           social_links?: Json | null
           total_likes?: number | null
           total_views?: number | null
@@ -1689,6 +1731,45 @@ export type Database = {
           type?: string
           updated_at?: string
           xp_reward?: number
+        }
+        Relationships: []
+      }
+      timed_interactions: {
+        Row: {
+          amount: number | null
+          coin_type: string | null
+          content_id: string
+          created_at: string
+          id: string
+          interaction_type: string
+          is_visible: boolean | null
+          message: string | null
+          timestamp_seconds: number
+          user_id: string
+        }
+        Insert: {
+          amount?: number | null
+          coin_type?: string | null
+          content_id: string
+          created_at?: string
+          id?: string
+          interaction_type: string
+          is_visible?: boolean | null
+          message?: string | null
+          timestamp_seconds: number
+          user_id: string
+        }
+        Update: {
+          amount?: number | null
+          coin_type?: string | null
+          content_id?: string
+          created_at?: string
+          id?: string
+          interaction_type?: string
+          is_visible?: boolean | null
+          message?: string | null
+          timestamp_seconds?: number
+          user_id?: string
         }
         Relationships: []
       }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2 } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2, MessageCircle, Crown } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { MediaSettings } from './MediaSettings';
@@ -7,7 +7,8 @@ import { SecurityPrivacySettings } from './SecurityPrivacySettings';
 import { HiddenButtonsManager } from './HiddenButtonsManager';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
-import { 
+import { useTimedInteractions } from '@/hooks/useTimedInteractions';
+import {
   clearAllPositions, 
   getRepositionedCount, 
   useDragContext, 
@@ -58,6 +59,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { t, localeConfig, formatCurrency, isRTL } = useLocalization();
   const { themePack, setThemePack } = useAccessibility();
   const { setGroupingMode, setSnapPointMode } = useDragContext();
+  const { settings: timedSettings, updateSettings: updateTimedSettings } = useTimedInteractions();
   const [isDarkMode, setIsDarkMode] = useState(() => 
     document.documentElement.classList.contains('dark')
   );
@@ -520,6 +522,73 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               
               <p className="text-xs text-muted-foreground/70 text-center">
                 Buttons will magnetically snap to these points when dragged nearby
+              </p>
+            </div>
+          </section>
+
+          {/* Timed Interactions Display */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <MessageCircle className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Interaction Display</h2>
+            </div>
+            <div className="neu-inset rounded-xl p-4 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Control how interactions appear on videos you watch
+              </p>
+              
+              {/* Timed Interactions Toggle */}
+              <button
+                onClick={() => updateTimedSettings({ showTimedInteractions: !timedSettings.showTimedInteractions })}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageCircle className="w-5 h-5 text-primary" />
+                  <div className="text-left">
+                    <span className="font-medium block">Timed Interactions</span>
+                    <span className="text-xs text-muted-foreground">
+                      Show comments, likes, rewards at their timestamp
+                    </span>
+                  </div>
+                </div>
+                <div className={cn(
+                  "w-12 h-7 rounded-full p-1 transition-all",
+                  timedSettings.showTimedInteractions ? "bg-primary" : "bg-muted"
+                )}>
+                  <div className={cn(
+                    "w-5 h-5 rounded-full bg-background shadow-md transition-transform",
+                    timedSettings.showTimedInteractions && "translate-x-5"
+                  )} />
+                </div>
+              </button>
+
+              {/* Contributor Badges Toggle */}
+              <button
+                onClick={() => updateTimedSettings({ showContributorBadges: !timedSettings.showContributorBadges })}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <Crown className="w-5 h-5 text-yellow-500" />
+                  <div className="text-left">
+                    <span className="font-medium block">Contributor Badges</span>
+                    <span className="text-xs text-muted-foreground">
+                      Show top contributors as floating badges
+                    </span>
+                  </div>
+                </div>
+                <div className={cn(
+                  "w-12 h-7 rounded-full p-1 transition-all",
+                  timedSettings.showContributorBadges ? "bg-primary" : "bg-muted"
+                )}>
+                  <div className={cn(
+                    "w-5 h-5 rounded-full bg-background shadow-md transition-transform",
+                    timedSettings.showContributorBadges && "translate-x-5"
+                  )} />
+                </div>
+              </button>
+
+              <p className="text-xs text-muted-foreground/70 text-center">
+                See where other viewers engaged most with the content
               </p>
             </div>
           </section>

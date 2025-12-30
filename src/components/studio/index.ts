@@ -7,3 +7,7 @@ export * from './AISoundGenerator';
 export * from './AIVoiceoverGenerator';
 export * from './AISubtitleGenerator';
 export * from './FacetuneBeautyEditor';
+export * from './TextDesigner';
+export * from './DrawingCanvas';
+export * from './AITextGenerator';
+export * from './TextOverlayEditor';

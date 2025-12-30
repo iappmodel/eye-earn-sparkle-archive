@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, QuickVisibilityToggle } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, QuickVisibilityToggle, DoubleTapGestureDetector } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -358,10 +358,11 @@ const Index = () => {
 
   return (
     <ControlsVisibilityProvider>
-      <div 
-        className="fixed inset-0 bg-background overflow-hidden touch-none"
-        {...handlers}
-      >
+      <DoubleTapGestureDetector>
+        <div 
+          className="fixed inset-0 bg-background overflow-hidden touch-none"
+          {...handlers}
+        >
         {/* Dynamic Page Container with transitions */}
         <div className={cn("absolute inset-0", getTransitionClasses())} style={getTransitionStyles()}>
           {/* Render based on current page content type */}
@@ -499,7 +500,8 @@ const Index = () => {
           isOpen={showThemePresets}
           onClose={() => setShowThemePresets(false)}
         />
-      </div>
+        </div>
+      </DoubleTapGestureDetector>
     </ControlsVisibilityProvider>
   );
 };

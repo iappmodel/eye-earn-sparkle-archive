@@ -4,13 +4,14 @@ import {
   X, Palette, Sparkles, Moon, Sun, Zap, 
   Waves, Flame, Leaf, Star, Diamond,
   Circle, Square, ChevronUp, ChevronDown,
-  Check, Sliders, Layout, Settings2
+  Check, Sliders, Layout, Settings2, Wrench
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ThemeSettings } from '@/contexts/UICustomizationContext';
 import { NeuButton } from './NeuButton';
 import { ButtonFunctionManager } from './ButtonFunctionManager';
 import { LayoutEditor } from './LayoutEditor';
+import { AdvancedThemeControls } from './AdvancedThemeControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ThemePresetsSheetProps {
@@ -226,10 +227,14 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
           sheetHeight === 'partial' ? 'max-h-[calc(60vh-100px)]' : 'max-h-[calc(90vh-100px)]'
         )}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-4">
+            <TabsList className="w-full grid grid-cols-4 mb-4">
               <TabsTrigger value="themes" className="gap-2">
                 <Palette className="w-4 h-4" />
                 <span className="hidden sm:inline">Themes</span>
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="gap-2">
+                <Wrench className="w-4 h-4" />
+                <span className="hidden sm:inline">Custom</span>
               </TabsTrigger>
               <TabsTrigger value="buttons" className="gap-2">
                 <Sliders className="w-4 h-4" />
@@ -364,6 +369,11 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
                   </div>
                 </div>
               </section>
+            </TabsContent>
+
+            {/* Advanced Tab */}
+            <TabsContent value="advanced">
+              <AdvancedThemeControls />
             </TabsContent>
 
             {/* Buttons Tab */}

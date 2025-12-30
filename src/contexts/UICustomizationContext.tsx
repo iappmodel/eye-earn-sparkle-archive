@@ -27,6 +27,13 @@ export interface ThemeSettings {
   };
 }
 
+// Advanced settings for fine-tuning
+export interface AdvancedSettings {
+  fontSize: number;
+  buttonSpacing: number;
+  buttonPadding: number;
+}
+
 // Default button layout
 const defaultButtonLayout: ButtonPosition[] = [
   { id: 'like', action: 'like', order: 0, visible: true, size: 'md' },
@@ -49,9 +56,16 @@ const defaultThemeSettings: ThemeSettings = {
   },
 };
 
+const defaultAdvancedSettings: AdvancedSettings = {
+  fontSize: 14,
+  buttonSpacing: 16,
+  buttonPadding: 12,
+};
+
 interface UICustomizationState {
   buttonLayout: ButtonPosition[];
   themeSettings: ThemeSettings;
+  advancedSettings: AdvancedSettings;
 }
 
 interface UICustomizationContextType extends UICustomizationState {
@@ -59,6 +73,12 @@ interface UICustomizationContextType extends UICustomizationState {
   setPreset: (preset: string, colors: ThemeSettings['colors']) => void;
   setButtonShape: (shape: ThemeSettings['buttonShape']) => void;
   setGlowIntensity: (intensity: ThemeSettings['glowIntensity']) => void;
+  
+  // Advanced settings
+  setFontSize: (size: number) => void;
+  setButtonSpacing: (spacing: number) => void;
+  setButtonPadding: (padding: number) => void;
+  resetAdvancedSettings: () => void;
   
   // Button layout
   updateButtonPosition: (id: string, updates: Partial<ButtonPosition>) => void;
@@ -75,6 +95,7 @@ interface UICustomizationContextType extends UICustomizationState {
 const defaultState: UICustomizationState = {
   buttonLayout: defaultButtonLayout,
   themeSettings: defaultThemeSettings,
+  advancedSettings: defaultAdvancedSettings,
 };
 
 const UICustomizationContext = createContext<UICustomizationContextType | undefined>(undefined);
@@ -198,6 +219,34 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
     }));
   }, []);
 
+  const setFontSize = useCallback((fontSize: number) => {
+    setState(s => ({
+      ...s,
+      advancedSettings: { ...s.advancedSettings, fontSize }
+    }));
+  }, []);
+
+  const setButtonSpacing = useCallback((buttonSpacing: number) => {
+    setState(s => ({
+      ...s,
+      advancedSettings: { ...s.advancedSettings, buttonSpacing }
+    }));
+  }, []);
+
+  const setButtonPadding = useCallback((buttonPadding: number) => {
+    setState(s => ({
+      ...s,
+      advancedSettings: { ...s.advancedSettings, buttonPadding }
+    }));
+  }, []);
+
+  const resetAdvancedSettings = useCallback(() => {
+    setState(s => ({
+      ...s,
+      advancedSettings: defaultAdvancedSettings
+    }));
+  }, []);
+
   const getVisibleButtons = useCallback(() => {
     return state.buttonLayout
       .filter(btn => btn.visible)
@@ -211,6 +260,10 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
         setPreset,
         setButtonShape,
         setGlowIntensity,
+        setFontSize,
+        setButtonSpacing,
+        setButtonPadding,
+        resetAdvancedSettings,
         updateButtonPosition,
         reorderButtons,
         toggleButtonVisibility,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown } from 'lucide-react';
+import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -7,7 +7,6 @@ import { LongPressButtonWrapper } from './LongPressButtonWrapper';
 import { BlinkRemoteControl } from './BlinkRemoteControl';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-
 // Context for sharing visibility state across components
 interface ControlsVisibilityContextType {
   isVisible: boolean;
@@ -200,10 +199,21 @@ interface FloatingControlsProps {
 }
 
 // Profile Preview Sheet Component
-const ProfilePreviewSheet: React.FC<{ onFullProfileClick: () => void }> = ({ onFullProfileClick }) => {
+interface ProfilePreviewSheetProps {
+  onFullProfileClick: () => void;
+  onAchievementsClick?: () => void;
+  onWalletClick?: () => void;
+}
+
+const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({ 
+  onFullProfileClick,
+  onAchievementsClick,
+  onWalletClick,
+}) => {
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const startYRef = useRef(0);
+  const { light } = useHapticFeedback();
   
   const handleDragStart = (e: React.TouchEvent | React.MouseEvent) => {
     setIsDragging(true);
@@ -252,7 +262,7 @@ const ProfilePreviewSheet: React.FC<{ onFullProfileClick: () => void }> = ({ onF
       </div>
       
       {/* Profile preview content */}
-      <div className="flex-1 px-4 space-y-4">
+      <div className="flex-1 px-4 space-y-4 overflow-y-auto">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center">
             <User className="w-8 h-8 text-foreground/70" />
@@ -277,6 +287,30 @@ const ProfilePreviewSheet: React.FC<{ onFullProfileClick: () => void }> = ({ onF
             <div className="text-lg font-bold text-foreground">0</div>
             <div className="text-xs text-muted-foreground">Following</div>
           </div>
+        </div>
+        
+        {/* Quick Actions - Achievements & Wallet */}
+        <div className="grid grid-cols-2 gap-3 py-2">
+          <button 
+            onClick={() => {
+              light();
+              onAchievementsClick?.();
+            }}
+            className="flex items-center justify-center gap-2 py-3 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl text-amber-500 font-medium transition-colors border border-amber-500/20"
+          >
+            <Trophy className="w-4 h-4" />
+            <span>Achievements</span>
+          </button>
+          <button 
+            onClick={() => {
+              light();
+              onWalletClick?.();
+            }}
+            className="flex items-center justify-center gap-2 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-emerald-500 font-medium transition-colors border border-emerald-500/20"
+          >
+            <Wallet className="w-4 h-4" />
+            <span>Wallet</span>
+          </button>
         </div>
         
         {/* View full profile button */}
@@ -333,16 +367,19 @@ const VisibilityToggleButton: React.FC = () => {
 };
 
 export const FloatingControls: React.FC<FloatingControlsProps> = ({
+  onWalletClick,
   onProfileClick,
   onLikeClick,
   onCommentClick,
   onShareClick,
   onSettingsClick,
   onTip,
+  onAchievementsClick,
   isLiked = false,
   likeCount = 0,
 }) => {
   const { isVisible } = useControlsVisibility();
+  const { medium } = useHapticFeedback();
   const [remoteControlEnabled, setRemoteControlEnabled] = useState(false);
   const [showRemoteSettings, setShowRemoteSettings] = useState(false);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
@@ -350,6 +387,11 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   const handleFullProfileClick = () => {
     setProfileSheetOpen(false);
     onProfileClick();
+  };
+  
+  const handleRemoteControlToggle = () => {
+    medium(); // Haptic feedback
+    setRemoteControlEnabled(!remoteControlEnabled);
   };
 
   return (
@@ -411,7 +453,17 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
             </div>
           </SheetTrigger>
           <SheetContent side="bottom" className="h-[50vh] rounded-t-3xl">
-            <ProfilePreviewSheet onFullProfileClick={handleFullProfileClick} />
+            <ProfilePreviewSheet 
+              onFullProfileClick={handleFullProfileClick}
+              onAchievementsClick={() => {
+                setProfileSheetOpen(false);
+                onAchievementsClick?.();
+              }}
+              onWalletClick={() => {
+                setProfileSheetOpen(false);
+                onWalletClick?.();
+              }}
+            />
           </SheetContent>
         </Sheet>
 
@@ -419,7 +471,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         <div className="relative">
           <LongPressButtonWrapper buttonId="remote-control-button" buttonLabel="Remote Control">
             <NeuButton 
-              onClick={() => setRemoteControlEnabled(!remoteControlEnabled)}
+              onClick={handleRemoteControlToggle}
               variant={remoteControlEnabled ? 'accent' : 'default'}
               tooltip="Remote Control"
             >

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
 import { FloatingControls, ControlsVisibilityProvider } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
@@ -15,6 +15,8 @@ import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
+import { usePageNavigation } from '@/hooks/usePageNavigation';
+import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
@@ -67,6 +69,20 @@ type HorizontalScreen = 'friends' | 'main' | 'promos';
 const Index = () => {
   const { profile, refreshProfile } = useAuth();
   const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
+  const { pageLayout, getPagesByDirection } = useUICustomization();
+  
+  // Page navigation from configured layout
+  const {
+    currentPage,
+    currentState,
+    transition,
+    transitionState,
+    canNavigate,
+    navigate: pageNavigate,
+    getTransitionClasses,
+    getTransitionStyles,
+  } = usePageNavigation();
+  
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
   const [showCoinSlide, setShowCoinSlide] = useState(false);
@@ -81,11 +97,6 @@ const Index = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   
-  // Horizontal screen navigation
-  const [currentScreen, setCurrentScreen] = useState<HorizontalScreen>('main');
-  const [horizontalSwipeDirection, setHorizontalSwipeDirection] = useState<'left' | 'right' | null>(null);
-  const [isHorizontalTransitioning, setIsHorizontalTransitioning] = useState(false);
-  
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
   
@@ -93,34 +104,60 @@ const Index = () => {
   const icoins = profile?.icoin_balance || 0;
 
   const currentMedia = mockMedia[currentIndex];
+  
+  // Map content type to component rendering
+  const renderPageContent = useCallback((contentType: string, isActive: boolean) => {
+    switch (contentType) {
+      case 'friends':
+        return <FriendsPostsFeed isActive={isActive} onSwipeRight={() => pageNavigate('right')} />;
+      case 'promotions':
+        return (
+          <PromoVideosFeed 
+            isActive={isActive} 
+            onSwipeLeft={() => pageNavigate('left')}
+            onRewardEarned={(amount, type) => {
+              setCoinSlideType(type);
+              setShowCoinSlide(true);
+            }}
+          />
+        );
+      case 'discovery':
+        return <DiscoveryMap isOpen={true} onClose={() => pageNavigate('down')} />;
+      case 'rewards':
+      case 'wallet':
+        return <WalletScreen isOpen={true} onClose={() => pageNavigate('up')} vicoins={vicoins} icoins={icoins} />;
+      case 'messages':
+        return <MessagesScreen isOpen={true} onClose={() => {}} />;
+      case 'favorites':
+      case 'following':
+        return <PersonalizedFeed />;
+      default:
+        return null;
+    }
+  }, [pageNavigate, vicoins, icoins]);
 
-  // Navigate horizontal screens
-  const navigateHorizontal = useCallback((direction: 'left' | 'right') => {
-    if (isHorizontalTransitioning) return;
-    
-    let newScreen: HorizontalScreen = currentScreen;
-    
-    if (direction === 'left') {
-      // Swipe left = go right (to promos from main, or main from friends)
-      if (currentScreen === 'main') newScreen = 'promos';
-      else if (currentScreen === 'friends') newScreen = 'main';
+  // Apply page theme when current page changes
+  useEffect(() => {
+    if (currentPage?.customColors) {
+      const { primary, accent, glow } = currentPage.customColors;
+      document.documentElement.style.setProperty('--page-primary', primary || '');
+      document.documentElement.style.setProperty('--page-accent', accent || '');
+      document.documentElement.style.setProperty('--page-glow', glow || '');
     } else {
-      // Swipe right = go left (to friends from main, or main from promos)
-      if (currentScreen === 'main') newScreen = 'friends';
-      else if (currentScreen === 'promos') newScreen = 'main';
+      document.documentElement.style.removeProperty('--page-primary');
+      document.documentElement.style.removeProperty('--page-accent');
+      document.documentElement.style.removeProperty('--page-glow');
     }
-    
-    if (newScreen !== currentScreen) {
-      setIsHorizontalTransitioning(true);
-      setHorizontalSwipeDirection(direction);
-      
-      setTimeout(() => {
-        setCurrentScreen(newScreen);
-        setHorizontalSwipeDirection(null);
-        setIsHorizontalTransitioning(false);
-      }, 300);
-    }
-  }, [currentScreen, isHorizontalTransitioning]);
+  }, [currentPage]);
+
+  // Determine current screen type for backward compatibility
+  const currentScreenType = useMemo(() => {
+    if (!currentPage) return 'main';
+    if (currentState.direction === 'center') return 'main';
+    if (currentPage.contentType === 'friends') return 'friends';
+    if (currentPage.contentType === 'promotions') return 'promos';
+    return currentPage.contentType;
+  }, [currentPage, currentState.direction]);
 
   // Handle promo completion - use rewards service for secure backend validation
   const handleMediaComplete = useCallback(async (attentionValidated: boolean = true, attentionScore?: number) => {
@@ -175,9 +212,9 @@ const Index = () => {
     setShowCoinSlide(false);
   }, []);
 
-  // Navigate with swipe animation (vertical)
+  // Navigate with swipe animation (vertical) - for main feed content
   const navigateToMedia = useCallback((direction: 'up' | 'down') => {
-    if (isTransitioning || currentScreen !== 'main') return;
+    if (isTransitioning || currentState.direction !== 'center') return;
     
     setIsTransitioning(true);
     setSwipeDirection(direction);
@@ -192,7 +229,7 @@ const Index = () => {
       setSwipeDirection(null);
       setIsTransitioning(false);
     }, 300);
-  }, [isTransitioning, currentScreen]);
+  }, [isTransitioning, currentState.direction]);
 
   // Skip to next media
   const handleSkip = useCallback(() => {
@@ -203,16 +240,17 @@ const Index = () => {
     // Set active direction to trigger the brief indicator display
     setActiveDirection(direction);
     
-    if (direction === 'up') {
-      navigateToMedia('up');
-    } else if (direction === 'down') {
-      navigateToMedia('down');
-    } else if (direction === 'left') {
-      navigateHorizontal('left');
-    } else if (direction === 'right') {
-      navigateHorizontal('right');
+    // Use page navigation for horizontal, media navigation for vertical on center
+    if (direction === 'up' || direction === 'down') {
+      if (currentState.direction === 'center') {
+        navigateToMedia(direction);
+      } else {
+        pageNavigate(direction);
+      }
+    } else {
+      pageNavigate(direction);
     }
-  }, [navigateToMedia, navigateHorizontal]);
+  }, [navigateToMedia, pageNavigate, currentState.direction]);
 
   // Swipe gesture handling
   const { handlers } = useSwipeNavigation({
@@ -313,23 +351,10 @@ const Index = () => {
     }
   };
 
-  // Calculate screen positions for horizontal navigation
-  const getScreenTransform = (screen: HorizontalScreen) => {
-    const screenOrder: HorizontalScreen[] = ['friends', 'main', 'promos'];
-    const currentIdx = screenOrder.indexOf(currentScreen);
-    const screenIdx = screenOrder.indexOf(screen);
-    const offset = (screenIdx - currentIdx) * 100;
-    
-    // Apply transition animation
-    let translateX = offset;
-    if (horizontalSwipeDirection === 'left') {
-      translateX = offset - 10;
-    } else if (horizontalSwipeDirection === 'right') {
-      translateX = offset + 10;
-    }
-    
-    return `translateX(${translateX}%)`;
-  };
+  // Get configured pages for each direction
+  const leftPages = getPagesByDirection('left');
+  const rightPages = getPagesByDirection('right');
+  const isAtCenter = currentState.direction === 'center';
 
   return (
     <ControlsVisibilityProvider autoHideDelay={3000}>
@@ -337,55 +362,34 @@ const Index = () => {
         className="fixed inset-0 bg-background overflow-hidden touch-none"
         {...handlers}
       >
-        {/* Horizontal Screen Container */}
-        <div className="absolute inset-0 flex">
-          {/* Friends Posts Feed (Left) */}
-          <div 
-            className={cn(
-              "absolute inset-0 transition-transform duration-300 ease-out",
-              currentScreen === 'friends' ? 'z-10' : 'z-0'
-            )}
-            style={{ transform: getScreenTransform('friends') }}
-          >
-            <FriendsPostsFeed 
-              isActive={currentScreen === 'friends'} 
-              onSwipeRight={() => navigateHorizontal('right')}
-            />
-          </div>
+        {/* Dynamic Page Container with transitions */}
+        <div className={cn("absolute inset-0", getTransitionClasses())} style={getTransitionStyles()}>
+          {/* Render based on current page content type */}
+          {isAtCenter ? (
+            // Main Media Feed (Center)
+            <div className="absolute inset-0">
+              <div className={cn(
+                'absolute inset-0 transition-transform duration-300 ease-out',
+                swipeDirection === 'up' && 'animate-swipe-exit-up',
+                swipeDirection === 'down' && 'animate-swipe-exit-down'
+              )}>
+                <MediaCard
+                  key={currentMedia.id}
+                  type={currentMedia.type}
+                  src={currentMedia.src}
+                  duration={currentMedia.duration}
+                  reward={currentMedia.reward}
+                  contentId={currentMedia.id}
+                  onComplete={handleMediaComplete}
+                  onSkip={handleSkip}
+                  isActive={!isTransitioning && isAtCenter}
+                />
+              </div>
 
-          {/* Main Media Feed (Center) */}
-          <div 
-            className={cn(
-              "absolute inset-0 transition-transform duration-300 ease-out",
-              currentScreen === 'main' ? 'z-10' : 'z-0'
-            )}
-            style={{ transform: getScreenTransform('main') }}
-          >
-            <div className={cn(
-              'absolute inset-0 transition-transform duration-300 ease-out',
-              swipeDirection === 'up' && 'animate-swipe-exit-up',
-              swipeDirection === 'down' && 'animate-swipe-exit-down'
-            )}>
-              <MediaCard
-                key={currentMedia.id}
-                type={currentMedia.type}
-                src={currentMedia.src}
-                duration={currentMedia.duration}
-                reward={currentMedia.reward}
-                contentId={currentMedia.id}
-                onComplete={handleMediaComplete}
-                onSkip={handleSkip}
-                isActive={!isTransitioning && currentScreen === 'main'}
-              />
-            </div>
-
-            {/* Cross Navigation hints - only on main screen */}
-            {currentScreen === 'main' && (
+              {/* Cross Navigation hints */}
               <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
-            )}
 
-            {/* Floating Controls - only on main screen */}
-            {currentScreen === 'main' && (
+              {/* Floating Controls */}
               <FloatingControls
                 onWalletClick={() => setShowWallet(true)}
                 onProfileClick={() => setShowProfile(true)}
@@ -398,44 +402,27 @@ const Index = () => {
                 likeCount={1234}
                 commentCount={89}
               />
-            )}
-          </div>
-
-          {/* Promo Videos Feed (Right) */}
-          <div 
-            className={cn(
-              "absolute inset-0 transition-transform duration-300 ease-out",
-              currentScreen === 'promos' ? 'z-10' : 'z-0'
-            )}
-            style={{ transform: getScreenTransform('promos') }}
-          >
-            <PromoVideosFeed 
-              isActive={currentScreen === 'promos'} 
-              onSwipeLeft={() => navigateHorizontal('left')}
-              onRewardEarned={handleRewardEarned}
-            />
-          </div>
+            </div>
+          ) : currentPage ? (
+            // Dynamic page content based on configured layout
+            <div className="absolute inset-0">
+              {renderPageContent(currentPage.contentType, true)}
+            </div>
+          ) : null}
         </div>
 
-        {/* Screen Indicators */}
+        {/* Screen Indicators - show configured pages */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
-          {(['friends', 'main', 'promos'] as HorizontalScreen[]).map((screen) => (
-            <button
-              key={screen}
-              onClick={() => {
-                if (screen !== currentScreen && !isHorizontalTransitioning) {
-                  const direction = (['friends', 'main', 'promos'].indexOf(screen) > ['friends', 'main', 'promos'].indexOf(currentScreen)) ? 'left' : 'right';
-                  navigateHorizontal(direction);
-                }
-              }}
-              className={cn(
-                "h-1 rounded-full transition-all duration-300",
-                currentScreen === screen 
-                  ? "w-6 bg-white" 
-                  : "w-2 bg-white/40 hover:bg-white/60"
-              )}
-            />
-          ))}
+          {leftPages.length > 0 && (
+            <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+          )}
+          <div className={cn(
+            "h-1 rounded-full transition-all duration-300",
+            isAtCenter ? "w-6 bg-white" : "w-2 bg-white/40"
+          )} />
+          {rightPages.length > 0 && (
+            <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+          )}
         </div>
 
         {/* Coin slide animation on reward */}

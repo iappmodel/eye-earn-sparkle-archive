@@ -362,20 +362,23 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
 
       {/* Settings Sheet */}
       <Sheet open={showSettings} onOpenChange={setShowSettings}>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'fixed z-50 h-8 px-3 text-xs bg-background/80 backdrop-blur-sm',
-              className
-            )}
-            onClick={() => setShowSettings(true)}
-          >
-            <Settings className="w-3 h-3 mr-1" />
-            Remote Settings
-          </Button>
-        </SheetTrigger>
+        {/* Only show trigger button if not externally controlled */}
+        {externalShowSettings === undefined && (
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'fixed z-50 h-8 px-3 text-xs bg-background/80 backdrop-blur-sm',
+                className
+              )}
+              onClick={() => setShowSettings(true)}
+            >
+              <Settings className="w-3 h-3 mr-1" />
+              Remote Settings
+            </Button>
+          </SheetTrigger>
+        )}
         <SheetContent side="bottom" className="h-[85vh]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">

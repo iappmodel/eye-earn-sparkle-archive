@@ -56,9 +56,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     onAttentionLost: () => {
       if (isPromoContent) {
         setAttentionWarning(true);
-        toast.warning('Look at the screen to earn reward!', {
-          duration: 2000,
-        });
+        // Toast temporarily disabled
+        // toast.warning('Look at the screen to earn reward!', {
+        //   duration: 2000,
+        // });
       }
     },
     onAttentionRestored: () => {
@@ -119,14 +120,16 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       console.log('[MediaCard] Validation result:', data);
 
       if (data?.validated) {
-        toast.success('Reward earned!', {
-          description: `Attention score: ${attentionResult.score}%`,
-        });
+        // Toast temporarily disabled
+        // toast.success('Reward earned!', {
+        //   description: `Attention score: ${attentionResult.score}%`,
+        // });
         onComplete?.(true);
       } else {
-        toast.error('Reward not earned', {
-          description: data?.reasons?.join(', ') || 'Attention requirements not met',
-        });
+        // Toast temporarily disabled
+        // toast.error('Reward not earned', {
+        //   description: data?.reasons?.join(', ') || 'Attention requirements not met',
+        // });
         onComplete?.(false);
       }
     } catch (err) {

@@ -3,7 +3,7 @@ import {
   Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight, 
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
   ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video,
-  Sparkles, Plus, Trash2, HelpCircle, BookOpen
+  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,9 @@ import {
   ComboAction, 
   describeCombo,
   COMBO_ACTION_LABELS,
+  removeCombo,
 } from '@/hooks/useGestureCombos';
+import { GestureComboBuilder } from '@/components/GestureComboBuilder';
 import { 
   RemoteControlTutorial, 
   useRemoteControlTutorial 
@@ -90,6 +92,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
 }) => {
   const haptics = useHapticFeedback();
   const [showSettings, setShowSettings] = useState(false);
+  const [showComboBuilder, setShowComboBuilder] = useState(false);
   
   // Tutorial hook
   const {
@@ -388,6 +391,16 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 </p>
               </div>
 
+              {/* Create new combo button */}
+              <Button 
+                onClick={() => setShowComboBuilder(true)}
+                className="w-full"
+                variant="outline"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Custom Combo
+              </Button>
+
               {/* Combo progress indicator */}
               {comboSteps.length > 0 && (
                 <div className="p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center gap-3">
@@ -429,6 +442,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
 
               {/* Available combos */}
               <div className="space-y-3">
+                <h4 className="text-sm font-medium text-muted-foreground">Available Combos</h4>
                 {combos.map((combo) => (
                   <div 
                     key={combo.id} 
@@ -440,7 +454,9 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     <div className="flex-1 space-y-2">
                       <div className="flex items-center gap-2">
                         <h5 className="font-medium">{combo.name}</h5>
-                        {!combo.id.startsWith('custom-') && (
+                        {combo.id.startsWith('custom-') ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">Custom</span>
+                        ) : (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Built-in</span>
                         )}
                       </div>
@@ -465,6 +481,12 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                                   <span>{step.count}× blink</span>
                                 </>
                               )}
+                              {step.type === 'hold' && (
+                                <>
+                                  <Clock className="w-3 h-3" />
+                                  <span>Hold {step.duration}ms</span>
+                                </>
+                              )}
                             </div>
                             {i < combo.steps.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
                           </div>
@@ -473,23 +495,40 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                         <span className="text-xs font-medium text-primary">{COMBO_ACTION_LABELS[combo.action]}</span>
                       </div>
                     </div>
-                    <Switch
-                      checked={combo.enabled}
-                      onCheckedChange={(checked) => {
-                        updateGestureCombo(combo.id, { enabled: checked });
-                        haptics.light();
-                      }}
-                    />
+                    <div className="flex flex-col items-end gap-2">
+                      <Switch
+                        checked={combo.enabled}
+                        onCheckedChange={(checked) => {
+                          updateGestureCombo(combo.id, { enabled: checked });
+                          haptics.light();
+                        }}
+                      />
+                      {combo.id.startsWith('custom-') && (
+                        <button
+                          onClick={() => {
+                            removeCombo(combo.id);
+                            haptics.light();
+                          }}
+                          className="text-xs text-destructive hover:text-destructive/80 flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* Help text */}
-              <div className="p-4 rounded-lg border border-dashed border-border text-center space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  More combo options coming soon! You can enable/disable existing combos above.
-                </p>
-              </div>
+              {/* Empty state */}
+              {combos.length === 0 && (
+                <div className="p-8 rounded-lg border border-dashed border-border text-center space-y-3">
+                  <Sparkles className="w-8 h-8 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    No combos yet. Create your first custom combo!
+                  </p>
+                </div>
+              )}
             </TabsContent>
 
             {/* Gaze Navigation Tab */}
@@ -805,6 +844,16 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           </div>
         </div>
       )}
+
+      {/* Gesture Combo Builder */}
+      <GestureComboBuilder
+        isOpen={showComboBuilder}
+        onClose={() => setShowComboBuilder(false)}
+        onComboCreated={(combo) => {
+          haptics.success();
+          console.log('[RemoteControl] Custom combo created:', combo.name);
+        }}
+      />
     </>
   );
 };

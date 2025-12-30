@@ -4,7 +4,7 @@ import {
   Plus, X, RotateCcw, ChevronUp, ChevronDown, 
   ChevronLeft, ChevronRight, Palette, GripVertical,
   Users, Video, Compass, Gift, Heart, Star, Home,
-  MessageCircle, Wallet, Settings, Check, Trash2, Play, Pause
+  MessageCircle, Wallet, Settings, Check, Trash2, Play, Pause, Wand2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUICustomization, PageSlot, PageDirection } from '@/contexts/UICustomizationContext';
@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select';
 import { HSLColorPicker } from './HSLColorPicker';
 import { TransitionPreview, MiniTransitionPreview } from './TransitionPreview';
+import { PageEffectsEditor } from './PageEffectsEditor';
+import { LayoutImportExport } from './LayoutImportExport';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface PageLayoutEditorProps {
@@ -60,7 +62,8 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
     removePage, 
     updatePage, 
     reorderPages, 
-    resetPageLayout 
+    resetPageLayout,
+    advancedSettings,
   } = useUICustomization();
   
   const [editingPage, setEditingPage] = useState<string | null>(null);
@@ -294,7 +297,7 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Import/Export */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
@@ -304,12 +307,15 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
             Design your navigation • Drag to reorder
           </p>
         </div>
-        <button
-          onClick={resetPageLayout}
-          className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <LayoutImportExport />
+          <button
+            onClick={resetPageLayout}
+            className="p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Visual Cross Layout */}
@@ -422,9 +428,10 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
 
             {/* Page Theme with Tabs */}
             <Tabs defaultValue="presets" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-8">
+              <TabsList className="grid w-full grid-cols-4 h-8">
                 <TabsTrigger value="presets" className="text-xs">Presets</TabsTrigger>
-                <TabsTrigger value="custom" className="text-xs">Custom HSL</TabsTrigger>
+                <TabsTrigger value="custom" className="text-xs">Colors</TabsTrigger>
+                <TabsTrigger value="effects" className="text-xs">Effects</TabsTrigger>
                 <TabsTrigger value="preview" className="text-xs">Preview</TabsTrigger>
               </TabsList>
               
@@ -502,6 +509,17 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
                       glow: value,
                     }
                   })}
+                />
+              </TabsContent>
+              
+              {/* Effects Tab */}
+              <TabsContent value="effects" className="mt-3">
+                <PageEffectsEditor
+                  effects={page.effects}
+                  transitionSpeed={page.transitionSpeed}
+                  globalAnimationSpeed={advancedSettings.animationSpeed}
+                  onChange={(effects) => updatePage(page.id, { effects })}
+                  onTransitionSpeedChange={(transitionSpeed) => updatePage(page.id, { transitionSpeed })}
                 />
               </TabsContent>
               

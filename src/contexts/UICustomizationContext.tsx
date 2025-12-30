@@ -38,6 +38,14 @@ export interface AdvancedSettings {
 // Page navigation direction
 export type PageDirection = 'up' | 'down' | 'left' | 'right' | 'center';
 
+// CSS effects for pages
+export interface PageEffects {
+  blur: number; // 0-20px
+  saturation: number; // 0-200%
+  contrast: number; // 50-150%
+  brightness: number; // 50-150%
+}
+
 // Page slot configuration
 export interface PageSlot {
   id: string;
@@ -51,6 +59,8 @@ export interface PageSlot {
     accent: string;
     glow: string;
   };
+  transitionSpeed?: number; // 0.5-2, multiplier (1 = use global)
+  effects?: PageEffects;
 }
 
 // Page layout configuration
@@ -136,6 +146,10 @@ interface UICustomizationContextType extends UICustomizationState {
   reorderPages: (direction: PageDirection, fromIndex: number, toIndex: number) => void;
   resetPageLayout: () => void;
   getPagesByDirection: (direction: PageDirection) => PageSlot[];
+  
+  // Import/Export
+  exportLayout: () => string;
+  importLayout: (json: string) => boolean;
 }
 
 const defaultState: UICustomizationState = {
@@ -376,6 +390,39 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
       .sort((a, b) => a.order - b.order);
   }, [state.pageLayout.pages]);
 
+  // Export layout as JSON string
+  const exportLayout = useCallback(() => {
+    const exportData = {
+      version: '1.0',
+      pageLayout: state.pageLayout,
+      themeSettings: state.themeSettings,
+      advancedSettings: state.advancedSettings,
+      exportedAt: new Date().toISOString(),
+    };
+    return JSON.stringify(exportData, null, 2);
+  }, [state.pageLayout, state.themeSettings, state.advancedSettings]);
+
+  // Import layout from JSON string
+  const importLayout = useCallback((json: string): boolean => {
+    try {
+      const data = JSON.parse(json);
+      if (!data.version || !data.pageLayout) {
+        console.error('Invalid layout format');
+        return false;
+      }
+      setState(s => ({
+        ...s,
+        pageLayout: data.pageLayout,
+        themeSettings: data.themeSettings || s.themeSettings,
+        advancedSettings: data.advancedSettings || s.advancedSettings,
+      }));
+      return true;
+    } catch (e) {
+      console.error('Failed to import layout:', e);
+      return false;
+    }
+  }, []);
+
   return (
     <UICustomizationContext.Provider
       value={{
@@ -401,6 +448,8 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
         reorderPages,
         resetPageLayout,
         getPagesByDirection,
+        exportLayout,
+        importLayout,
       }}
     >
       {children}

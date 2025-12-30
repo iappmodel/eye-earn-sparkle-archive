@@ -49,6 +49,8 @@ interface BlinkRemoteControlProps {
   onToggle: (enabled: boolean) => void;
   onNavigate?: (action: GazeNavigationAction, direction: GazeDirection) => void;
   onComboAction?: (action: ComboAction, combo: GestureCombo) => void;
+  showSettings?: boolean;
+  onCloseSettings?: () => void;
   className?: string;
 }
 
@@ -90,11 +92,19 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   onToggle,
   onNavigate,
   onComboAction,
+  showSettings: externalShowSettings,
+  onCloseSettings,
   className,
 }) => {
   const haptics = useHapticFeedback();
   const voiceFeedback = useVoiceFeedback();
-  const [showSettings, setShowSettings] = useState(false);
+  const [internalShowSettings, setInternalShowSettings] = useState(false);
+  
+  // Use external control if provided, otherwise use internal state
+  const showSettings = externalShowSettings !== undefined ? externalShowSettings : internalShowSettings;
+  const setShowSettings = onCloseSettings 
+    ? (open: boolean) => { if (!open) onCloseSettings(); }
+    : setInternalShowSettings;
   const [showComboBuilder, setShowComboBuilder] = useState(false);
   const [practiceMode, setPracticeMode] = useState(false);
   const [showComboGuide, setShowComboGuide] = useState(false);
@@ -370,7 +380,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-primary" />
-              Eye Remote Control
+              Remote Control
             </SheetTitle>
           </SheetHeader>
           

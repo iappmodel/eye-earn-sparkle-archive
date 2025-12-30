@@ -4,7 +4,7 @@ import {
   Plus, X, RotateCcw, ChevronUp, ChevronDown, 
   ChevronLeft, ChevronRight, Palette, GripVertical,
   Users, Video, Compass, Gift, Heart, Star, Home,
-  MessageCircle, Wallet, Settings, Check, Trash2
+  MessageCircle, Wallet, Settings, Check, Trash2, Play, Pause
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUICustomization, PageSlot, PageDirection } from '@/contexts/UICustomizationContext';
@@ -15,6 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { HSLColorPicker } from './HSLColorPicker';
+import { TransitionPreview, MiniTransitionPreview } from './TransitionPreview';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface PageLayoutEditorProps {
   isOpen: boolean;
@@ -63,6 +66,8 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
   const [editingPage, setEditingPage] = useState<string | null>(null);
   const [draggedPage, setDraggedPage] = useState<PageSlot | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [selectedTransitionType, setSelectedTransitionType] = useState<'slide' | 'fade' | 'zoom'>('slide');
   const dragDirection = useRef<PageDirection | null>(null);
 
   // Get pages by direction
@@ -415,40 +420,119 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
               />
             </div>
 
-            {/* Page Theme */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Page Theme</label>
-              <div className="grid grid-cols-4 gap-2">
-                {pageThemes.map((theme) => (
-                  <button
-                    key={theme.id}
-                    onClick={() => updatePage(page.id, { 
-                      theme: theme.id,
-                      customColors: theme.id !== 'inherit' ? theme.colors : undefined
-                    })}
-                    className={cn(
-                      'relative flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
-                      page.theme === theme.id
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border/30 hover:border-border'
-                    )}
-                  >
-                    <div 
-                      className="w-6 h-6 rounded-full"
-                      style={{
-                        background: theme.id === 'inherit' 
-                          ? 'linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)))'
-                          : `linear-gradient(135deg, hsl(${theme.colors.primary}), hsl(${theme.colors.accent}))`
-                      }}
-                    />
-                    <span className="text-[10px] font-medium">{theme.name}</span>
-                    {page.theme === theme.id && (
-                      <Check className="w-3 h-3 text-primary absolute top-1 right-1" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Page Theme with Tabs */}
+            <Tabs defaultValue="presets" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 h-8">
+                <TabsTrigger value="presets" className="text-xs">Presets</TabsTrigger>
+                <TabsTrigger value="custom" className="text-xs">Custom HSL</TabsTrigger>
+                <TabsTrigger value="preview" className="text-xs">Preview</TabsTrigger>
+              </TabsList>
+              
+              {/* Theme Presets */}
+              <TabsContent value="presets" className="space-y-2 mt-3">
+                <div className="grid grid-cols-4 gap-2">
+                  {pageThemes.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => updatePage(page.id, { 
+                        theme: theme.id,
+                        customColors: theme.id !== 'inherit' ? theme.colors : undefined
+                      })}
+                      className={cn(
+                        'relative flex flex-col items-center gap-1 p-2 rounded-lg border transition-all',
+                        page.theme === theme.id
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border/30 hover:border-border'
+                      )}
+                    >
+                      <div 
+                        className="w-6 h-6 rounded-full"
+                        style={{
+                          background: theme.id === 'inherit' 
+                            ? 'linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)))'
+                            : `linear-gradient(135deg, hsl(${theme.colors.primary}), hsl(${theme.colors.accent}))`
+                        }}
+                      />
+                      <span className="text-[10px] font-medium">{theme.name}</span>
+                      {page.theme === theme.id && (
+                        <Check className="w-3 h-3 text-primary absolute top-1 right-1" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </TabsContent>
+              
+              {/* Custom HSL Colors */}
+              <TabsContent value="custom" className="space-y-4 mt-3">
+                <HSLColorPicker
+                  label="Primary Color"
+                  value={page.customColors?.primary || pageThemes.find(t => t.id === page.theme)?.colors.primary || '270 95% 65%'}
+                  onChange={(value) => updatePage(page.id, { 
+                    theme: 'custom',
+                    customColors: { 
+                      ...page.customColors,
+                      primary: value,
+                      accent: page.customColors?.accent || '320 90% 60%',
+                      glow: page.customColors?.glow || value,
+                    }
+                  })}
+                />
+                <HSLColorPicker
+                  label="Accent Color"
+                  value={page.customColors?.accent || pageThemes.find(t => t.id === page.theme)?.colors.accent || '320 90% 60%'}
+                  onChange={(value) => updatePage(page.id, { 
+                    theme: 'custom',
+                    customColors: { 
+                      ...page.customColors,
+                      primary: page.customColors?.primary || '270 95% 65%',
+                      accent: value,
+                      glow: page.customColors?.glow || page.customColors?.primary || '270 95% 65%',
+                    }
+                  })}
+                />
+                <HSLColorPicker
+                  label="Glow Color"
+                  value={page.customColors?.glow || page.customColors?.primary || '270 95% 65%'}
+                  onChange={(value) => updatePage(page.id, { 
+                    theme: 'custom',
+                    customColors: { 
+                      ...page.customColors,
+                      primary: page.customColors?.primary || '270 95% 65%',
+                      accent: page.customColors?.accent || '320 90% 60%',
+                      glow: value,
+                    }
+                  })}
+                />
+              </TabsContent>
+              
+              {/* Transition Preview */}
+              <TabsContent value="preview" className="space-y-4 mt-3">
+                <div className="space-y-3">
+                  <label className="text-xs font-medium text-muted-foreground">Transition Style</label>
+                  <div className="flex items-center justify-center gap-3">
+                    {(['slide', 'fade', 'zoom'] as const).map((type) => (
+                      <MiniTransitionPreview
+                        key={type}
+                        transitionType={type}
+                        direction={page.direction}
+                        isActive={selectedTransitionType === type}
+                        onClick={() => setSelectedTransitionType(type)}
+                        primaryColor={page.customColors?.primary || pageThemes.find(t => t.id === page.theme)?.colors.primary}
+                      />
+                    ))}
+                  </div>
+                </div>
+                
+                <TransitionPreview
+                  direction={page.direction}
+                  transitionType={selectedTransitionType}
+                  isPlaying={isPreviewPlaying}
+                  onPlayToggle={() => setIsPreviewPlaying(!isPreviewPlaying)}
+                  primaryColor={page.customColors?.primary || pageThemes.find(t => t.id === page.theme)?.colors.primary}
+                  accentColor={page.customColors?.accent || pageThemes.find(t => t.id === page.theme)?.colors.accent}
+                />
+              </TabsContent>
+            </Tabs>
 
             {/* Delete Page (not center) */}
             {page.direction !== 'center' && (

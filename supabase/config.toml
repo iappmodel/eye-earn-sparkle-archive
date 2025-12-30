@@ -96,3 +96,12 @@ verify_jwt = false
 
 [functions.check-verification]
 verify_jwt = false
+
+[functions.share-ad-revenue]
+verify_jwt = false
+
+[functions.purchase-coins]
+verify_jwt = false
+
+[functions.stripe-webhook-coins]
+verify_jwt = false

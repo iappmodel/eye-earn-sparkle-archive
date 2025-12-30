@@ -1,6 +1,6 @@
 import React, { useState, useEffect, forwardRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Image, Video, Megaphone, Target, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2, Clock, Calendar, Save, RotateCcw, Share2 } from 'lucide-react';
+import { ArrowLeft, Image, Video, Megaphone, Target, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2, Clock, Calendar, Save, RotateCcw, Share2, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { ContentUpload } from '@/components/ContentUpload';
 import { useDraftSave } from '@/hooks/useDraftSave';
 import { format, formatDistanceToNow } from 'date-fns';
+import { TikTokCamera } from '@/components/TikTokCamera';
 
 type ContentType = 'post' | 'story' | 'promotion' | 'campaign';
 type MediaType = 'image' | 'video' | 'carousel';
@@ -48,6 +49,58 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [showDraftRestore, setShowDraftRestore] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [pendingContentType, setPendingContentType] = useState<ContentType | null>(null);
+
+  const handleContentTypeSelect = (typeId: ContentType) => {
+    setPendingContentType(typeId);
+    setShowCamera(true);
+  };
+
+  const handleCameraCapture = async (blob: Blob, type: 'photo' | 'video') => {
+    setShowCamera(false);
+    if (pendingContentType) {
+      setSelectedType(pendingContentType);
+      // Upload the captured media
+      try {
+        const fileName = `${Date.now()}_${type === 'photo' ? 'photo.jpg' : 'video.webm'}`;
+        const filePath = `${user?.id}/${fileName}`;
+        
+        const { data, error } = await supabase.storage
+          .from('media')
+          .upload(filePath, blob, {
+            contentType: type === 'photo' ? 'image/jpeg' : 'video/webm',
+          });
+
+        if (error) throw error;
+
+        const { data: urlData } = supabase.storage
+          .from('media')
+          .getPublicUrl(filePath);
+
+        setForm(prev => ({
+          ...prev,
+          mediaUrl: urlData.publicUrl,
+          mediaType: type === 'photo' ? 'image' : 'video',
+        }));
+        
+        toast.success('Media captured and ready!');
+      } catch (err) {
+        console.error('Upload error:', err);
+        toast.error('Failed to upload captured media');
+      }
+    }
+    setPendingContentType(null);
+  };
+
+  const handleCameraClose = () => {
+    setShowCamera(false);
+    if (pendingContentType) {
+      // If they close camera, still go to the form
+      setSelectedType(pendingContentType);
+    }
+    setPendingContentType(null);
+  };
   const [form, setForm] = useState<ContentForm>({
     title: '',
     caption: '',
@@ -250,6 +303,7 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
   const draftTime = getDraftTimestamp();
 
   return (
+    <>
     <div ref={ref} className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 glass-dark border-b border-border/50">
@@ -282,7 +336,7 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
               {contentTypes.map((type) => (
                 <button
                   key={type.id}
-                  onClick={() => setSelectedType(type.id)}
+                  onClick={() => handleContentTypeSelect(type.id)}
                   className={cn(
                     'relative overflow-hidden rounded-2xl p-4 text-left transition-all duration-300',
                     'hover:scale-[1.02] active:scale-[0.98]',
@@ -608,6 +662,15 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
         </div>
       )}
     </div>
+
+    {/* TikTok-Style Camera */}
+    <TikTokCamera
+      isOpen={showCamera}
+      onClose={handleCameraClose}
+      onCapture={handleCameraCapture}
+      contentType={pendingContentType || undefined}
+    />
+    </>
   );
 });
 

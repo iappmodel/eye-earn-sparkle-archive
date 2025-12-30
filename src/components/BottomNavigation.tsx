@@ -59,7 +59,13 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
               </button>
             ) : (
               <button
-                onClick={() => onTabChange(item.id)}
+                onClick={() => {
+                  if (item.id === 'profile') {
+                    navigate('/my-page');
+                  } else {
+                    onTabChange(item.id);
+                  }
+                }}
                 className={cn(
                   'flex flex-col items-center gap-0.5 px-3 py-2 rounded-full transition-all duration-200',
                   activeTab === item.id 

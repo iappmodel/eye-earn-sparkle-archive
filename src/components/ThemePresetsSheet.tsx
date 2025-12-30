@@ -4,13 +4,14 @@ import {
   X, Palette, Sparkles, Moon, Sun, Zap, 
   Waves, Flame, Leaf, Star, Diamond,
   Circle, Square, ChevronUp, ChevronDown,
-  Check, Sliders, Layout, Settings2, Wrench
+  Check, Sliders, Layout, Settings2, Wrench, Grid3X3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ThemeSettings } from '@/contexts/UICustomizationContext';
 import { NeuButton } from './NeuButton';
 import { ButtonFunctionManager } from './ButtonFunctionManager';
 import { LayoutEditor } from './LayoutEditor';
+import { PageLayoutEditor } from './PageLayoutEditor';
 import { AdvancedThemeControls } from './AdvancedThemeControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -227,22 +228,26 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
           sheetHeight === 'partial' ? 'max-h-[calc(60vh-100px)]' : 'max-h-[calc(90vh-100px)]'
         )}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="w-full grid grid-cols-4 mb-4">
-              <TabsTrigger value="themes" className="gap-2">
+            <TabsList className="w-full grid grid-cols-5 mb-4">
+              <TabsTrigger value="themes" className="gap-1 px-2">
                 <Palette className="w-4 h-4" />
-                <span className="hidden sm:inline">Themes</span>
+                <span className="hidden sm:inline text-xs">Themes</span>
               </TabsTrigger>
-              <TabsTrigger value="advanced" className="gap-2">
+              <TabsTrigger value="pages" className="gap-1 px-2">
+                <Grid3X3 className="w-4 h-4" />
+                <span className="hidden sm:inline text-xs">Pages</span>
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="gap-1 px-2">
                 <Wrench className="w-4 h-4" />
-                <span className="hidden sm:inline">Custom</span>
+                <span className="hidden sm:inline text-xs">Custom</span>
               </TabsTrigger>
-              <TabsTrigger value="buttons" className="gap-2">
+              <TabsTrigger value="buttons" className="gap-1 px-2">
                 <Sliders className="w-4 h-4" />
-                <span className="hidden sm:inline">Buttons</span>
+                <span className="hidden sm:inline text-xs">Buttons</span>
               </TabsTrigger>
-              <TabsTrigger value="layout" className="gap-2">
+              <TabsTrigger value="layout" className="gap-1 px-2">
                 <Layout className="w-4 h-4" />
-                <span className="hidden sm:inline">Layout</span>
+                <span className="hidden sm:inline text-xs">Layout</span>
               </TabsTrigger>
             </TabsList>
 
@@ -374,6 +379,11 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
             {/* Advanced Tab */}
             <TabsContent value="advanced">
               <AdvancedThemeControls />
+            </TabsContent>
+
+            {/* Pages Tab */}
+            <TabsContent value="pages">
+              <PageLayoutEditor isOpen={true} onClose={() => {}} />
             </TabsContent>
 
             {/* Buttons Tab */}

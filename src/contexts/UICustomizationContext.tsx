@@ -35,6 +35,30 @@ export interface AdvancedSettings {
   animationSpeed: number; // 0.5 = slow, 1 = normal, 2 = fast
 }
 
+// Page navigation direction
+export type PageDirection = 'up' | 'down' | 'left' | 'right' | 'center';
+
+// Page slot configuration
+export interface PageSlot {
+  id: string;
+  direction: PageDirection;
+  order: number;
+  contentType: string;
+  label: string;
+  theme: string; // Theme preset id or 'inherit'
+  customColors?: {
+    primary: string;
+    accent: string;
+    glow: string;
+  };
+}
+
+// Page layout configuration
+export interface PageLayout {
+  pages: PageSlot[];
+  enableMultiDirection: boolean;
+}
+
 // Default button layout
 const defaultButtonLayout: ButtonPosition[] = [
   { id: 'like', action: 'like', order: 0, visible: true, size: 'md' },
@@ -64,10 +88,21 @@ const defaultAdvancedSettings: AdvancedSettings = {
   animationSpeed: 1,
 };
 
+// Default page layout
+const defaultPageLayout: PageLayout = {
+  pages: [
+    { id: 'main', direction: 'center', order: 0, contentType: 'main', label: 'Main Feed', theme: 'inherit' },
+    { id: 'friends', direction: 'left', order: 0, contentType: 'friends', label: 'Friends', theme: 'ocean' },
+    { id: 'promotions', direction: 'right', order: 0, contentType: 'promotions', label: 'Promotions', theme: 'ember' },
+  ],
+  enableMultiDirection: true,
+};
+
 interface UICustomizationState {
   buttonLayout: ButtonPosition[];
   themeSettings: ThemeSettings;
   advancedSettings: AdvancedSettings;
+  pageLayout: PageLayout;
 }
 
 interface UICustomizationContextType extends UICustomizationState {
@@ -93,12 +128,21 @@ interface UICustomizationContextType extends UICustomizationState {
   
   // Get visible buttons in order
   getVisibleButtons: () => ButtonPosition[];
+  
+  // Page layout
+  addPage: (page: PageSlot) => void;
+  removePage: (id: string) => void;
+  updatePage: (id: string, updates: Partial<PageSlot>) => void;
+  reorderPages: (direction: PageDirection, fromIndex: number, toIndex: number) => void;
+  resetPageLayout: () => void;
+  getPagesByDirection: (direction: PageDirection) => PageSlot[];
 }
 
 const defaultState: UICustomizationState = {
   buttonLayout: defaultButtonLayout,
   themeSettings: defaultThemeSettings,
   advancedSettings: defaultAdvancedSettings,
+  pageLayout: defaultPageLayout,
 };
 
 const UICustomizationContext = createContext<UICustomizationContextType | undefined>(undefined);
@@ -269,6 +313,69 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
       .sort((a, b) => a.order - b.order);
   }, [state.buttonLayout]);
 
+  // Page layout functions
+  const addPage = useCallback((page: PageSlot) => {
+    setState(s => ({
+      ...s,
+      pageLayout: {
+        ...s.pageLayout,
+        pages: [...s.pageLayout.pages, page]
+      }
+    }));
+  }, []);
+
+  const removePage = useCallback((id: string) => {
+    setState(s => ({
+      ...s,
+      pageLayout: {
+        ...s.pageLayout,
+        pages: s.pageLayout.pages.filter(p => p.id !== id)
+      }
+    }));
+  }, []);
+
+  const updatePage = useCallback((id: string, updates: Partial<PageSlot>) => {
+    setState(s => ({
+      ...s,
+      pageLayout: {
+        ...s.pageLayout,
+        pages: s.pageLayout.pages.map(p => 
+          p.id === id ? { ...p, ...updates } : p
+        )
+      }
+    }));
+  }, []);
+
+  const reorderPages = useCallback((direction: PageDirection, fromIndex: number, toIndex: number) => {
+    setState(s => {
+      const directionPages = s.pageLayout.pages.filter(p => p.direction === direction);
+      const otherPages = s.pageLayout.pages.filter(p => p.direction !== direction);
+      const [removed] = directionPages.splice(fromIndex, 1);
+      directionPages.splice(toIndex, 0, removed);
+      const reorderedPages = directionPages.map((p, idx) => ({ ...p, order: idx }));
+      return {
+        ...s,
+        pageLayout: {
+          ...s.pageLayout,
+          pages: [...otherPages, ...reorderedPages]
+        }
+      };
+    });
+  }, []);
+
+  const resetPageLayout = useCallback(() => {
+    setState(s => ({
+      ...s,
+      pageLayout: defaultPageLayout
+    }));
+  }, []);
+
+  const getPagesByDirection = useCallback((direction: PageDirection) => {
+    return state.pageLayout.pages
+      .filter(p => p.direction === direction)
+      .sort((a, b) => a.order - b.order);
+  }, [state.pageLayout.pages]);
+
   return (
     <UICustomizationContext.Provider
       value={{
@@ -288,6 +395,12 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
         setButtonSize,
         resetLayout,
         getVisibleButtons,
+        addPage,
+        removePage,
+        updatePage,
+        reorderPages,
+        resetPageLayout,
+        getPagesByDirection,
       }}
     >
       {children}

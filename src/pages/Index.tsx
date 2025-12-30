@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, QuickVisibilityToggle } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -357,7 +357,7 @@ const Index = () => {
   const isAtCenter = currentState.direction === 'center';
 
   return (
-    <ControlsVisibilityProvider autoHideDelay={3000}>
+    <ControlsVisibilityProvider>
       <div 
         className="fixed inset-0 bg-background overflow-hidden touch-none"
         {...handlers}
@@ -388,6 +388,9 @@ const Index = () => {
 
               {/* Cross Navigation hints */}
               <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
+
+              {/* Quick Visibility Toggle */}
+              <QuickVisibilityToggle />
 
               {/* Floating Controls */}
               <FloatingControls

@@ -14,6 +14,7 @@ import { useMediaSettings } from './MediaSettings';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { notificationSoundService } from '@/services/notificationSound.service';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 interface MediaCardProps {
@@ -68,6 +69,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
   const haptic = useHapticFeedback();
+  const { user } = useAuth();
   const { segments: heatmapSegments, recordAttention, reset: resetHeatmap, finalizeCurrentSegment } = useAttentionHeatmap();
   const { recordVideoCompletion } = useAttentionAchievements();
 
@@ -284,10 +286,17 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     haptic.success();
 
     try {
+      // Only validate with backend if user is authenticated
+      if (!user) {
+        console.log('[MediaCard] User not authenticated, skipping backend validation');
+        onComplete?.(isEligible);
+        return;
+      }
+
       // Validate with backend
       const { data, error } = await supabase.functions.invoke('validate-attention', {
         body: {
-          userId: 'anonymous', // Will be replaced with actual user ID
+          userId: user.id,
           contentId: contentId || src,
           attentionScore: attentionResult.score,
           watchDuration,
@@ -314,7 +323,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       console.error('[MediaCard] Validation failed:', err);
       onComplete?.(false);
     }
-  }, [contentId, src, duration, getAttentionResult, onComplete, eyeTrackingEnabled, recordVideoCompletion]);
+  }, [contentId, src, duration, getAttentionResult, onComplete, eyeTrackingEnabled, recordVideoCompletion, user]);
 
   // Progress tracking for images/promos without video
   useEffect(() => {

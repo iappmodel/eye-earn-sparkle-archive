@@ -5,6 +5,8 @@ import { RewardBadge } from './RewardBadge';
 import { EyeTrackingIndicator } from './EyeTrackingIndicator';
 import { AttentionProgressBar } from './AttentionProgressBar';
 import { FocusChallengeMiniGame } from './FocusChallengeMiniGame';
+import { PerfectAttentionCelebration } from './PerfectAttentionCelebration';
+import { AttentionHeatmap, useAttentionHeatmap } from './AttentionHeatmap';
 import { useEyeTracking } from '@/hooks/useEyeTracking';
 import { useMediaSettings } from './MediaSettings';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -50,6 +52,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [endStats, setEndStats] = useState<{ score: number; totalTime: number; attentiveTime: number; eligible: boolean } | null>(null);
   const [showFocusChallenge, setShowFocusChallenge] = useState(false);
   const [attentionLostCount, setAttentionLostCount] = useState(0);
+  const [showPerfectCelebration, setShowPerfectCelebration] = useState(false);
   const hasCompleted = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
@@ -61,6 +64,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
   const haptic = useHapticFeedback();
+  const { segments: heatmapSegments, recordAttention, reset: resetHeatmap, finalizeCurrentSegment } = useAttentionHeatmap();
 
   // Eye tracking for promo content
   const isPromoContent = type === 'promo' && !!reward;
@@ -150,6 +154,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [isTracking]);
 
+  // Record attention for heatmap
+  useEffect(() => {
+    if (isPromoContent && isPlaying && isTracking && eyeTrackingEnabled) {
+      recordAttention(progress, attentionScore);
+    }
+  }, [isPromoContent, isPlaying, isTracking, eyeTrackingEnabled, progress, attentionScore, recordAttention]);
+
   // Resume from attention pause
   const handleResumeFromAttentionPause = useCallback(() => {
     if (attentionPaused) {
@@ -197,6 +208,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     setEndStats(null);
     setShowFocusChallenge(false);
     setAttentionLostCount(0);
+    setShowPerfectCelebration(false);
     hasCompleted.current = false;
     startTimeRef.current = 0;
     lastWarningTimeRef.current = 0;
@@ -204,7 +216,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     attentionLostTimeRef.current = 0;
     lastAttentionCheckRef.current = Date.now();
     resetAttention();
-  }, [src, resetAttention]);
+    resetHeatmap();
+  }, [src, resetAttention, resetHeatmap]);
 
   // Show reward badge when promo starts
   useEffect(() => {
@@ -223,17 +236,32 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     
     console.log('[MediaCard] Promo complete, validating attention...', attentionResult);
 
+    // Finalize heatmap data
+    finalizeCurrentSegment();
+
     // Calculate stats for display
     const attentiveTime = (attentionResult.framesDetected / Math.max(attentionResult.totalFrames, 1)) * watchDuration;
     const isEligible = attentionResult.score >= 70 && eyeTrackingEnabled;
+    const isPerfectAttention = attentionResult.score >= 95 && eyeTrackingEnabled;
     
+    // Trigger perfect attention celebration
+    if (isPerfectAttention) {
+      setShowPerfectCelebration(true);
+    }
+
     setEndStats({
       score: attentionResult.score,
       totalTime: watchDuration,
       attentiveTime: attentiveTime,
       eligible: isEligible || !eyeTrackingEnabled, // Always eligible if eye tracking disabled
     });
-    setShowEndStats(true);
+    
+    // Delay showing end stats if celebrating perfect attention
+    if (isPerfectAttention) {
+      setTimeout(() => setShowEndStats(true), 2500);
+    } else {
+      setShowEndStats(true);
+    }
 
     // Play appropriate sound
     if (soundEffects) {
@@ -498,50 +526,72 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </div>
       )}
 
+      {/* Perfect attention celebration */}
+      {showPerfectCelebration && (
+        <PerfectAttentionCelebration
+          isActive={showPerfectCelebration}
+          onComplete={() => setShowPerfectCelebration(false)}
+        />
+      )}
+
       {/* End stats overlay - shows cumulative attention stats */}
       {showEndStats && endStats && isPromoContent && (
-        <div className="absolute inset-0 bg-background/90 backdrop-blur-md z-40 flex flex-col items-center justify-center gap-6 animate-fade-in">
+        <div className="absolute inset-0 bg-background/90 backdrop-blur-md z-40 flex flex-col items-center justify-center gap-4 animate-fade-in overflow-y-auto py-6">
           <div className="text-center space-y-2">
             <div className={cn(
-              "w-20 h-20 rounded-full mx-auto flex items-center justify-center mb-4",
+              "w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-2",
               endStats.eligible ? "bg-green-500/20" : "bg-red-500/20"
             )}>
               {endStats.eligible ? (
-                <Award className="w-10 h-10 text-green-500" />
+                <Award className="w-8 h-8 text-green-500" />
               ) : (
-                <XCircle className="w-10 h-10 text-red-500" />
+                <XCircle className="w-8 h-8 text-red-500" />
               )}
             </div>
             <h3 className={cn(
-              "text-2xl font-bold",
+              "text-xl font-bold",
               endStats.eligible ? "text-green-500" : "text-red-500"
             )}>
-              {endStats.eligible ? "Reward Earned!" : "Reward Not Earned"}
+              {endStats.score >= 95 ? "Perfect Attention!" : endStats.eligible ? "Reward Earned!" : "Reward Not Earned"}
             </h3>
-            <p className="text-muted-foreground text-sm">
-              {endStats.eligible 
-                ? "Great focus! Your reward is being processed." 
-                : "Try to maintain focus next time."}
+            <p className="text-muted-foreground text-xs px-8">
+              {endStats.score >= 95 
+                ? "Amazing focus! You're a pro!" 
+                : endStats.eligible 
+                  ? "Great focus! Your reward is being processed." 
+                  : "Try to maintain focus next time."}
             </p>
           </div>
 
+          {/* Attention Heatmap */}
+          {eyeTrackingEnabled && heatmapSegments.length > 0 && (
+            <div className="w-full max-w-sm px-4">
+              <p className="text-xs text-center text-muted-foreground mb-2">Attention Timeline</p>
+              <AttentionHeatmap
+                segments={heatmapSegments}
+                currentProgress={100}
+                isVisible={true}
+              />
+            </div>
+          )}
+
           {/* Stats cards */}
           {eyeTrackingEnabled && (
-            <div className="grid grid-cols-3 gap-3 px-6 w-full max-w-sm">
-              <div className="bg-muted/50 rounded-xl p-3 text-center">
-                <Eye className="w-5 h-5 mx-auto mb-1 text-primary" />
-                <p className="text-lg font-bold">{Math.round(endStats.score)}%</p>
-                <p className="text-[10px] text-muted-foreground">Attention</p>
+            <div className="grid grid-cols-3 gap-2 px-4 w-full max-w-sm">
+              <div className="bg-muted/50 rounded-xl p-2 text-center">
+                <Eye className="w-4 h-4 mx-auto mb-1 text-primary" />
+                <p className="text-base font-bold">{Math.round(endStats.score)}%</p>
+                <p className="text-[9px] text-muted-foreground">Attention</p>
               </div>
-              <div className="bg-muted/50 rounded-xl p-3 text-center">
-                <Clock className="w-5 h-5 mx-auto mb-1 text-primary" />
-                <p className="text-lg font-bold">{Math.round(endStats.attentiveTime)}s</p>
-                <p className="text-[10px] text-muted-foreground">Focused</p>
+              <div className="bg-muted/50 rounded-xl p-2 text-center">
+                <Clock className="w-4 h-4 mx-auto mb-1 text-primary" />
+                <p className="text-base font-bold">{Math.round(endStats.attentiveTime)}s</p>
+                <p className="text-[9px] text-muted-foreground">Focused</p>
               </div>
-              <div className="bg-muted/50 rounded-xl p-3 text-center">
-                <Clock className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-lg font-bold">{Math.round(endStats.totalTime)}s</p>
-                <p className="text-[10px] text-muted-foreground">Total</p>
+              <div className="bg-muted/50 rounded-xl p-2 text-center">
+                <Clock className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
+                <p className="text-base font-bold">{Math.round(endStats.totalTime)}s</p>
+                <p className="text-[9px] text-muted-foreground">Total</p>
               </div>
             </div>
           )}
@@ -562,7 +612,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           {/* Dismiss button */}
           <button
             onClick={() => setShowEndStats(false)}
-            className="mt-2 px-6 py-2 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+            className="px-6 py-2 rounded-full bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
           >
             Continue
           </button>

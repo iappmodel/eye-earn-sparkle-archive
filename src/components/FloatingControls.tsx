@@ -199,6 +199,48 @@ interface FloatingControlsProps {
   achievementsCount?: number;
 }
 
+// Visibility Toggle Button - integrated into right side column
+const VisibilityToggleButton: React.FC = () => {
+  const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Sync with storage changes
+  useEffect(() => {
+    const handleStorage = () => setIsHidden(getButtonsHidden());
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+  
+  const toggleVisibility = () => {
+    setIsAnimating(true);
+    setTimeout(() => setIsAnimating(false), 300);
+    
+    const newValue = !isHidden;
+    setIsHidden(newValue);
+    setButtonsHidden(newValue);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  return (
+    <NeuButton 
+      onClick={toggleVisibility}
+      variant={isHidden ? 'accent' : 'default'}
+      tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
+    >
+      <span className={cn(
+        'transition-all duration-300',
+        isAnimating && 'rotate-180 scale-110'
+      )}>
+        {isHidden ? (
+          <Eye className="w-6 h-6" />
+        ) : (
+          <EyeOff className="w-6 h-6" />
+        )}
+      </span>
+    </NeuButton>
+  );
+};
+
 // Icon mapping for button actions
 const actionIcons: Record<ButtonAction | 'achievements', React.ReactNode> = {
   like: <Heart />,
@@ -454,6 +496,9 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
         {/* Secondary action buttons */}
         {secondaryButtons.map(button => renderButton(button, false))}
+
+        {/* Visibility Toggle - integrated at the bottom */}
+        <VisibilityToggleButton />
       </div>
     </>
   );

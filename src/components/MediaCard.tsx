@@ -47,7 +47,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   const startTimeRef = useRef<number>(0);
 
-  const { attentionThreshold } = useMediaSettings();
+  const { attentionThreshold, eyeTrackingEnabled } = useMediaSettings();
 
   // Eye tracking for promo content
   const isPromoContent = type === 'promo' && !!reward;
@@ -58,7 +58,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     resetAttention,
     getAttentionResult,
   } = useEyeTracking({
-    enabled: isPromoContent && isActive && isPlaying,
+    enabled: isPromoContent && isActive && isPlaying && eyeTrackingEnabled,
     onAttentionLost: () => {
       if (isPromoContent) {
         setAttentionWarning(true);
@@ -343,17 +343,41 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
       {/* Eye tracking indicator - very top center edge */}
-      {isPromoContent && (isPlaying || attentionPaused) && (
-        <EyeTrackingIndicator
-          isTracking={isTracking}
-          isFaceDetected={isFaceDetected}
-          attentionScore={attentionScore}
-          position="top-center"
-          onAttentionLostTooLong={handleAttentionLostTooLong}
-          videoDuration={videoDuration}
-          currentTime={currentTime}
-          attentionThreshold={attentionThreshold}
-        />
+      {isPromoContent && (isPlaying || attentionPaused) && eyeTrackingEnabled && (
+        <>
+          <EyeTrackingIndicator
+            isTracking={isTracking}
+            isFaceDetected={isFaceDetected}
+            attentionScore={attentionScore}
+            position="top-center"
+            onAttentionLostTooLong={handleAttentionLostTooLong}
+            videoDuration={videoDuration}
+            currentTime={currentTime}
+            attentionThreshold={attentionThreshold}
+          />
+          
+          {/* Real-time attention percentage indicator */}
+          {isTracking && !attentionPaused && (
+            <div className="absolute top-12 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/80 backdrop-blur-sm border border-border/50 animate-fade-in">
+              <div 
+                className={cn(
+                  "w-2 h-2 rounded-full transition-colors",
+                  attentionScore >= 80 ? "bg-green-500" : 
+                  attentionScore >= 50 ? "bg-yellow-500" : 
+                  attentionScore >= 30 ? "bg-orange-500" : "bg-red-500"
+                )}
+              />
+              <span className={cn(
+                "text-xs font-medium tabular-nums transition-colors",
+                attentionScore >= 80 ? "text-green-500" : 
+                attentionScore >= 50 ? "text-yellow-500" : 
+                attentionScore >= 30 ? "text-orange-500" : "text-red-500"
+              )}>
+                {Math.round(attentionScore)}% attention
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Attention warning overlay */}

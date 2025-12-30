@@ -1,6 +1,6 @@
 import React, { useState, useEffect, forwardRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Image, Video, Megaphone, Target, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2, Clock, Calendar, Save, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Image, Video, Megaphone, Target, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2, Clock, Calendar, Save, RotateCcw, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -302,8 +302,31 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
               ))}
             </div>
 
+            {/* Import from Social Media */}
+            <div className="p-4 rounded-2xl bg-muted/50 border border-border">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <Share2 className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold mb-1">Import from Social Media</h3>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Import content from Instagram, TikTok, YouTube, and more
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => navigate('/social-connect')}
+                  >
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    Import Media
+                  </Button>
+                </div>
+              </div>
+            </div>
+
             {/* Rewards Info */}
-            <div className="mt-8 p-4 rounded-2xl bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20">
+            <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
                   <DollarSign className="w-5 h-5 text-primary" />

@@ -750,6 +750,77 @@ export type Database = {
         }
         Relationships: []
       }
+      imported_media: {
+        Row: {
+          description: string | null
+          duration: number | null
+          edited_media_url: string | null
+          id: string
+          imported_at: string
+          linked_account_id: string | null
+          local_media_url: string | null
+          media_type: string
+          metadata: Json | null
+          original_likes: number | null
+          original_url: string
+          original_views: number | null
+          platform: string
+          published_content_id: string | null
+          status: string
+          thumbnail_url: string | null
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          description?: string | null
+          duration?: number | null
+          edited_media_url?: string | null
+          id?: string
+          imported_at?: string
+          linked_account_id?: string | null
+          local_media_url?: string | null
+          media_type?: string
+          metadata?: Json | null
+          original_likes?: number | null
+          original_url: string
+          original_views?: number | null
+          platform: string
+          published_content_id?: string | null
+          status?: string
+          thumbnail_url?: string | null
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          description?: string | null
+          duration?: number | null
+          edited_media_url?: string | null
+          id?: string
+          imported_at?: string
+          linked_account_id?: string | null
+          local_media_url?: string | null
+          media_type?: string
+          metadata?: Json | null
+          original_likes?: number | null
+          original_url?: string
+          original_views?: number | null
+          platform?: string
+          published_content_id?: string | null
+          status?: string
+          thumbnail_url?: string | null
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "imported_media_linked_account_id_fkey"
+            columns: ["linked_account_id"]
+            isOneToOne: false
+            referencedRelation: "linked_social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       kyc_submissions: {
         Row: {
           created_at: string
@@ -798,6 +869,48 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      linked_social_accounts: {
+        Row: {
+          avatar_url: string | null
+          display_name: string | null
+          followers_count: number | null
+          id: string
+          is_verified: boolean | null
+          linked_at: string
+          platform: string
+          profile_url: string | null
+          updated_at: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          display_name?: string | null
+          followers_count?: number | null
+          id?: string
+          is_verified?: boolean | null
+          linked_at?: string
+          platform: string
+          profile_url?: string | null
+          updated_at?: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          display_name?: string | null
+          followers_count?: number | null
+          id?: string
+          is_verified?: boolean | null
+          linked_at?: string
+          platform?: string
+          profile_url?: string | null
+          updated_at?: string
+          user_id?: string
+          username?: string | null
         }
         Relationships: []
       }

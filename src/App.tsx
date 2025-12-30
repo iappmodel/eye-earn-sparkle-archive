@@ -22,6 +22,7 @@ import Create from "./pages/Create";
 import Studio from "./pages/Studio";
 import MyPage from "./pages/MyPage";
 import NotFound from "./pages/NotFound";
+import SocialConnect from "./pages/SocialConnect";
 import { PromotionDetails } from "./components/PromotionDetails";
 
 const queryClient = new QueryClient();
@@ -77,6 +78,14 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <MyPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/social-connect"
+          element={
+            <ProtectedRoute>
+              <SocialConnect />
             </ProtectedRoute>
           }
         />

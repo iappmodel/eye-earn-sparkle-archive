@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { MediaSettings } from './MediaSettings';
@@ -544,7 +544,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </section>
 
-          {/* RTL Indicator (for RTL languages) */}
+          {/* Social Connections Section */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Share2 className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Social Connections</h2>
+            </div>
+            <div className="p-4 rounded-xl bg-muted/30 border border-border space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Connect your social media accounts to import and share content
+              </p>
+              <NeuButton
+                variant="accent"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  window.location.href = '/social-connect';
+                }}
+                className="w-full justify-center"
+              >
+                <Link2 className="w-4 h-4 mr-2" />
+                Manage Social Accounts
+              </NeuButton>
+            </div>
+          </section>
+
           {isRTL && (
             <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
               <p className="text-sm text-primary text-center">

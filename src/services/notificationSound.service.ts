@@ -166,6 +166,34 @@ class NotificationSoundService {
       console.warn('Could not play tap sound:', error);
     }
   }
+
+  // Play attention warning sound (low tone)
+  playAttentionWarning() {
+    if (!this.isEnabled) return;
+    
+    try {
+      const ctx = this.getAudioContext();
+      const now = ctx.currentTime;
+      
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.linearRampToValueAtTime(200, now + 0.3);
+      
+      gain.gain.setValueAtTime(this.volume * 0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } catch (error) {
+      console.warn('Could not play attention warning sound:', error);
+    }
+  }
 }
 
 export const notificationSoundService = new NotificationSoundService();

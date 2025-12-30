@@ -297,6 +297,185 @@
       transition-duration: 0.01ms !important;
     }
   }
+  
+  /* ===== AURA THEME ===== */
+  /* White neumorphic - soft, clean, ethereal */
+  .theme-aura {
+    --background: 210 20% 94%;
+    --foreground: 220 15% 20%;
+
+    --card: 210 18% 96%;
+    --card-foreground: 220 15% 20%;
+
+    --popover: 210 20% 97%;
+    --popover-foreground: 220 15% 20%;
+
+    /* Primary - Soft Blue-Gray */
+    --primary: 220 25% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 15% 88%;
+    --secondary-foreground: 220 15% 25%;
+
+    --muted: 210 12% 90%;
+    --muted-foreground: 220 10% 45%;
+
+    /* Accent - Subtle teal */
+    --accent: 180 25% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 55% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 15% 85%;
+    --input: 210 15% 92%;
+    --ring: 220 25% 55%;
+
+    /* Muted Glow Colors for Aura */
+    --neon-purple: 220 25% 55%;
+    --neon-magenta: 260 20% 60%;
+    --neon-cyan: 180 30% 55%;
+    --neon-blue: 210 30% 60%;
+    --neon-pink: 330 20% 65%;
+    
+    /* Currency Colors */
+    --vicoin: 220 25% 55%;
+    --icoin: 45 50% 50%;
+    
+    /* Glass morphism */
+    --glass-bg: 210 20% 95%;
+    --glass-border: 210 15% 80%;
+    
+    /* Gradient stops */
+    --gradient-start: 210 25% 92%;
+    --gradient-mid: 220 20% 88%;
+    --gradient-end: 200 25% 90%;
+    
+    /* Depth layers */
+    --depth-1: 210 18% 92%;
+    --depth-2: 210 18% 95%;
+    --depth-3: 210 18% 98%;
+    --depth-glow: 220 25% 55%;
+    
+    /* Ambient effects */
+    --ambient-warm: 30 30% 90%;
+    --ambient-cool: 200 30% 90%;
+    --ambient-energy: 150 25% 85%;
+    
+    --sidebar-background: 210 20% 95%;
+    --sidebar-foreground: 220 15% 20%;
+    --sidebar-primary: 220 25% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 15% 88%;
+    --sidebar-accent-foreground: 220 15% 25%;
+    --sidebar-border: 210 15% 82%;
+    --sidebar-ring: 220 25% 55%;
+  }
+  
+  /* Aura theme body - clean white with subtle texture */
+  .theme-aura body {
+    background: hsl(210 20% 94%);
+    background-image: none;
+  }
+  
+  /* Aura neumorphic button - soft inset/outset shadows */
+  .theme-aura .neu-button {
+    background: linear-gradient(145deg, hsl(210 18% 97%), hsl(210 18% 91%));
+    border: none;
+    box-shadow: 
+      8px 8px 20px hsl(220 15% 80% / 0.6),
+      -8px -8px 20px hsl(0 0% 100% / 0.8),
+      inset 0 1px 0 hsl(0 0% 100% / 0.5);
+    color: hsl(220 15% 35%);
+  }
+  
+  .theme-aura .neu-button:hover {
+    box-shadow: 
+      10px 10px 25px hsl(220 15% 78% / 0.7),
+      -10px -10px 25px hsl(0 0% 100% / 0.9),
+      inset 0 1px 0 hsl(0 0% 100% / 0.6);
+    transform: translateY(-2px);
+    border: none;
+  }
+  
+  .theme-aura .neu-button:active,
+  .theme-aura .neu-button-pressed {
+    transform: translateY(0);
+    box-shadow: 
+      inset 4px 4px 12px hsl(220 15% 82% / 0.8),
+      inset -4px -4px 12px hsl(0 0% 100% / 0.6);
+  }
+  
+  .theme-aura .neu-inset {
+    background: hsl(210 18% 93%);
+    border: none;
+    box-shadow: 
+      inset 4px 4px 12px hsl(220 15% 82% / 0.7),
+      inset -4px -4px 12px hsl(0 0% 100% / 0.5);
+  }
+  
+  .theme-aura .neu-card {
+    background: linear-gradient(145deg, hsl(210 18% 97%), hsl(210 18% 93%));
+    border: none;
+    box-shadow: 
+      12px 12px 30px hsl(220 15% 80% / 0.5),
+      -12px -12px 30px hsl(0 0% 100% / 0.7);
+    backdrop-filter: none;
+  }
+  
+  .theme-aura .neon-card {
+    background: hsl(210 18% 96%);
+    border: none;
+    box-shadow: 
+      8px 8px 20px hsl(220 15% 82% / 0.5),
+      -8px -8px 20px hsl(0 0% 100% / 0.6);
+    backdrop-filter: none;
+  }
+  
+  .theme-aura .neon-card:hover {
+    border: none;
+    box-shadow: 
+      10px 10px 25px hsl(220 15% 80% / 0.6),
+      -10px -10px 25px hsl(0 0% 100% / 0.7);
+  }
+  
+  .theme-aura .glass-3d {
+    background: hsl(210 18% 96% / 0.9);
+    backdrop-filter: blur(20px);
+    border: none;
+    box-shadow: 
+      8px 8px 20px hsl(220 15% 82% / 0.5),
+      -8px -8px 20px hsl(0 0% 100% / 0.6);
+  }
+  
+  .theme-aura .gradient-text {
+    background: linear-gradient(135deg, hsl(220 25% 45%), hsl(180 25% 50%), hsl(220 25% 55%));
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Aura-specific button overrides for 3D neumorphic effect */
+  .theme-aura button:not(.neu-button):not([class*="bg-"]) {
+    transition: all 0.2s ease;
+  }
+  
+  /* Status indicator glow - softer for aura */
+  .theme-aura .animate-pulse {
+    animation: aura-pulse 2s ease-in-out infinite;
+  }
+  
+  @keyframes aura-pulse {
+    0%, 100% { 
+      opacity: 1;
+      box-shadow: 0 0 8px hsl(150 40% 50% / 0.4);
+    }
+    50% { 
+      opacity: 0.8;
+      box-shadow: 0 0 15px hsl(150 40% 50% / 0.6);
+    }
+  }
 }
 
 @layer base {

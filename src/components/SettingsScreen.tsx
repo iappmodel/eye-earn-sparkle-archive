@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff } from 'lucide-react';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
+import { MediaSettings } from './MediaSettings';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility, ThemePack } from '@/contexts/AccessibilityContext';
 import { 
@@ -39,6 +40,12 @@ const themeOptions: { id: ThemePack; label: string; icon: React.ReactNode; descr
     label: 'Lunar', 
     icon: <Moon className="w-5 h-5" />, 
     description: 'Soft moonlight glow' 
+  },
+  { 
+    id: 'aura', 
+    label: 'Aura', 
+    icon: <Cloud className="w-5 h-5" />, 
+    description: 'White neumorphic' 
   },
 ];
 
@@ -504,6 +511,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 Buttons will magnetically snap to these points when dragged nearby
               </p>
             </div>
+          </section>
+
+          {/* Media & Accessibility Settings */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Type className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Media & Accessibility</h2>
+            </div>
+            <MediaSettings />
           </section>
 
           {/* RTL Indicator (for RTL languages) */}

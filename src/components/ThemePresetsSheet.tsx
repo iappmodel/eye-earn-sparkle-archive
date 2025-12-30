@@ -46,6 +46,15 @@ const themePresets: ThemePreset[] = [
     glowIntensity: 'intense',
   },
   {
+    id: 'aura',
+    name: 'Aura',
+    icon: <Sun className="w-5 h-5" />,
+    description: 'White neumorphic soft',
+    colors: { primary: '220 25% 55%', accent: '180 25% 60%', glow: '220 25% 55%' },
+    buttonStyle: 'soft',
+    glowIntensity: 'subtle',
+  },
+  {
     id: 'lunar',
     name: 'Lunar',
     icon: <Moon className="w-5 h-5" />,

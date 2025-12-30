@@ -12,6 +12,7 @@ interface EyeTrackingIndicatorProps {
   onAttentionLostTooLong?: () => void;
   videoDuration?: number;
   currentTime?: number;
+  attentionThreshold?: number;
 }
 
 const positionClasses: Record<EyeIndicatorPosition, string> = {
@@ -31,6 +32,7 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
   onAttentionLostTooLong,
   videoDuration = 0,
   currentTime = 0,
+  attentionThreshold = 10,
 }) => {
   const [isHidden, setIsHidden] = useState(false);
   const [irisOffset, setIrisOffset] = useState({ x: 0, y: 0 });
@@ -49,7 +51,7 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
     }
   }, [attentionScore, isAttentive]);
 
-  // Track attention lost time and trigger auto-pause if > 10%
+  // Track attention lost time and trigger auto-pause if > threshold %
   useEffect(() => {
     if (!isTracking || videoDuration <= 0) return;
 
@@ -65,11 +67,11 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
     if (totalWatchedTime > 0) {
       const lostPercentage = (attentionLostTimeRef.current / totalWatchedTime) * 100;
       
-      if (lostPercentage > 10 && !isAttentive) {
+      if (lostPercentage > attentionThreshold && !isAttentive) {
         onAttentionLostTooLong?.();
       }
     }
-  }, [isTracking, isAttentive, videoDuration, currentTime, onAttentionLostTooLong]);
+  }, [isTracking, isAttentive, videoDuration, currentTime, onAttentionLostTooLong, attentionThreshold]);
 
   // Reset attention lost time when tracking starts fresh
   useEffect(() => {

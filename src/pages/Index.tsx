@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, QuickVisibilityToggle, DoubleTapGestureDetector } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -431,8 +431,6 @@ const Index = () => {
               {/* Cross Navigation hints */}
               <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
 
-              {/* Quick Visibility Toggle */}
-              <QuickVisibilityToggle />
 
               {/* Floating Controls */}
               <FloatingControls

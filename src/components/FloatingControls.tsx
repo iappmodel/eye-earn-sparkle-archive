@@ -542,8 +542,8 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       {/* Right side 3D button stack - thumb zone optimized */}
       <div 
         className={cn(
-          'fixed right-3 top-[35%] -translate-y-1/2 z-40',
-          'flex flex-col items-center gap-1.5',
+          'fixed right-3 top-[25%] bottom-[25%] z-40',
+          'flex flex-col items-center justify-center gap-1.5',
           'transition-all duration-500 ease-out',
           isVisible 
             ? 'opacity-100 translate-x-0' 
@@ -662,7 +662,7 @@ export const QuickVisibilityToggle: React.FC = () => {
     <button
       onClick={toggleVisibility}
       className={cn(
-        'fixed left-3 top-[35%] -translate-y-1/2 z-50',
+        'fixed left-3 top-[50%] -translate-y-1/2 z-50',
         'w-8 h-8 rounded-full',
         'flex items-center justify-center',
         'transition-all duration-300',

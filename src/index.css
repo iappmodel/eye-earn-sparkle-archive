@@ -86,6 +86,35 @@
   animation: float calc(3s * var(--animation-speed, 1)) ease-in-out infinite;
 }
 
+/* Button Border Styles */
+.btn-border-gradient {
+  position: relative;
+  background: transparent;
+}
+
+.btn-border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(300 85% 60%), hsl(180 90% 50%), hsl(var(--primary)));
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-glow calc(2s * var(--animation-speed, 1)) linear infinite;
+}
+
+@keyframes border-glow {
+  0% { background: linear-gradient(135deg, hsl(var(--primary)), hsl(300 85% 60%), hsl(180 90% 50%), hsl(var(--primary))); }
+  25% { background: linear-gradient(225deg, hsl(var(--primary)), hsl(300 85% 60%), hsl(180 90% 50%), hsl(var(--primary))); }
+  50% { background: linear-gradient(315deg, hsl(var(--primary)), hsl(300 85% 60%), hsl(180 90% 50%), hsl(var(--primary))); }
+  75% { background: linear-gradient(45deg, hsl(var(--primary)), hsl(300 85% 60%), hsl(180 90% 50%), hsl(var(--primary))); }
+  100% { background: linear-gradient(135deg, hsl(var(--primary)), hsl(300 85% 60%), hsl(180 90% 50%), hsl(var(--primary))); }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -5,7 +5,7 @@ import {
   Heart, MessageCircle, Share2, UserPlus, Wallet, User, Cog, Gift, Bookmark, Flag, VolumeX,
   Bell, Star, ThumbsUp, ThumbsDown, Send, Camera, Video, Music, Image, Home, Search, Plus,
   Sparkles, Flame, Trophy, Crown, Diamond, Gem, Coins, Award, Target, Lightbulb,
-  Wand2, CircleDot, Waves, Activity,
+  Wand2, CircleDot, Waves, Activity, Square,
   type LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -51,6 +51,7 @@ const BUTTON_ICONS_KEY = 'visuai-button-icons';
 const BUTTON_COLORS_KEY = 'visuai-button-colors';
 const BUTTON_ANIMATIONS_KEY = 'visuai-button-animations';
 const BUTTON_OPACITY_KEY = 'visuai-button-opacity';
+const BUTTON_BORDERS_KEY = 'visuai-button-borders';
 
 // Grid snap configuration
 const GRID_SIZE = 40;
@@ -130,6 +131,16 @@ export const OPACITY_PRESETS: { value: number; label: string }[] = [
   { value: 75, label: '75%' },
   { value: 50, label: '50%' },
   { value: 25, label: '25%' },
+];
+
+// Border style options
+export type ButtonBorderStyle = 'none' | 'solid' | 'dashed' | 'dotted' | 'gradient';
+export const BUTTON_BORDER_OPTIONS: { value: ButtonBorderStyle; label: string; description: string }[] = [
+  { value: 'none', label: 'None', description: 'No border' },
+  { value: 'solid', label: 'Solid', description: 'Clean solid line' },
+  { value: 'dashed', label: 'Dashed', description: 'Dashed line' },
+  { value: 'dotted', label: 'Dotted', description: 'Dotted line' },
+  { value: 'gradient', label: 'Gradient', description: 'Neon glow border' },
 ];
 
 // Load/save button settings
@@ -399,6 +410,32 @@ export const getButtonOpacity = (buttonId: string): number => {
   return opacities[buttonId] ?? 100;
 };
 
+// Button border styles management
+export const getButtonBorders = (): Record<string, ButtonBorderStyle> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_BORDERS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonBorder = (buttonId: string, border: ButtonBorderStyle) => {
+  try {
+    const borders = getButtonBorders();
+    borders[buttonId] = border;
+    localStorage.setItem(BUTTON_BORDERS_KEY, JSON.stringify(borders));
+    window.dispatchEvent(new CustomEvent('buttonBordersChanged', { detail: borders }));
+  } catch (e) {
+    console.error('Failed to save button border:', e);
+  }
+};
+
+export const getButtonBorder = (buttonId: string): ButtonBorderStyle => {
+  const borders = getButtonBorders();
+  return borders[buttonId] || 'none';
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {
@@ -500,9 +537,11 @@ const ButtonSettingsPopover: React.FC<{
   const [selectedColor, setSelectedColor] = useState<string | undefined>(() => getButtonColor(buttonId));
   const [selectedAnimation, setSelectedAnimation] = useState<ButtonAnimationType>(() => getButtonAnimation(buttonId));
   const [selectedOpacity, setSelectedOpacity] = useState<number>(() => getButtonOpacity(buttonId));
+  const [selectedBorder, setSelectedBorder] = useState<ButtonBorderStyle>(() => getButtonBorder(buttonId));
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showAnimationPicker, setShowAnimationPicker] = useState(false);
+  const [showBorderPicker, setShowBorderPicker] = useState(false);
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -581,6 +620,12 @@ const ButtonSettingsPopover: React.FC<{
     light();
     setSelectedOpacity(opacity);
     setButtonOpacity(buttonId, opacity);
+  };
+
+  const handleBorderChange = (border: ButtonBorderStyle) => {
+    light();
+    setSelectedBorder(border);
+    setButtonBorder(buttonId, border);
   };
 
   const handleResetPosition = () => {
@@ -977,6 +1022,73 @@ const ButtonSettingsPopover: React.FC<{
                   <Eye className="w-5 h-5 text-primary-foreground" />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Border Style */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowBorderPicker(!showBorderPicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Square className={cn(
+                    'w-5 h-5',
+                    selectedBorder !== 'none' ? 'text-primary' : 'text-muted-foreground',
+                    selectedBorder === 'dashed' && 'border-2 border-dashed border-current',
+                    selectedBorder === 'dotted' && 'border-2 border-dotted border-current'
+                  )} />
+                  <span className="text-sm font-medium">
+                    {selectedBorder !== 'none' 
+                      ? BUTTON_BORDER_OPTIONS.find(b => b.value === selectedBorder)?.label + ' Border'
+                      : 'Add Border'}
+                  </span>
+                </div>
+                <Square 
+                  className={cn(
+                    'w-4 h-4 transition-colors',
+                    showBorderPicker ? 'text-primary' : 'text-muted-foreground'
+                  )} 
+                />
+              </button>
+              
+              {showBorderPicker && (
+                <div className="space-y-2 animate-fade-in p-2 rounded-xl bg-muted/30">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {BUTTON_BORDER_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleBorderChange(option.value)}
+                        className={cn(
+                          'p-2.5 rounded-lg transition-all text-left',
+                          selectedBorder === option.value
+                            ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                            : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                        )}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="text-[10px] opacity-70">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Border Preview */}
+                  {selectedBorder !== 'none' && (
+                    <div className="flex items-center justify-center p-3 rounded-lg bg-background/50">
+                      <div className={cn(
+                        'w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center',
+                        selectedBorder === 'solid' && 'border-2 border-primary',
+                        selectedBorder === 'dashed' && 'border-2 border-dashed border-primary',
+                        selectedBorder === 'dotted' && 'border-2 border-dotted border-primary',
+                        selectedBorder === 'gradient' && 'btn-border-gradient',
+                      )}>
+                        <Sparkles className="w-5 h-5 text-primary" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

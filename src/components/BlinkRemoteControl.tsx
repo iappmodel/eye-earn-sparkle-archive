@@ -47,6 +47,7 @@ import { useVoiceFeedback } from '@/hooks/useVoiceFeedback';
 import { EyeBlinkCalibration, CalibrationResult } from '@/components/EyeBlinkCalibration';
 import { EyeMovementTracking, EyeMovementResult } from '@/components/EyeMovementTracking';
 import FacialExpressionScanning, { FacialExpressionResult } from '@/components/FacialExpressionScanning';
+import { SlowBlinkTraining, SlowBlinkResult } from '@/components/SlowBlinkTraining';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -116,8 +117,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showBlinkCalibration, setShowBlinkCalibration] = useState(false);
   const [showEyeMovement, setShowEyeMovement] = useState(false);
   const [showFacialExpression, setShowFacialExpression] = useState(false);
+  const [showSlowBlinkTraining, setShowSlowBlinkTraining] = useState(false);
   const [blinkCalibrationResult, setBlinkCalibrationResult] = useState<CalibrationResult | null>(null);
   const [eyeMovementResult, setEyeMovementResult] = useState<EyeMovementResult | null>(null);
+  const [slowBlinkResult, setSlowBlinkResult] = useState<SlowBlinkResult | null>(null);
   
   // Tutorial hook
   const {
@@ -1140,7 +1143,25 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
         onComplete={(result: FacialExpressionResult) => {
           console.log('[RemoteControl] Facial expression calibration complete:', result);
           setShowFacialExpression(false);
-          // Save all calibration data
+          // Proceed to Slow Blink Training
+          setShowSlowBlinkTraining(true);
+        }}
+        onSkip={() => {
+          setShowFacialExpression(false);
+          // Skip to Slow Blink Training
+          setShowSlowBlinkTraining(true);
+        }}
+      />
+
+      {/* Slow Blink Training - Step 4 */}
+      <SlowBlinkTraining
+        isOpen={showSlowBlinkTraining}
+        onClose={() => setShowSlowBlinkTraining(false)}
+        onComplete={(result: SlowBlinkResult) => {
+          console.log('[RemoteControl] Slow blink training complete:', result);
+          setSlowBlinkResult(result);
+          setShowSlowBlinkTraining(false);
+          // Save all calibration data - training complete!
           saveCalibrationData({
             offsetX: 0,
             offsetY: 0,
@@ -1153,7 +1174,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           });
           haptics.success();
         }}
-        onSkip={() => setShowFacialExpression(false)}
+        onSkip={() => setShowSlowBlinkTraining(false)}
       />
 
       {/* Tutorial overlay */}

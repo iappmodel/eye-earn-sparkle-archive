@@ -615,10 +615,15 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         </LongPressButtonWrapper>
       </div>
       
-      {/* Blink Remote Control */}
+      {/* Blink Remote Control - integrated with navigation */}
       <BlinkRemoteControl
         enabled={remoteControlEnabled}
         onToggle={setRemoteControlEnabled}
+        onNavigate={(action, direction) => {
+          console.log('[FloatingControls] Gaze navigation:', action, direction);
+          // Navigation actions can be handled by parent components
+          window.dispatchEvent(new CustomEvent('gazeNavigate', { detail: { action, direction } }));
+        }}
         className="left-4 top-20"
       />
       

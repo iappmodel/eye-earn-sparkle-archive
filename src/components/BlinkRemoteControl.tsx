@@ -1,31 +1,65 @@
 import React, { useEffect, useState } from 'react';
-import { Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight } from 'lucide-react';
+import { 
+  Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight, 
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
+  ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   useBlinkRemoteControl, 
   BlinkAction,
+  GazeNavigationAction,
   getBlinkCommand,
   setBlinkCommand,
-  RemoteControlSettings 
+  RemoteControlSettings,
+  GazeCommand,
+  GhostButton,
 } from '@/hooks/useBlinkRemoteControl';
+import { GazeDirection } from '@/hooks/useGazeDirection';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
+  onNavigate?: (action: GazeNavigationAction, direction: GazeDirection) => void;
   className?: string;
 }
 
-const BLINK_ACTIONS: { value: BlinkAction; label: string; icon: string }[] = [
-  { value: 'click', label: 'Tap/Click', icon: '👆' },
-  { value: 'longPress', label: 'Long Press', icon: '✋' },
-  { value: 'toggle', label: 'Toggle', icon: '🔄' },
-  { value: 'none', label: 'No Action', icon: '⏸️' },
+const BLINK_ACTIONS: { value: BlinkAction; label: string; icon: React.ReactNode }[] = [
+  { value: 'click', label: 'Tap', icon: <MousePointer className="w-4 h-4" /> },
+  { value: 'longPress', label: 'Long Press', icon: <Hand className="w-4 h-4" /> },
+  { value: 'toggle', label: 'Toggle', icon: <ToggleLeft className="w-4 h-4" /> },
+  { value: 'none', label: 'None', icon: <Ban className="w-4 h-4" /> },
 ];
+
+const GAZE_ACTIONS: { value: GazeNavigationAction; label: string; icon: React.ReactNode }[] = [
+  { value: 'nextVideo', label: 'Next Video', icon: <SkipForward className="w-4 h-4" /> },
+  { value: 'prevVideo', label: 'Previous Video', icon: <SkipBack className="w-4 h-4" /> },
+  { value: 'friendsFeed', label: 'Friends Feed', icon: <Users className="w-4 h-4" /> },
+  { value: 'promoFeed', label: 'Promo Feed', icon: <Video className="w-4 h-4" /> },
+  { value: 'none', label: 'None', icon: <Ban className="w-4 h-4" /> },
+];
+
+const DIRECTION_ICONS: Record<GazeDirection, React.ReactNode> = {
+  left: <ArrowLeft className="w-5 h-5" />,
+  right: <ArrowRight className="w-5 h-5" />,
+  up: <ArrowUp className="w-5 h-5" />,
+  down: <ArrowDown className="w-5 h-5" />,
+  center: <Target className="w-5 h-5" />,
+};
+
+const DIRECTION_LABELS: Record<GazeDirection, string> = {
+  left: 'Look Left',
+  right: 'Look Right',
+  up: 'Look Up',
+  down: 'Look Down',
+  center: 'Center',
+};
 
 const CALIBRATION_POINTS = [
   { x: '10%', y: '10%', label: 'Top Left' },
@@ -37,11 +71,11 @@ const CALIBRATION_POINTS = [
 export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   enabled,
   onToggle,
+  onNavigate,
   className,
 }) => {
   const haptics = useHapticFeedback();
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedButton, setSelectedButton] = useState<string | null>(null);
   
   const {
     isActive,
@@ -52,17 +86,25 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     lastAction,
     calibrationStep,
     settings,
+    gazeCommands,
     eyeOpenness,
+    ghostButtons,
+    currentDirection,
     toggleActive,
     startCalibration,
     recordCalibrationPoint,
     cancelCalibration,
     updateSettings,
+    updateGazeCommand,
   } = useBlinkRemoteControl({
     enabled,
     onAction: (buttonId, action, count) => {
       haptics.medium();
       console.log('[RemoteControl] Action executed:', buttonId, action, count);
+    },
+    onNavigate: (action, direction) => {
+      haptics.success();
+      onNavigate?.(action, direction);
     },
   });
 
@@ -80,80 +122,294 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     }
   };
 
+  const getGazeCommandForDirection = (direction: GazeDirection): GazeCommand | undefined => {
+    return gazeCommands.find(c => c.direction === direction);
+  };
+
   return (
     <>
-      {/* Floating Control Button */}
-      <div className={cn(
-        'fixed z-50 flex flex-col items-center gap-2',
-        className
-      )}>
-        {/* Status indicator */}
-        <div className={cn(
-          'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-          'bg-background/80 backdrop-blur-sm border border-border/50',
-          isActive ? 'opacity-100' : 'opacity-60'
-        )}>
-          <div className={cn(
-            'w-2 h-2 rounded-full transition-colors',
-            isActive ? 'bg-green-500 animate-pulse' : 'bg-muted'
-          )} />
-          <span className="text-muted-foreground">
-            {isActive ? 'Remote Active' : 'Remote Off'}
-          </span>
-          {pendingBlinkCount > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 bg-primary text-primary-foreground rounded-full text-[10px]">
-              {pendingBlinkCount}×
-            </span>
-          )}
-        </div>
-
-        {/* Main control button */}
-        <Button
-          variant={isActive ? 'default' : 'outline'}
-          size="icon"
+      {/* Ghost button overlays */}
+      {isActive && Array.from(ghostButtons.values()).map((ghost) => (
+        <div
+          key={ghost.buttonId}
           className={cn(
-            'w-14 h-14 rounded-full shadow-lg transition-all',
-            isActive && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+            'fixed pointer-events-none z-[98] rounded-xl transition-all duration-300',
+            ghost.isGhost 
+              ? 'ring-2 ring-primary shadow-[0_0_30px_hsl(var(--primary)/0.5)]' 
+              : 'ring-1 ring-primary/30'
           )}
-          onClick={() => {
-            toggleActive();
-            onToggle(!isActive);
-            haptics.medium();
+          style={{
+            left: ghost.rect.left - 6,
+            top: ghost.rect.top - 6,
+            width: ghost.rect.width + 12,
+            height: ghost.rect.height + 12,
+            opacity: ghost.isGhost ? settings.ghostOpacity : 0.2,
+            background: ghost.isGhost 
+              ? `linear-gradient(135deg, hsl(var(--primary) / ${settings.ghostOpacity}), hsl(var(--primary) / ${settings.ghostOpacity * 0.5}))`
+              : 'transparent',
           }}
         >
-          {isActive ? (
-            <Eye className="w-6 h-6" />
-          ) : (
-            <EyeOff className="w-6 h-6" />
+          {ghost.isGhost && (
+            <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-primary-foreground text-xs rounded-full whitespace-nowrap animate-pulse">
+              👁 Blink to command
+            </div>
           )}
-        </Button>
-
-        {/* Quick settings */}
-        <Sheet open={showSettings} onOpenChange={setShowSettings}>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs"
+          {/* Activation progress ring */}
+          {!ghost.isGhost && (
+            <svg
+              className="absolute inset-0 w-full h-full"
+              viewBox="0 0 100 100"
+              style={{ transform: 'rotate(-90deg)' }}
             >
-              <Settings className="w-3 h-3 mr-1" />
-              Settings
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="bottom" className="h-[70vh]">
-            <SheetHeader>
-              <SheetTitle className="flex items-center gap-2">
-                <Eye className="w-5 h-5" />
-                Blink Remote Control
-              </SheetTitle>
-            </SheetHeader>
-            
-            <div className="mt-4 space-y-6 overflow-y-auto max-h-[55vh] pb-4">
+              <circle
+                cx="50"
+                cy="50"
+                r="48"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-primary/20"
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r="48"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray={`${ghost.activationProgress * 301} 301`}
+                className="text-primary transition-all duration-100"
+              />
+            </svg>
+          )}
+        </div>
+      ))}
+
+      {/* Gaze cursor */}
+      {isActive && gazePosition && !isCalibrating && (
+        <div
+          className="fixed pointer-events-none z-[100] transition-all duration-75"
+          style={{
+            left: gazePosition.x,
+            top: gazePosition.y,
+            transform: 'translate(-50%, -50%)',
+          }}
+        >
+          <div className={cn(
+            'w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all',
+            currentTarget 
+              ? 'border-primary bg-primary/20 scale-110' 
+              : 'border-muted-foreground/50 bg-background/30'
+          )}>
+            {/* Direction indicator */}
+            <div className={cn(
+              'transition-all',
+              currentDirection !== 'center' && 'text-primary'
+            )}>
+              {DIRECTION_ICONS[currentDirection]}
+            </div>
+          </div>
+          {/* Eye openness indicator */}
+          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-10 h-1.5 rounded-full bg-muted overflow-hidden">
+            <div 
+              className="h-full bg-primary transition-all duration-100"
+              style={{ width: `${eyeOpenness * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Direction indicator at edges */}
+      {isActive && currentDirection !== 'center' && (
+        <div className={cn(
+          'fixed pointer-events-none z-[95] flex items-center justify-center transition-all duration-200',
+          currentDirection === 'left' && 'left-0 top-1/2 -translate-y-1/2 w-16 h-32',
+          currentDirection === 'right' && 'right-0 top-1/2 -translate-y-1/2 w-16 h-32',
+          currentDirection === 'up' && 'top-0 left-1/2 -translate-x-1/2 w-32 h-16',
+          currentDirection === 'down' && 'bottom-0 left-1/2 -translate-x-1/2 w-32 h-16',
+        )}>
+          <div className={cn(
+            'px-4 py-2 rounded-full bg-primary/80 text-primary-foreground text-sm font-medium',
+            'animate-pulse flex items-center gap-2'
+          )}>
+            {DIRECTION_ICONS[currentDirection]}
+            <span>{getGazeCommandForDirection(currentDirection)?.action || 'Move'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Last action toast */}
+      {lastAction && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium animate-in fade-in slide-in-from-bottom-4">
+          <Check className="w-4 h-4 inline-block mr-2" />
+          {lastAction}
+        </div>
+      )}
+
+      {/* Pending blinks indicator */}
+      {isActive && pendingBlinkCount > 0 && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full animate-in fade-in">
+          <Eye className="w-4 h-4" />
+          <span className="font-bold text-lg">{pendingBlinkCount}</span>
+          <span className="text-xs opacity-80">blink{pendingBlinkCount > 1 ? 's' : ''} pending</span>
+        </div>
+      )}
+
+      {/* Settings Sheet */}
+      <Sheet open={showSettings} onOpenChange={setShowSettings}>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'fixed z-50 h-8 px-3 text-xs bg-background/80 backdrop-blur-sm',
+              className
+            )}
+            onClick={() => setShowSettings(true)}
+          >
+            <Settings className="w-3 h-3 mr-1" />
+            Remote Settings
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" className="h-[85vh]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-primary" />
+              Eye Remote Control
+            </SheetTitle>
+          </SheetHeader>
+          
+          <Tabs defaultValue="commands" className="mt-4">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="commands">Commands</TabsTrigger>
+              <TabsTrigger value="gaze">Gaze Nav</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+
+            {/* Blink Commands Tab */}
+            <TabsContent value="commands" className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pb-4">
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  Blink Commands
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Assign actions to different blink patterns. Stare at a button until it glows, then blink to execute.
+                </p>
+              </div>
+
+              {/* Blink pattern assignments */}
+              <div className="space-y-4">
+                {[1, 2, 3].map((blinkCount) => (
+                  <div key={blinkCount} className="p-4 rounded-lg border border-border space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-1">
+                        {Array.from({ length: blinkCount }).map((_, i) => (
+                          <Eye key={i} className="w-5 h-5 text-primary" />
+                        ))}
+                      </div>
+                      <span className="font-medium">{blinkCount}× Blink</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {BLINK_ACTIONS.map((action) => (
+                        <button
+                          key={action.value}
+                          className={cn(
+                            'p-3 rounded-lg border text-center transition-all flex flex-col items-center gap-1',
+                            'hover:border-primary/50'
+                          )}
+                        >
+                          <span className="text-muted-foreground">{action.icon}</span>
+                          <span className="text-xs">{action.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Default: {blinkCount === 1 ? 'Tap' : blinkCount === 2 ? 'Long Press' : 'Toggle'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            {/* Gaze Navigation Tab */}
+            <TabsContent value="gaze" className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pb-4">
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-primary" />
+                  Gaze Navigation
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Rapidly move your eyes to the edge of the screen to navigate. Each direction can trigger a different action.
+                </p>
+              </div>
+
+              {/* Direction commands */}
+              <div className="space-y-3">
+                {(['left', 'right', 'up', 'down'] as GazeDirection[]).map((direction) => {
+                  const command = getGazeCommandForDirection(direction);
+                  return (
+                    <div 
+                      key={direction} 
+                      className="p-4 rounded-lg border border-border flex items-center gap-4"
+                    >
+                      <div className={cn(
+                        'w-12 h-12 rounded-full flex items-center justify-center',
+                        'bg-primary/10 text-primary'
+                      )}>
+                        {DIRECTION_ICONS[direction]}
+                      </div>
+                      <div className="flex-1">
+                        <h5 className="font-medium">{DIRECTION_LABELS[direction]}</h5>
+                        <p className="text-xs text-muted-foreground">Rapidly look {direction}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select 
+                          className="px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                          value={command?.action || 'none'}
+                          onChange={(e) => {
+                            updateGazeCommand(direction, e.target.value as GazeNavigationAction, true);
+                            haptics.light();
+                          }}
+                        >
+                          {GAZE_ACTIONS.map((action) => (
+                            <option key={action.value} value={action.value}>
+                              {action.label}
+                            </option>
+                          ))}
+                        </select>
+                        <Switch
+                          checked={command?.enabled ?? true}
+                          onCheckedChange={(checked) => {
+                            updateGazeCommand(direction, command?.action || 'none', checked);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Enable/disable all */}
+              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                <div>
+                  <h4 className="font-medium">Rapid Eye Movement</h4>
+                  <p className="text-sm text-muted-foreground">Enable gaze navigation commands</p>
+                </div>
+                <Switch
+                  checked={settings.rapidMovementEnabled}
+                  onCheckedChange={(checked) => updateSettings({ rapidMovementEnabled: checked })}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Settings Tab */}
+            <TabsContent value="settings" className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pb-4">
               {/* Main toggle */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                 <div>
                   <h4 className="font-medium">Enable Remote Control</h4>
-                  <p className="text-sm text-muted-foreground">Control the app by blinking at buttons</p>
+                  <p className="text-sm text-muted-foreground">Control the app with your eyes</p>
                 </div>
                 <Switch
                   checked={settings.enabled}
@@ -165,10 +421,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
               </div>
 
               {/* Sensitivity */}
-              <div className="space-y-2">
+              <div className="space-y-2 p-4 rounded-lg border border-border">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Gaze Sensitivity</label>
-                  <span className="text-xs text-muted-foreground">{settings.sensitivity}/10</span>
+                  <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">{settings.sensitivity}/10</span>
                 </div>
                 <Slider
                   value={[settings.sensitivity]}
@@ -177,28 +433,62 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   step={1}
                   onValueChange={([value]) => updateSettings({ sensitivity: value })}
                 />
+                <p className="text-xs text-muted-foreground">Higher = more responsive to small eye movements</p>
               </div>
 
-              {/* Gaze hold time */}
-              <div className="space-y-2">
+              {/* Ghost mode timing */}
+              <div className="space-y-2 p-4 rounded-lg border border-border">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">Target Lock Time</label>
-                  <span className="text-xs text-muted-foreground">{settings.gazeHoldTime}ms</span>
+                  <label className="text-sm font-medium">Stare Time (Ghost Mode)</label>
+                  <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">{settings.gazeHoldTime}ms</span>
                 </div>
                 <Slider
                   value={[settings.gazeHoldTime]}
-                  min={200}
-                  max={1500}
+                  min={300}
+                  max={2000}
                   step={100}
                   onValueChange={([value]) => updateSettings({ gazeHoldTime: value })}
                 />
+                <p className="text-xs text-muted-foreground">How long to stare at a button before it activates</p>
+              </div>
+
+              {/* Ghost opacity */}
+              <div className="space-y-2 p-4 rounded-lg border border-border">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Ghost Button Opacity</label>
+                  <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">{Math.round(settings.ghostOpacity * 100)}%</span>
+                </div>
+                <Slider
+                  value={[settings.ghostOpacity]}
+                  min={0.2}
+                  max={0.6}
+                  step={0.05}
+                  onValueChange={([value]) => updateSettings({ ghostOpacity: value })}
+                />
+                <p className="text-xs text-muted-foreground">Visibility of the ghost highlight when targeting a button</p>
+              </div>
+
+              {/* Edge threshold */}
+              <div className="space-y-2 p-4 rounded-lg border border-border">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Edge Detection Zone</label>
+                  <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">{Math.round(settings.edgeThreshold * 100)}%</span>
+                </div>
+                <Slider
+                  value={[settings.edgeThreshold]}
+                  min={0.2}
+                  max={0.5}
+                  step={0.05}
+                  onValueChange={([value]) => updateSettings({ edgeThreshold: value })}
+                />
+                <p className="text-xs text-muted-foreground">How far your eyes need to move to trigger navigation</p>
               </div>
 
               {/* Blink pattern timeout */}
-              <div className="space-y-2">
+              <div className="space-y-2 p-4 rounded-lg border border-border">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium">Blink Pattern Window</label>
-                  <span className="text-xs text-muted-foreground">{settings.blinkPatternTimeout}ms</span>
+                  <span className="text-xs text-muted-foreground px-2 py-1 bg-muted rounded">{settings.blinkPatternTimeout}ms</span>
                 </div>
                 <Slider
                   value={[settings.blinkPatternTimeout]}
@@ -207,13 +497,17 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   step={100}
                   onValueChange={([value]) => updateSettings({ blinkPatternTimeout: value })}
                 />
+                <p className="text-xs text-muted-foreground">Time window to complete multi-blink patterns</p>
               </div>
 
               {/* Calibration */}
-              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
-                <h4 className="font-medium">Calibration</h4>
+              <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  Calibration
+                </h4>
                 <p className="text-sm text-muted-foreground">
-                  Improve gaze accuracy by looking at screen corners
+                  Improve accuracy by calibrating to your eye position
                 </p>
                 <Button
                   variant="outline"
@@ -227,96 +521,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   Start Calibration
                 </Button>
               </div>
-
-              {/* Blink commands explanation */}
-              <div className="p-4 rounded-lg border border-border space-y-3">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Zap className="w-4 h-4" />
-                  How It Works
-                </h4>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">1</span>
-                    <span>Look at a button to target it</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">2</span>
-                    <span>Blink 1×, 2×, or 3× for different actions</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">3</span>
-                    <span>The command executes automatically</span>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-border">
-                  <p className="text-xs text-muted-foreground">
-                    <strong>Default commands:</strong><br />
-                    1× Blink = Tap • 2× Blinks = Long Press • 3× Blinks = Toggle
-                  </p>
-                </div>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
-
-      {/* Gaze cursor */}
-      {isActive && gazePosition && !isCalibrating && (
-        <div
-          className="fixed pointer-events-none z-[100] transition-all duration-75"
-          style={{
-            left: gazePosition.x,
-            top: gazePosition.y,
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          <div className={cn(
-            'w-12 h-12 rounded-full border-2 flex items-center justify-center transition-all',
-            currentTarget 
-              ? 'border-primary bg-primary/20 scale-110' 
-              : 'border-muted-foreground/50 bg-background/30'
-          )}>
-            <Target className={cn(
-              'w-5 h-5 transition-colors',
-              currentTarget ? 'text-primary' : 'text-muted-foreground'
-            )} />
-          </div>
-          {/* Eye openness indicator */}
-          <div 
-            className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-8 h-1 rounded-full bg-muted overflow-hidden"
-          >
-            <div 
-              className="h-full bg-primary transition-all duration-100"
-              style={{ width: `${eyeOpenness * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Target highlight */}
-      {isActive && currentTarget && !isCalibrating && (
-        <div
-          className="fixed pointer-events-none z-[99] border-2 border-primary rounded-lg animate-pulse"
-          style={{
-            left: currentTarget.rect.left - 4,
-            top: currentTarget.rect.top - 4,
-            width: currentTarget.rect.width + 8,
-            height: currentTarget.rect.height + 8,
-          }}
-        >
-          <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-primary text-primary-foreground text-xs rounded whitespace-nowrap">
-            {currentTarget.buttonId}
-          </div>
-        </div>
-      )}
-
-      {/* Last action toast */}
-      {lastAction && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 bg-primary text-primary-foreground rounded-full text-sm font-medium animate-in fade-in slide-in-from-bottom-4">
-          <Check className="w-4 h-4 inline-block mr-1" />
-          {lastAction}
-        </div>
-      )}
+            </TabsContent>
+          </Tabs>
+        </SheetContent>
+      </Sheet>
 
       {/* Calibration overlay */}
       {isCalibrating && (
@@ -324,7 +532,6 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center"
           onClick={handleCalibrationClick}
         >
-          {/* Cancel button */}
           <Button
             variant="ghost"
             size="icon"
@@ -337,7 +544,6 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
             <X className="w-5 h-5" />
           </Button>
 
-          {/* Calibration point */}
           {calibrationStep < 4 && (
             <div
               className="absolute flex flex-col items-center gap-2"
@@ -347,50 +553,39 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 transform: 'translate(-50%, -50%)',
               }}
             >
-              <div className="w-16 h-16 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center animate-pulse">
-                <Target className="w-8 h-8 text-primary" />
+              <div className="w-20 h-20 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center animate-pulse">
+                <Target className="w-10 h-10 text-primary" />
               </div>
               <span className="text-sm font-medium">{CALIBRATION_POINTS[calibrationStep].label}</span>
               <span className="text-xs text-muted-foreground">Look here and tap</span>
             </div>
           )}
 
-          {/* Progress */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
                 className={cn(
-                  'w-3 h-3 rounded-full transition-colors',
-                  i < calibrationStep ? 'bg-primary' : 'bg-muted'
+                  'w-4 h-4 rounded-full transition-all',
+                  i < calibrationStep ? 'bg-primary scale-110' : 'bg-muted'
                 )}
               />
             ))}
           </div>
 
-          {/* Instructions */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center">
-            <h3 className="text-xl font-bold mb-2">Calibration</h3>
+            <h3 className="text-2xl font-bold mb-2">Calibration</h3>
             <p className="text-muted-foreground">
-              Look at the target and tap it to calibrate
+              Look at each target and tap to calibrate
             </p>
           </div>
-        </div>
-      )}
-
-      {/* Pending blinks indicator */}
-      {isActive && pendingBlinkCount > 0 && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground rounded-full animate-in fade-in">
-          <Eye className="w-4 h-4" />
-          <span className="font-bold">{pendingBlinkCount}</span>
-          <span className="text-xs opacity-80">blink{pendingBlinkCount > 1 ? 's' : ''}</span>
         </div>
       )}
     </>
   );
 };
 
-// Button command customization component
+// Export command editor for individual button customization
 interface BlinkCommandEditorProps {
   buttonId: string;
   onClose: () => void;
@@ -412,80 +607,49 @@ export const BlinkCommandEditor: React.FC<BlinkCommandEditorProps> = ({
 
   return (
     <div className="p-4 space-y-4">
-      <h3 className="font-medium">Blink Commands for: {buttonId}</h3>
+      <h3 className="font-medium flex items-center gap-2">
+        <Eye className="w-4 h-4" />
+        Blink Commands: {buttonId}
+      </h3>
       
-      {/* Single blink */}
-      <div className="space-y-2">
-        <label className="text-sm text-muted-foreground">1× Blink</label>
-        <div className="grid grid-cols-4 gap-2">
-          {BLINK_ACTIONS.map((action) => (
-            <button
-              key={action.value}
-              className={cn(
-                'p-2 rounded-lg border text-center transition-all',
-                singleBlink === action.value
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border hover:border-primary/50'
-              )}
-              onClick={() => setSingleBlink(action.value)}
-            >
-              <span className="text-lg">{action.icon}</span>
-              <span className="block text-xs mt-1">{action.label}</span>
-            </button>
-          ))}
+      {[
+        { count: 1, value: singleBlink, setter: setSingleBlink },
+        { count: 2, value: doubleBlink, setter: setDoubleBlink },
+        { count: 3, value: tripleBlink, setter: setTripleBlink },
+      ].map(({ count, value, setter }) => (
+        <div key={count} className="space-y-2">
+          <label className="text-sm text-muted-foreground flex items-center gap-2">
+            {Array.from({ length: count }).map((_, i) => (
+              <Eye key={i} className="w-4 h-4" />
+            ))}
+            {count}× Blink
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {BLINK_ACTIONS.map((action) => (
+              <button
+                key={action.value}
+                className={cn(
+                  'p-3 rounded-lg border text-center transition-all flex flex-col items-center gap-1',
+                  value === action.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-primary/50'
+                )}
+                onClick={() => setter(action.value)}
+              >
+                {action.icon}
+                <span className="text-xs">{action.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* Double blink */}
-      <div className="space-y-2">
-        <label className="text-sm text-muted-foreground">2× Blinks</label>
-        <div className="grid grid-cols-4 gap-2">
-          {BLINK_ACTIONS.map((action) => (
-            <button
-              key={action.value}
-              className={cn(
-                'p-2 rounded-lg border text-center transition-all',
-                doubleBlink === action.value
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border hover:border-primary/50'
-              )}
-              onClick={() => setDoubleBlink(action.value)}
-            >
-              <span className="text-lg">{action.icon}</span>
-              <span className="block text-xs mt-1">{action.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Triple blink */}
-      <div className="space-y-2">
-        <label className="text-sm text-muted-foreground">3× Blinks</label>
-        <div className="grid grid-cols-4 gap-2">
-          {BLINK_ACTIONS.map((action) => (
-            <button
-              key={action.value}
-              className={cn(
-                'p-2 rounded-lg border text-center transition-all',
-                tripleBlink === action.value
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border hover:border-primary/50'
-              )}
-              onClick={() => setTripleBlink(action.value)}
-            >
-              <span className="text-lg">{action.icon}</span>
-              <span className="block text-xs mt-1">{action.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      ))}
 
       <div className="flex gap-2 pt-2">
         <Button variant="outline" className="flex-1" onClick={onClose}>
           Cancel
         </Button>
         <Button className="flex-1" onClick={handleSave}>
-          Save Commands
+          Save
         </Button>
       </div>
     </div>

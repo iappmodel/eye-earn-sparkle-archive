@@ -38,6 +38,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [showRewardBadge, setShowRewardBadge] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [attentionWarning, setAttentionWarning] = useState(false);
+  const [attentionPaused, setAttentionPaused] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(duration);
   const hasCompleted = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
@@ -56,10 +59,6 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     onAttentionLost: () => {
       if (isPromoContent) {
         setAttentionWarning(true);
-        // Toast temporarily disabled
-        // toast.warning('Look at the screen to earn reward!', {
-        //   duration: 2000,
-        // });
       }
     },
     onAttentionRestored: () => {
@@ -68,6 +67,29 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     requiredAttentionThreshold: 85,
   });
 
+  // Handle auto-pause when attention lost for too long (>10% of video time)
+  const handleAttentionLostTooLong = useCallback(() => {
+    if (isPromoContent && isPlaying && !attentionPaused) {
+      setAttentionPaused(true);
+      setIsPlaying(false);
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    }
+  }, [isPromoContent, isPlaying, attentionPaused]);
+
+  // Resume from attention pause
+  const handleResumeFromAttentionPause = useCallback(() => {
+    if (attentionPaused) {
+      setAttentionPaused(false);
+      setAttentionWarning(false);
+      setIsPlaying(true);
+      if (videoRef.current) {
+        videoRef.current.play().catch(console.error);
+      }
+    }
+  }, [attentionPaused]);
+
   // Reset state when media changes
   useEffect(() => {
     setProgress(0);
@@ -75,6 +97,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     setShowRewardBadge(false);
     setShowControls(false);
     setAttentionWarning(false);
+    setAttentionPaused(false);
+    setCurrentTime(0);
     hasCompleted.current = false;
     startTimeRef.current = 0;
     resetAttention();
@@ -170,7 +194,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     const handleTimeUpdate = () => {
       const newProgress = (video.currentTime / video.duration) * 100;
       setProgress(newProgress);
+      setCurrentTime(video.currentTime);
       onProgress?.(newProgress);
+    };
+
+    const handleLoadedMetadata = () => {
+      setVideoDuration(video.duration);
     };
 
     const handleEnded = () => {
@@ -182,10 +211,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     };
 
     video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('ended', handleEnded);
 
     return () => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('ended', handleEnded);
     };
   }, [isActive, isPromoContent, handlePromoComplete, onComplete, onProgress]);
@@ -308,20 +339,44 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Bottom gradient for controls visibility */}
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
-      {/* Eye tracking indicator - center top */}
-      {isPromoContent && isPlaying && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20">
-          <EyeTrackingIndicator
-            isTracking={isTracking}
-            isFaceDetected={isFaceDetected}
-            attentionScore={attentionScore}
-          />
-        </div>
+      {/* Eye tracking indicator - very top center edge */}
+      {isPromoContent && (isPlaying || attentionPaused) && (
+        <EyeTrackingIndicator
+          isTracking={isTracking}
+          isFaceDetected={isFaceDetected}
+          attentionScore={attentionScore}
+          position="top-center"
+          onAttentionLostTooLong={handleAttentionLostTooLong}
+          videoDuration={videoDuration}
+          currentTime={currentTime}
+        />
       )}
 
       {/* Attention warning overlay */}
-      {attentionWarning && (
+      {attentionWarning && !attentionPaused && (
         <div className="absolute inset-0 bg-destructive/10 pointer-events-none z-10 animate-pulse" />
+      )}
+
+      {/* Attention pause overlay - requires user to look back */}
+      {attentionPaused && (
+        <div 
+          className="absolute inset-0 bg-background/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4 cursor-pointer animate-fade-in"
+          onClick={handleResumeFromAttentionPause}
+        >
+          <div className="w-20 h-20 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
+            <svg viewBox="0 0 40 40" className="w-16 h-16 stroke-red-500" fill="none" strokeWidth="1.5">
+              <circle cx="20" cy="20" r="18" />
+              <circle cx="20" cy="20" r="10" />
+            </svg>
+            <div className="absolute w-4 h-4 rounded-full bg-red-500" />
+          </div>
+          <p className="text-foreground text-lg font-medium text-center px-8">
+            Look at the screen to continue
+          </p>
+          <p className="text-muted-foreground text-sm">
+            Tap anywhere to resume
+          </p>
+        </div>
       )}
 
       {/* Reward badge - appears for 3 seconds */}
@@ -334,7 +389,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       )}
 
       {/* Initial play button overlay - shown before playing starts */}
-      {!isPlaying && type !== 'image' && !showControls && (
+      {!isPlaying && type !== 'image' && !showControls && !attentionPaused && (
         <button
           onClick={handlePlay}
           className="absolute inset-0 flex items-center justify-center z-10"

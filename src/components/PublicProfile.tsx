@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, MessageCircle, UserPlus, UserMinus, Share2, MoreHorizontal, MapPin, Calendar, LinkIcon } from 'lucide-react';
+import { X, MessageCircle, UserPlus, UserMinus, Share2, MoreHorizontal, Calendar } from 'lucide-react';
 import { NeuButton } from './NeuButton';
-import { CoinDisplay } from './CoinDisplay';
 import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFollow } from '@/hooks/useFollow';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,8 +52,8 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isFollowing, setIsFollowing] = useState(false);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const { isFollowing, isLoading: followLoading, followersCount, toggleFollow } = useFollow(userId);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -96,9 +96,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   }, [userId, isOpen, user?.id]);
 
   const handleFollow = async () => {
-    // Toggle follow state (placeholder - would need followers table)
-    setIsFollowing(!isFollowing);
-    toast.success(isFollowing ? 'Unfollowed' : 'Following');
+    await toggleFollow();
   };
 
   const handleShare = async () => {
@@ -226,7 +224,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
               {/* Stats */}
               <div className="grid grid-cols-4 gap-2 mb-6">
                 <div className="neu-inset rounded-xl p-3 text-center">
-                  <p className="text-lg font-bold text-foreground">{profile?.followers_count || 0}</p>
+                  <p className="text-lg font-bold text-foreground">{followersCount}</p>
                   <p className="text-xs text-muted-foreground">Followers</p>
                 </div>
                 <div className="neu-inset rounded-xl p-3 text-center">
@@ -248,6 +246,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
                 <div className="flex gap-3 mb-6">
                   <Button
                     onClick={handleFollow}
+                    disabled={followLoading}
                     className={cn(
                       'flex-1 gap-2',
                       isFollowing ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { 
   Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight, 
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
-  ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video
+  ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video,
+  Sparkles, Plus, Trash2, HelpCircle, BookOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -21,12 +22,24 @@ import {
   GhostButton,
 } from '@/hooks/useBlinkRemoteControl';
 import { GazeDirection } from '@/hooks/useGazeDirection';
+import { 
+  useGestureCombos, 
+  GestureCombo, 
+  ComboAction, 
+  describeCombo,
+  COMBO_ACTION_LABELS,
+} from '@/hooks/useGestureCombos';
+import { 
+  RemoteControlTutorial, 
+  useRemoteControlTutorial 
+} from '@/components/RemoteControlTutorial';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
   onToggle: (enabled: boolean) => void;
   onNavigate?: (action: GazeNavigationAction, direction: GazeDirection) => void;
+  onComboAction?: (action: ComboAction, combo: GestureCombo) => void;
   className?: string;
 }
 
@@ -72,10 +85,40 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   enabled,
   onToggle,
   onNavigate,
+  onComboAction,
   className,
 }) => {
   const haptics = useHapticFeedback();
   const [showSettings, setShowSettings] = useState(false);
+  
+  // Tutorial hook
+  const {
+    shouldShowTutorial,
+    isTutorialOpen,
+    openTutorial,
+    closeTutorial,
+    completeTutorial,
+    resetTutorial,
+  } = useRemoteControlTutorial();
+
+  // Gesture combos
+  const {
+    currentSteps: comboSteps,
+    matchProgress: comboProgress,
+    lastMatchedCombo,
+    combos,
+    enabledCombos,
+    addDirectionStep,
+    addBlinkStep,
+    updateCombo: updateGestureCombo,
+  } = useGestureCombos({
+    enabled: enabled,
+    onComboExecuted: (combo) => {
+      haptics.success();
+      console.log('[RemoteControl] Combo executed:', combo.name, combo.action);
+      onComboAction?.(combo.action, combo);
+    },
+  });
   
   const {
     isActive,
@@ -280,9 +323,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           </SheetHeader>
           
           <Tabs defaultValue="commands" className="mt-4">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="commands">Commands</TabsTrigger>
-              <TabsTrigger value="gaze">Gaze Nav</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="commands">Blinks</TabsTrigger>
+              <TabsTrigger value="combos">Combos</TabsTrigger>
+              <TabsTrigger value="gaze">Gaze</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
             </TabsList>
 
@@ -329,6 +373,122 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     </p>
                   </div>
                 ))}
+              </div>
+            </TabsContent>
+
+            {/* Gesture Combos Tab */}
+            <TabsContent value="combos" className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pb-4">
+              <div className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-amber-500/10 border border-primary/20 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  Gesture Combos
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Combine eye movements and blinks for powerful shortcuts. Execute a sequence of gestures to trigger actions.
+                </p>
+              </div>
+
+              {/* Combo progress indicator */}
+              {comboSteps.length > 0 && (
+                <div className="p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    {comboSteps.map((step, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        {step.type === 'direction' && DIRECTION_ICONS[step.direction]}
+                        {step.type === 'blink' && (
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: step.count }).map((_, j) => (
+                              <Eye key={j} className="w-4 h-4 text-primary" />
+                            ))}
+                          </div>
+                        )}
+                        {i < comboSteps.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex-1">
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all"
+                        style={{ width: `${comboProgress * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{Math.round(comboProgress * 100)}%</span>
+                </div>
+              )}
+
+              {/* Last matched combo */}
+              {lastMatchedCombo && (
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center gap-2">
+                  <Check className="w-4 h-4 text-green-500" />
+                  <span className="text-sm font-medium">{lastMatchedCombo.name}</span>
+                  <span className="text-xs text-muted-foreground">→ {COMBO_ACTION_LABELS[lastMatchedCombo.action]}</span>
+                </div>
+              )}
+
+              {/* Available combos */}
+              <div className="space-y-3">
+                {combos.map((combo) => (
+                  <div 
+                    key={combo.id} 
+                    className={cn(
+                      'p-4 rounded-lg border flex items-start gap-4 transition-all',
+                      combo.enabled ? 'border-border' : 'border-border/50 opacity-60'
+                    )}
+                  >
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <h5 className="font-medium">{combo.name}</h5>
+                        {!combo.id.startsWith('custom-') && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Built-in</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{combo.description}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {combo.steps.map((step, i) => (
+                          <div key={i} className="flex items-center gap-1">
+                            <div className="px-2 py-1 rounded bg-muted text-xs flex items-center gap-1">
+                              {step.type === 'direction' && (
+                                <>
+                                  {DIRECTION_ICONS[step.direction]}
+                                  <span>Look {step.direction}</span>
+                                </>
+                              )}
+                              {step.type === 'blink' && (
+                                <>
+                                  <div className="flex gap-0.5">
+                                    {Array.from({ length: step.count }).map((_, j) => (
+                                      <Eye key={j} className="w-3 h-3" />
+                                    ))}
+                                  </div>
+                                  <span>{step.count}× blink</span>
+                                </>
+                              )}
+                            </div>
+                            {i < combo.steps.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                          </div>
+                        ))}
+                        <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-xs font-medium text-primary">{COMBO_ACTION_LABELS[combo.action]}</span>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={combo.enabled}
+                      onCheckedChange={(checked) => {
+                        updateGestureCombo(combo.id, { enabled: checked });
+                        haptics.light();
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Help text */}
+              <div className="p-4 rounded-lg border border-dashed border-border text-center space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  More combo options coming soon! You can enable/disable existing combos above.
+                </p>
               </div>
             </TabsContent>
 
@@ -521,6 +681,40 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   Start Calibration
                 </Button>
               </div>
+
+              {/* Tutorial */}
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Tutorial
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Learn how to use eye remote control step by step
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowSettings(false);
+                      openTutorial();
+                    }}
+                  >
+                    <HelpCircle className="w-4 h-4 mr-2" />
+                    View Tutorial
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      resetTutorial();
+                      haptics.light();
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
         </SheetContent>
@@ -578,6 +772,36 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
             <p className="text-muted-foreground">
               Look at each target and tap to calibrate
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tutorial overlay */}
+      <RemoteControlTutorial
+        isOpen={isTutorialOpen}
+        onClose={closeTutorial}
+        onComplete={completeTutorial}
+      />
+
+      {/* First-time prompt */}
+      {shouldShowTutorial && enabled && !isTutorialOpen && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 z-[101] animate-in fade-in slide-in-from-bottom-4">
+          <div className="px-4 py-3 rounded-xl bg-primary text-primary-foreground shadow-lg flex items-center gap-3">
+            <Sparkles className="w-5 h-5" />
+            <span className="text-sm font-medium">New to Eye Remote?</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={openTutorial}
+            >
+              Start Tutorial
+            </Button>
+            <button
+              onClick={() => completeTutorial()}
+              className="text-primary-foreground/70 hover:text-primary-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

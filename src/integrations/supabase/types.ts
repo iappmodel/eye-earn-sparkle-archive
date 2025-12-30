@@ -1154,6 +1154,8 @@ export type Database = {
           reward_claimed_at: string | null
           reward_type: string | null
           status: string
+          streak_bonus: number | null
+          streak_day: number | null
           user_id: string
           user_latitude: number
           user_longitude: number
@@ -1172,6 +1174,8 @@ export type Database = {
           reward_claimed_at?: string | null
           reward_type?: string | null
           status?: string
+          streak_bonus?: number | null
+          streak_day?: number | null
           user_id: string
           user_latitude: number
           user_longitude: number
@@ -1190,6 +1194,8 @@ export type Database = {
           reward_claimed_at?: string | null
           reward_type?: string | null
           status?: string
+          streak_bonus?: number | null
+          streak_day?: number | null
           user_id?: string
           user_latitude?: number
           user_longitude?: number
@@ -1235,6 +1241,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "promotion_claims_promotion_id_fkey"
+            columns: ["promotion_id"]
+            isOneToOne: false
+            referencedRelation: "promotions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promotion_reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          helpful_count: number | null
+          id: string
+          photos: string[] | null
+          promotion_id: string
+          rating: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          helpful_count?: number | null
+          id?: string
+          photos?: string[] | null
+          promotion_id: string
+          rating: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          helpful_count?: number | null
+          id?: string
+          photos?: string[] | null
+          promotion_id?: string
+          rating?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promotion_reviews_promotion_id_fkey"
             columns: ["promotion_id"]
             isOneToOne: false
             referencedRelation: "promotions"

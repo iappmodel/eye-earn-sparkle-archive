@@ -22,6 +22,7 @@ import Create from "./pages/Create";
 import Studio from "./pages/Studio";
 import MyPage from "./pages/MyPage";
 import NotFound from "./pages/NotFound";
+import { PromotionDetails } from "./components/PromotionDetails";
 
 const queryClient = new QueryClient();
 
@@ -80,6 +81,14 @@ const AppContent = () => {
           }
         />
         <Route path="/install" element={<Install />} />
+        <Route
+          path="/promotion/:id"
+          element={
+            <ProtectedRoute>
+              <PromotionDetails />
+            </ProtectedRoute>
+          }
+        />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

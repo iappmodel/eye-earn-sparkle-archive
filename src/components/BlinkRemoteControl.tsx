@@ -3,7 +3,7 @@ import {
   Eye, EyeOff, Target, Zap, Settings, X, Check, ChevronRight, 
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
   ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video,
-  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock, Volume2, VolumeX
+  Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock, Volume2, VolumeX, Film
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,7 @@ import {
 import { GestureComboBuilder } from '@/components/GestureComboBuilder';
 import { GestureComboImportExport } from '@/components/GestureComboImportExport';
 import { ComboPracticeMode } from '@/components/ComboPracticeMode';
+import ComboGuideOverlay from '@/components/ComboGuideOverlay';
 import { 
   RemoteControlTutorial, 
   useRemoteControlTutorial 
@@ -98,6 +99,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const [showComboBuilder, setShowComboBuilder] = useState(false);
   const [practiceMode, setPracticeMode] = useState(false);
+  const [showComboGuide, setShowComboGuide] = useState(false);
   
   // Tutorial hook
   const {
@@ -405,15 +407,24 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 </p>
               </div>
 
-              {/* Create new combo button */}
-              <Button 
-                onClick={() => setShowComboBuilder(true)}
-                className="w-full"
-                variant="outline"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Custom Combo
-              </Button>
+              {/* Create new combo button & Guide button */}
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setShowComboBuilder(true)}
+                  className="flex-1"
+                  variant="outline"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Custom Combo
+                </Button>
+                <Button 
+                  onClick={() => setShowComboGuide(true)}
+                  variant="outline"
+                >
+                  <Film className="w-4 h-4 mr-2" />
+                  Combo Guide
+                </Button>
+              </div>
 
               {/* Combo progress indicator */}
               {comboSteps.length > 0 && (
@@ -561,6 +572,12 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 currentSteps={comboSteps}
                 matchProgress={comboProgress}
                 lastMatchedCombo={lastMatchedCombo}
+              />
+
+              {/* Combo Guide Overlay */}
+              <ComboGuideOverlay
+                isOpen={showComboGuide}
+                onClose={() => setShowComboGuide(false)}
               />
             </TabsContent>
 

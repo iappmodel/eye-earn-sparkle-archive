@@ -28,6 +28,11 @@ import Hashtag from "./pages/Hashtag";
 import UserProfile from "./pages/UserProfile";
 import VideoDetail from "./pages/VideoDetail";
 import Drafts from "./pages/Drafts";
+import Sounds from "./pages/Sounds";
+import Trending from "./pages/Trending";
+import Challenges from "./pages/Challenges";
+import Wallet from "./pages/Wallet";
+import Earnings from "./pages/Earnings";
 import NotFound from "./pages/NotFound";
 import SocialConnect from "./pages/SocialConnect";
 import { PromotionDetails } from "./components/PromotionDetails";
@@ -144,6 +149,46 @@ const AppContent = () => {
           element={
             <ProtectedRoute>
               <PromotionDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sounds"
+          element={
+            <ProtectedRoute>
+              <Sounds />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trending"
+          element={
+            <ProtectedRoute>
+              <Trending />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/challenges"
+          element={
+            <ProtectedRoute>
+              <Challenges />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/wallet"
+          element={
+            <ProtectedRoute>
+              <Wallet />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/earnings"
+          element={
+            <ProtectedRoute>
+              <Earnings />
             </ProtectedRoute>
           }
         />

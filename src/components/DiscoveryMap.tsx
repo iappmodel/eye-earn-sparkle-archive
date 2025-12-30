@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
-import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink } from 'lucide-react';
+import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink, Bell, BellOff, History } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -11,6 +11,9 @@ import { MapFilterSheet, defaultMapFilters, type MapFilters } from './MapFilterS
 import { FavoriteLocations, useFavoriteLocation } from './FavoriteLocations';
 import { CategoryIcon, getCategoryInfo } from './PromotionCategories';
 import { CheckInButton } from './CheckInButton';
+import { CheckInHistory } from './CheckInHistory';
+import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
+
 interface Promotion {
   id: string;
   business_name: string;
@@ -179,6 +182,10 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [mapFilters, setMapFilters] = useState<MapFilters>(defaultMapFilters);
+  const [nearbyAlertsEnabled, setNearbyAlertsEnabled] = useState(true);
+  
+  // Nearby promotion alerts
+  const { nearbyPromotions, isWatching } = useNearbyPromotions(nearbyAlertsEnabled && isOpen);
   const { toggleFavorite, isFavorite } = useFavoriteLocation();
   // Create popup HTML for a promotion
   const createPopupHTML = useCallback((promo: Promotion): string => {
@@ -657,6 +664,22 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-xl font-bold">Discovery Map</h1>
           <div className="flex gap-2">
+            {/* Nearby Alerts Toggle */}
+            <NeuButton 
+              onClick={() => setNearbyAlertsEnabled(!nearbyAlertsEnabled)} 
+              size="sm"
+              className={nearbyAlertsEnabled ? 'text-primary' : 'text-muted-foreground'}
+            >
+              {nearbyAlertsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+            </NeuButton>
+            {/* Check-in History */}
+            <CheckInHistory
+              trigger={
+                <NeuButton size="sm">
+                  <History className="w-5 h-5" />
+                </NeuButton>
+              }
+            />
             <NeuButton onClick={() => setShowFavorites(true)} size="sm">
               <Heart className="w-5 h-5" />
             </NeuButton>

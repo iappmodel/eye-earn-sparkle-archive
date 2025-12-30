@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy, Layers } from 'lucide-react';
+import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy, Layers, Radio } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -7,6 +7,7 @@ import { DraggableButton, loadSavedPositions } from './DraggableButton';
 import { LongPressButtonWrapper, getHiddenButtons, loadButtonUIGroups, toggleUIGroupCollapse, ButtonUIGroup } from './LongPressButtonWrapper';
 import { ButtonPresetManager } from './ButtonPresetManager';
 import { ButtonGroupManager } from './ButtonGroupManager';
+import { BlinkRemoteControl } from './BlinkRemoteControl';
 import { cn } from '@/lib/utils';
 import { useUICustomization, ButtonAction, ButtonPosition } from '@/contexts/UICustomizationContext';
 
@@ -308,6 +309,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   const [showPresetManager, setShowPresetManager] = useState(false);
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [buttonGroups, setButtonGroups] = useState<ButtonUIGroup[]>(() => loadButtonUIGroups());
+  const [remoteControlEnabled, setRemoteControlEnabled] = useState(false);
   
   // Listen for hidden buttons changes
   useEffect(() => {
@@ -594,7 +596,31 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
             <Layers className="w-5 h-5" />
           </NeuButton>
         </LongPressButtonWrapper>
+        
+        {/* Blink Remote Control Toggle */}
+        <LongPressButtonWrapper
+          buttonId="blink-remote-toggle"
+          buttonLabel="Blink Remote"
+        >
+          <NeuButton 
+            onClick={() => setRemoteControlEnabled(!remoteControlEnabled)}
+            variant={remoteControlEnabled ? 'accent' : 'default'}
+            tooltip="Blink remote control"
+          >
+            <Radio className={cn(
+              "w-5 h-5 transition-all",
+              remoteControlEnabled && "animate-pulse"
+            )} />
+          </NeuButton>
+        </LongPressButtonWrapper>
       </div>
+      
+      {/* Blink Remote Control */}
+      <BlinkRemoteControl
+        enabled={remoteControlEnabled}
+        onToggle={setRemoteControlEnabled}
+        className="left-4 top-20"
+      />
       
       {/* Button Preset Manager Modal */}
       <ButtonPresetManager 

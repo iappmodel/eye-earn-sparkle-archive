@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
 import { Wallet, User, MessageCircle, Share2, Settings, UserPlus, Heart, Bookmark, Flag, VolumeX, Coins, Eye, EyeOff, Trophy } from 'lucide-react';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { DraggableButton, loadSavedPositions } from './DraggableButton';
@@ -203,6 +204,7 @@ interface FloatingControlsProps {
 const VisibilityToggleButton: React.FC = () => {
   const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
   const [isAnimating, setIsAnimating] = useState(false);
+  const { medium } = useHapticFeedback();
   
   // Sync with storage changes
   useEffect(() => {
@@ -212,6 +214,7 @@ const VisibilityToggleButton: React.FC = () => {
   }, []);
   
   const toggleVisibility = () => {
+    medium(); // Haptic feedback on toggle
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 300);
     
@@ -222,22 +225,27 @@ const VisibilityToggleButton: React.FC = () => {
   };
 
   return (
-    <NeuButton 
-      onClick={toggleVisibility}
-      variant={isHidden ? 'accent' : 'default'}
-      tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
-    >
-      <span className={cn(
-        'transition-all duration-300',
-        isAnimating && 'rotate-180 scale-110'
-      )}>
-        {isHidden ? (
-          <Eye className="w-6 h-6" />
-        ) : (
-          <EyeOff className="w-6 h-6" />
-        )}
-      </span>
-    </NeuButton>
+    <>
+      {/* Separator line */}
+      <div className="w-8 h-px bg-white/20 my-1" />
+      
+      <NeuButton 
+        onClick={toggleVisibility}
+        variant={isHidden ? 'accent' : 'default'}
+        tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
+      >
+        <span className={cn(
+          'transition-all duration-300',
+          isAnimating && 'rotate-180 scale-110'
+        )}>
+          {isHidden ? (
+            <Eye className="w-6 h-6" />
+          ) : (
+            <EyeOff className="w-6 h-6" />
+          )}
+        </span>
+      </NeuButton>
+    </>
   );
 };
 

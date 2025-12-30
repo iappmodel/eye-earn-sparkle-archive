@@ -9,15 +9,18 @@ import {
   Volume2, 
   VolumeX,
   Minus,
-  Plus
+  Plus,
+  Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAccessibility } from '@/contexts/AccessibilityContext';
+import { EyeIndicatorPosition } from './EyeTrackingIndicator';
 
 const STORAGE_KEYS = {
   LOW_DATA_MODE: 'visuai-low-data-mode',
   VIDEO_AUTOPLAY: 'visuai-video-autoplay',
   SOUND_EFFECTS: 'visuai-sound-effects',
+  EYE_INDICATOR_POSITION: 'visuai-eye-indicator-position',
 };
 
 const FONT_SIZE_OPTIONS = [
@@ -25,6 +28,14 @@ const FONT_SIZE_OPTIONS = [
   { value: 1, label: 'Default' },
   { value: 1.15, label: 'Large' },
   { value: 1.3, label: 'Extra Large' },
+];
+
+const EYE_POSITION_OPTIONS: { value: EyeIndicatorPosition; label: string }[] = [
+  { value: 'top-left', label: 'Top Left' },
+  { value: 'top-center', label: 'Top Center' },
+  { value: 'top-right', label: 'Top Right' },
+  { value: 'bottom-left', label: 'Bottom Left' },
+  { value: 'bottom-right', label: 'Bottom Right' },
 ];
 
 export const MediaSettings: React.FC = () => {
@@ -44,6 +55,11 @@ export const MediaSettings: React.FC = () => {
     return saved !== 'false'; // Default to true
   });
 
+  const [eyeIndicatorPosition, setEyeIndicatorPosition] = useState<EyeIndicatorPosition>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.EYE_INDICATOR_POSITION);
+    return (saved as EyeIndicatorPosition) || 'top-center';
+  });
+
   // Persist settings
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.LOW_DATA_MODE, String(lowDataMode));
@@ -56,6 +72,10 @@ export const MediaSettings: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.SOUND_EFFECTS, String(soundEffects));
   }, [soundEffects]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.EYE_INDICATOR_POSITION, eyeIndicatorPosition);
+  }, [eyeIndicatorPosition]);
 
   const currentFontIndex = FONT_SIZE_OPTIONS.findIndex(opt => opt.value === fontSize);
   const currentFontLabel = FONT_SIZE_OPTIONS.find(opt => opt.value === fontSize)?.label || 'Default';
@@ -129,6 +149,55 @@ export const MediaSettings: React.FC = () => {
         <div className="mt-4 p-3 rounded-lg bg-muted/30">
           <p className="text-xs text-muted-foreground mb-1">Preview:</p>
           <p style={{ fontSize: `${fontSize}rem` }}>The quick brown fox jumps over the lazy dog.</p>
+        </div>
+      </div>
+
+      {/* Eye Indicator Position */}
+      <div className="neu-inset rounded-xl p-4">
+        <div className="flex items-center gap-3 mb-4">
+          <Eye className="w-5 h-5 text-primary" />
+          <div>
+            <h3 className="font-medium">Eye Tracking Indicator</h3>
+            <p className="text-xs text-muted-foreground">Choose where the indicator appears</p>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-3 gap-2">
+          {EYE_POSITION_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setEyeIndicatorPosition(opt.value)}
+              className={cn(
+                'px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                eyeIndicatorPosition === opt.value
+                  ? 'bg-primary text-primary-foreground shadow-md'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Visual preview */}
+        <div className="mt-4 relative h-20 rounded-lg bg-muted/30 border border-border/50">
+          <div 
+            className={cn(
+              'absolute w-4 h-2.5 flex items-center justify-center',
+              eyeIndicatorPosition === 'top-left' && 'top-2 left-2',
+              eyeIndicatorPosition === 'top-center' && 'top-2 left-1/2 -translate-x-1/2',
+              eyeIndicatorPosition === 'top-right' && 'top-2 right-2',
+              eyeIndicatorPosition === 'bottom-left' && 'bottom-2 left-2',
+              eyeIndicatorPosition === 'bottom-right' && 'bottom-2 right-2'
+            )}
+          >
+            <svg viewBox="0 0 32 20" className="w-full h-full stroke-primary" fill="none" strokeWidth="2">
+              <path d="M2 10 Q16 1 30 10" />
+              <path d="M2 10 Q16 19 30 10" />
+              <circle cx="16" cy="10" r="3" className="fill-primary" />
+            </svg>
+          </div>
+          <p className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground">Preview</p>
         </div>
       </div>
 
@@ -228,6 +297,7 @@ export const useMediaSettings = () => {
     lowDataMode: localStorage.getItem(STORAGE_KEYS.LOW_DATA_MODE) === 'true',
     videoAutoplay: localStorage.getItem(STORAGE_KEYS.VIDEO_AUTOPLAY) !== 'false',
     soundEffects: localStorage.getItem(STORAGE_KEYS.SOUND_EFFECTS) !== 'false',
+    eyeIndicatorPosition: (localStorage.getItem(STORAGE_KEYS.EYE_INDICATOR_POSITION) as EyeIndicatorPosition) || 'top-center',
   });
 
   useEffect(() => {
@@ -236,6 +306,7 @@ export const useMediaSettings = () => {
         lowDataMode: localStorage.getItem(STORAGE_KEYS.LOW_DATA_MODE) === 'true',
         videoAutoplay: localStorage.getItem(STORAGE_KEYS.VIDEO_AUTOPLAY) !== 'false',
         soundEffects: localStorage.getItem(STORAGE_KEYS.SOUND_EFFECTS) !== 'false',
+        eyeIndicatorPosition: (localStorage.getItem(STORAGE_KEYS.EYE_INDICATOR_POSITION) as EyeIndicatorPosition) || 'top-center',
       });
     };
 

@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
-type IndicatorPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+export type EyeIndicatorPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 interface EyeTrackingIndicatorProps {
   isTracking: boolean;
   isFaceDetected: boolean;
   attentionScore: number;
-  position?: IndicatorPosition;
+  position?: EyeIndicatorPosition;
   className?: string;
 }
 
-const positionClasses: Record<IndicatorPosition, string> = {
-  'top-left': 'top-4 left-4',
-  'top-right': 'top-4 right-4',
+const positionClasses: Record<EyeIndicatorPosition, string> = {
+  'top-left': 'top-3 left-4',
+  'top-center': 'top-3 left-1/2 -translate-x-1/2',
+  'top-right': 'top-3 right-4',
   'bottom-left': 'bottom-20 left-4',
   'bottom-right': 'bottom-20 right-4',
 };
@@ -22,7 +23,7 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
   isTracking,
   isFaceDetected,
   attentionScore,
-  position = 'top-right',
+  position = 'top-center',
   className,
 }) => {
   const [showFullEye, setShowFullEye] = useState(true);
@@ -48,17 +49,15 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
     }
 
     const moveIris = () => {
-      // Subtle random movement within a small range
-      const maxOffset = 1.5;
+      const maxOffset = 1;
       setIrisOffset({
         x: (Math.random() - 0.5) * maxOffset * 2,
         y: (Math.random() - 0.5) * maxOffset * 2,
       });
     };
 
-    // Move iris every 800-1200ms for organic feel
-    const interval = setInterval(moveIris, 800 + Math.random() * 400);
-    moveIris(); // Initial movement
+    const interval = setInterval(moveIris, 900 + Math.random() * 300);
+    moveIris();
 
     return () => clearInterval(interval);
   }, [isTracking, isAttentive]);
@@ -77,53 +76,40 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
         className
       )}
     >
-      {/* Eye outline container */}
-      <div className="relative w-12 h-8">
+      {/* Smaller eye container */}
+      <div className="relative w-8 h-5">
         {/* Outer eye shape - fades out when attentive */}
         <svg
-          viewBox="0 0 48 32"
+          viewBox="0 0 32 20"
           className={cn(
             'absolute inset-0 w-full h-full transition-all duration-700',
             eyeColor,
-            showFullEye ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+            showFullEye ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
           )}
           fill="none"
-          strokeWidth="2"
+          strokeWidth="1.5"
         >
           {/* Upper eyelid curve */}
-          <path
-            d="M4 16 Q24 2 44 16"
-            className="transition-colors duration-300"
-          />
+          <path d="M2 10 Q16 1 30 10" className="transition-colors duration-300" />
           {/* Lower eyelid curve */}
-          <path
-            d="M4 16 Q24 30 44 16"
-            className="transition-colors duration-300"
-          />
+          <path d="M2 10 Q16 19 30 10" className="transition-colors duration-300" />
         </svg>
         
-        {/* Iris/Pupil - always visible, pulses and moves when attentive */}
+        {/* Iris/Pupil - smaller, pulses and moves when attentive */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div
             className={cn(
               'relative rounded-full transition-all duration-500 ease-out',
               irisColor,
               glowColor,
-              isAttentive ? [
-                'w-3 h-3',
-                'shadow-lg',
-                'animate-pulse'
-              ] : [
-                'w-4 h-4',
-                'shadow-md'
-              ]
+              isAttentive ? 'w-2 h-2 shadow-md animate-pulse' : 'w-2.5 h-2.5 shadow-sm'
             )}
             style={{
               transform: `translate(${irisOffset.x}px, ${irisOffset.y}px)`,
             }}
           >
             {/* Inner highlight */}
-            <div className="absolute top-0.5 left-0.5 w-1 h-1 rounded-full bg-white/60" />
+            <div className="absolute top-0.5 left-0.5 w-0.5 h-0.5 rounded-full bg-white/60" />
           </div>
         </div>
         
@@ -131,13 +117,9 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
         {isAttentive && !showFullEye && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div 
-              className={cn(
-                'w-5 h-5 rounded-full',
-                'bg-green-500/20',
-                'animate-ping'
-              )}
+              className="w-3 h-3 rounded-full bg-green-500/20 animate-ping"
               style={{ 
-                animationDuration: '2s',
+                animationDuration: '2.5s',
                 transform: `translate(${irisOffset.x}px, ${irisOffset.y}px)`,
               }}
             />

@@ -8,6 +8,7 @@ import { OfflineProvider } from "@/contexts/OfflineContext";
 import { LocalizationProvider } from "@/contexts/LocalizationContext";
 import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import { UICustomizationProvider } from "@/contexts/UICustomizationContext";
+import { DragContextProvider } from "@/components/DraggableButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import Index from "./pages/Index";
@@ -26,13 +27,14 @@ const App = () => (
     <LocalizationProvider>
       <AccessibilityProvider>
         <UICustomizationProvider>
-          <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AuthProvider>
-              <OfflineProvider>
-                <OfflineBanner />
+          <DragContextProvider>
+            <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AuthProvider>
+                <OfflineProvider>
+                  <OfflineBanner />
                 <Routes>
                   <Route path="/auth" element={<Auth />} />
                   <Route
@@ -79,10 +81,11 @@ const App = () => (
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
-              </OfflineProvider>
-            </AuthProvider>
-          </BrowserRouter>
-          </TooltipProvider>
+                </OfflineProvider>
+              </AuthProvider>
+            </BrowserRouter>
+            </TooltipProvider>
+          </DragContextProvider>
         </UICustomizationProvider>
       </AccessibilityProvider>
     </LocalizationProvider>

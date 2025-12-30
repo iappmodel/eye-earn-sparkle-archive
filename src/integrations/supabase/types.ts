@@ -766,6 +766,7 @@ export type Database = {
           original_views: number | null
           platform: string
           published_content_id: string | null
+          scheduled_at: string | null
           status: string
           thumbnail_url: string | null
           title: string | null
@@ -786,6 +787,7 @@ export type Database = {
           original_views?: number | null
           platform: string
           published_content_id?: string | null
+          scheduled_at?: string | null
           status?: string
           thumbnail_url?: string | null
           title?: string | null
@@ -806,6 +808,7 @@ export type Database = {
           original_views?: number | null
           platform?: string
           published_content_id?: string | null
+          scheduled_at?: string | null
           status?: string
           thumbnail_url?: string | null
           title?: string | null

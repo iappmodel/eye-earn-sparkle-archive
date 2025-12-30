@@ -27,6 +27,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useStudioMedia } from '@/hooks/useStudioMedia';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { PublishToFeedButton } from '@/components/PublishToFeedButton';
 
 type EditorMode = 'manual' | 'ai' | 'hybrid';
 type EditingTool = 'trim' | 'filters' | 'beauty' | 'effects' | 'audio' | 'text' | 'stickers' | 'speed';
@@ -1216,9 +1217,21 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         <Button variant="secondary" className="flex-1" onClick={() => navigate('/create')}>
           <RefreshCw className="w-4 h-4 mr-2" /> Start Over
         </Button>
-        <Button className="flex-1" onClick={handleExport}>
-          <Download className="w-4 h-4 mr-2" /> Export
-        </Button>
+        {importedMediaInfo ? (
+          <PublishToFeedButton
+            importedMediaId={importedMediaInfo.id}
+            mediaTitle={importedMediaInfo.title}
+            mediaDescription={importedMediaInfo.description}
+            mediaThumbnail={importedMediaInfo.thumbnailUrl}
+            platform={importedMediaInfo.platform}
+            onPublishComplete={() => navigate('/')}
+            className="flex-1"
+          />
+        ) : (
+          <Button className="flex-1" onClick={handleExport}>
+            <Download className="w-4 h-4 mr-2" /> Export
+          </Button>
+        )}
       </div>
     </div>
   );

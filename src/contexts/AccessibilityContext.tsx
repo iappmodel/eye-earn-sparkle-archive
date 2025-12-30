@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 export type UIDensity = 'compact' | 'default' | 'comfortable';
-export type ThemePack = 'default' | 'lunar' | 'night' | 'focus' | 'energy' | 'nature';
+export type ThemePack = 'default' | 'lunar' | 'aura' | 'night' | 'focus' | 'energy' | 'nature';
 
 interface AccessibilityState {
   // UI Density
@@ -103,7 +103,7 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
 
   // Apply theme pack class
   useEffect(() => {
-    const themes = ['theme-default', 'theme-lunar', 'theme-night', 'theme-focus', 'theme-energy', 'theme-nature'];
+    const themes = ['theme-default', 'theme-lunar', 'theme-aura', 'theme-night', 'theme-focus', 'theme-energy', 'theme-nature'];
     themes.forEach(t => document.documentElement.classList.remove(t));
     document.documentElement.classList.add(`theme-${state.themePack}`);
   }, [state.themePack]);

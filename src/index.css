@@ -30,6 +30,29 @@
   50% { opacity: 0.5; transform: translateX(5%); }
 }
 
+/* Button Animation Effects */
+@keyframes glow {
+  0%, 100% { 
+    box-shadow: 0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor; 
+    filter: brightness(1);
+  }
+  50% { 
+    box-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor; 
+    filter: brightness(1.2);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
 .animate-strobe {
   animation: strobe-soft calc(2s * var(--animation-speed, 1)) ease-in-out infinite;
 }
@@ -48,6 +71,19 @@
 
 .animate-light-leak {
   animation: light-leak calc(6s * var(--animation-speed, 1)) ease-in-out infinite;
+}
+
+/* Button-specific animation classes */
+.btn-animate-glow {
+  animation: glow calc(2s * var(--animation-speed, 1)) ease-in-out infinite;
+}
+
+.btn-animate-shake {
+  animation: shake calc(0.5s * var(--animation-speed, 1)) ease-in-out infinite;
+}
+
+.btn-animate-float {
+  animation: float calc(3s * var(--animation-speed, 1)) ease-in-out infinite;
 }
 
 @tailwind base;

@@ -5,6 +5,7 @@ import {
   Heart, MessageCircle, Share2, UserPlus, Wallet, User, Cog, Gift, Bookmark, Flag, VolumeX,
   Bell, Star, ThumbsUp, ThumbsDown, Send, Camera, Video, Music, Image, Home, Search, Plus,
   Sparkles, Flame, Trophy, Crown, Diamond, Gem, Coins, Award, Target, Lightbulb,
+  Wand2, CircleDot, Waves, Activity,
   type LucideIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,8 @@ const BUTTON_ACTIONS_KEY = 'visuai-button-actions';
 const BUTTON_SIZES_KEY = 'visuai-button-sizes';
 const BUTTON_ICONS_KEY = 'visuai-button-icons';
 const BUTTON_COLORS_KEY = 'visuai-button-colors';
+const BUTTON_ANIMATIONS_KEY = 'visuai-button-animations';
+const BUTTON_OPACITY_KEY = 'visuai-button-opacity';
 
 // Grid snap configuration
 const GRID_SIZE = 40;
@@ -108,6 +111,25 @@ export const PRESET_COLORS: { label: string; value: string }[] = [
   { label: 'Rose', value: '340 85% 60%' },
   { label: 'Orange', value: '25 95% 55%' },
   { label: 'Blue', value: '210 100% 50%' },
+];
+
+// Animation effect options
+export type ButtonAnimationType = 'none' | 'pulse' | 'glow' | 'bounce' | 'shake' | 'float';
+export const BUTTON_ANIMATION_OPTIONS: { value: ButtonAnimationType; label: string; description: string }[] = [
+  { value: 'none', label: 'None', description: 'No animation' },
+  { value: 'pulse', label: 'Pulse', description: 'Gentle pulse effect' },
+  { value: 'glow', label: 'Glow', description: 'Glowing aura' },
+  { value: 'bounce', label: 'Bounce', description: 'Bouncy motion' },
+  { value: 'shake', label: 'Shake', description: 'Attention shake' },
+  { value: 'float', label: 'Float', description: 'Floating motion' },
+];
+
+// Opacity presets
+export const OPACITY_PRESETS: { value: number; label: string }[] = [
+  { value: 100, label: 'Full' },
+  { value: 75, label: '75%' },
+  { value: 50, label: '50%' },
+  { value: 25, label: '25%' },
 ];
 
 // Load/save button settings
@@ -325,6 +347,58 @@ export const clearButtonColor = (buttonId: string) => {
   }
 };
 
+// Button animations management
+export const getButtonAnimations = (): Record<string, ButtonAnimationType> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_ANIMATIONS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonAnimation = (buttonId: string, animation: ButtonAnimationType) => {
+  try {
+    const animations = getButtonAnimations();
+    animations[buttonId] = animation;
+    localStorage.setItem(BUTTON_ANIMATIONS_KEY, JSON.stringify(animations));
+    window.dispatchEvent(new CustomEvent('buttonAnimationsChanged', { detail: animations }));
+  } catch (e) {
+    console.error('Failed to save button animation:', e);
+  }
+};
+
+export const getButtonAnimation = (buttonId: string): ButtonAnimationType => {
+  const animations = getButtonAnimations();
+  return animations[buttonId] || 'none';
+};
+
+// Button opacity management
+export const getButtonOpacities = (): Record<string, number> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_OPACITY_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonOpacity = (buttonId: string, opacity: number) => {
+  try {
+    const opacities = getButtonOpacities();
+    opacities[buttonId] = opacity;
+    localStorage.setItem(BUTTON_OPACITY_KEY, JSON.stringify(opacities));
+    window.dispatchEvent(new CustomEvent('buttonOpacitiesChanged', { detail: opacities }));
+  } catch (e) {
+    console.error('Failed to save button opacity:', e);
+  }
+};
+
+export const getButtonOpacity = (buttonId: string): number => {
+  const opacities = getButtonOpacities();
+  return opacities[buttonId] ?? 100;
+};
+
 // Snap position to grid
 const snapToGrid = (pos: Position): Position => {
   return {
@@ -424,8 +498,11 @@ const ButtonSettingsPopover: React.FC<{
   const [selectedSize, setSelectedSize] = useState<ButtonSizeOption>(() => getButtonSize(buttonId, currentSize));
   const [selectedIcon, setSelectedIcon] = useState<string | undefined>(() => getButtonIcon(buttonId));
   const [selectedColor, setSelectedColor] = useState<string | undefined>(() => getButtonColor(buttonId));
+  const [selectedAnimation, setSelectedAnimation] = useState<ButtonAnimationType>(() => getButtonAnimation(buttonId));
+  const [selectedOpacity, setSelectedOpacity] = useState<number>(() => getButtonOpacity(buttonId));
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showAnimationPicker, setShowAnimationPicker] = useState(false);
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -492,6 +569,18 @@ const ButtonSettingsPopover: React.FC<{
     light();
     setSelectedColor(undefined);
     clearButtonColor(buttonId);
+  };
+
+  const handleAnimationChange = (animation: ButtonAnimationType) => {
+    light();
+    setSelectedAnimation(animation);
+    setButtonAnimation(buttonId, animation);
+  };
+
+  const handleOpacityChange = (opacity: number) => {
+    light();
+    setSelectedOpacity(opacity);
+    setButtonOpacity(buttonId, opacity);
   };
 
   const handleResetPosition = () => {
@@ -769,6 +858,125 @@ const ButtonSettingsPopover: React.FC<{
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Animation Effects */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowAnimationPicker(!showAnimationPicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Wand2 className={cn(
+                    'w-5 h-5',
+                    selectedAnimation !== 'none' ? 'text-primary animate-pulse' : 'text-muted-foreground'
+                  )} />
+                  <span className="text-sm font-medium">
+                    {selectedAnimation !== 'none' 
+                      ? BUTTON_ANIMATION_OPTIONS.find(a => a.value === selectedAnimation)?.label 
+                      : 'Add Animation'}
+                  </span>
+                </div>
+                <Activity 
+                  className={cn(
+                    'w-4 h-4 transition-colors',
+                    showAnimationPicker ? 'text-primary' : 'text-muted-foreground'
+                  )} 
+                />
+              </button>
+              
+              {showAnimationPicker && (
+                <div className="space-y-2 animate-fade-in p-2 rounded-xl bg-muted/30">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {BUTTON_ANIMATION_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleAnimationChange(option.value)}
+                        className={cn(
+                          'p-2.5 rounded-lg transition-all text-left',
+                          selectedAnimation === option.value
+                            ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                            : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                        )}
+                      >
+                        <div className="text-xs font-medium">{option.label}</div>
+                        <div className="text-[10px] opacity-70">{option.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Animation Preview */}
+                  {selectedAnimation !== 'none' && (
+                    <div className="flex items-center justify-center p-3 rounded-lg bg-background/50">
+                      <div className={cn(
+                        'w-10 h-10 rounded-full bg-primary flex items-center justify-center',
+                        selectedAnimation === 'pulse' && 'animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]',
+                        selectedAnimation === 'glow' && 'animate-[glow_2s_ease-in-out_infinite]',
+                        selectedAnimation === 'bounce' && 'animate-bounce',
+                        selectedAnimation === 'shake' && 'animate-[shake_0.5s_ease-in-out_infinite]',
+                        selectedAnimation === 'float' && 'animate-[float_3s_ease-in-out_infinite]',
+                      )}>
+                        <Sparkles className="w-5 h-5 text-primary-foreground" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Opacity Control */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <CircleDot className="w-3.5 h-3.5" />
+                <span>Opacity</span>
+                <span className="ml-auto font-mono">{selectedOpacity}%</span>
+              </div>
+              
+              {/* Quick Presets */}
+              <div className="grid grid-cols-4 gap-1">
+                {OPACITY_PRESETS.map(preset => (
+                  <button
+                    key={preset.value}
+                    onClick={() => handleOpacityChange(preset.value)}
+                    className={cn(
+                      'px-2 py-1.5 rounded-lg text-xs font-medium transition-all',
+                      selectedOpacity === preset.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              
+              {/* Custom Slider */}
+              <div className="flex items-center gap-3 px-1">
+                <Waves className="w-4 h-4 text-muted-foreground opacity-50" />
+                <input
+                  type="range"
+                  min="10"
+                  max="100"
+                  value={selectedOpacity}
+                  onChange={(e) => handleOpacityChange(parseInt(e.target.value))}
+                  className="flex-1 h-2 bg-muted rounded-full appearance-none cursor-pointer accent-primary"
+                />
+                <Waves className="w-4 h-4 text-muted-foreground" />
+              </div>
+              
+              {/* Preview */}
+              <div className="flex items-center justify-center p-2 rounded-lg bg-background/50">
+                <div 
+                  className="w-10 h-10 rounded-full bg-primary flex items-center justify-center"
+                  style={{ opacity: selectedOpacity / 100 }}
+                >
+                  <Eye className="w-5 h-5 text-primary-foreground" />
+                </div>
+              </div>
             </div>
           )}
 

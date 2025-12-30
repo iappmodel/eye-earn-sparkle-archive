@@ -1,13 +1,19 @@
-import React, { useState, forwardRef } from 'react';
+import React, { useState, useEffect, forwardRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Image, Video, Megaphone, Target, Upload, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2 } from 'lucide-react';
+import { ArrowLeft, Image, Video, Megaphone, Target, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2, Clock, Calendar, Save, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { ContentUpload } from '@/components/ContentUpload';
+import { useDraftSave } from '@/hooks/useDraftSave';
+import { format, formatDistanceToNow } from 'date-fns';
 
 type ContentType = 'post' | 'story' | 'promotion' | 'campaign';
 type MediaType = 'image' | 'video' | 'carousel';
@@ -17,7 +23,7 @@ interface ContentForm {
   caption: string;
   tags: string[];
   tagInput: string;
-  mediaUrl: string;
+  mediaUrl: string | null;
   mediaType: MediaType;
   locationAddress: string;
   callToAction: string;
@@ -38,12 +44,16 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
   const { user } = useAuth();
   const [selectedType, setSelectedType] = useState<ContentType | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [enableSchedule, setEnableSchedule] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [showDraftRestore, setShowDraftRestore] = useState(false);
   const [form, setForm] = useState<ContentForm>({
     title: '',
     caption: '',
     tags: [],
     tagInput: '',
-    mediaUrl: '',
+    mediaUrl: null,
     mediaType: 'image',
     locationAddress: '',
     callToAction: '',
@@ -52,8 +62,56 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
     targetAudience: '',
   });
 
+  // Draft save hook
+  const setFormData = useCallback((data: Partial<ContentForm>) => {
+    setForm(prev => ({ 
+      ...prev, 
+      ...data,
+      mediaType: (data.mediaType as MediaType) || prev.mediaType,
+    }));
+  }, []);
+
+  const { saveDraft, hasDraft, restoreDraft, clearDraft, getDraftTimestamp } = useDraftSave(
+    user?.id,
+    selectedType,
+    {
+      title: form.title,
+      caption: form.caption,
+      tags: form.tags,
+      mediaUrl: form.mediaUrl,
+      mediaType: form.mediaType,
+      locationAddress: form.locationAddress,
+      callToAction: form.callToAction,
+      externalLink: form.externalLink,
+      budget: form.budget,
+      targetAudience: form.targetAudience,
+    },
+    useCallback((data) => {
+      setForm(prev => ({ ...prev, ...data }));
+    }, [])
+  );
+
+  // Check for existing draft when content type is selected
+  useEffect(() => {
+    if (selectedType && hasDraft()) {
+      setShowDraftRestore(true);
+    }
+  }, [selectedType, hasDraft]);
+
+  const handleRestoreDraft = () => {
+    restoreDraft();
+    setShowDraftRestore(false);
+    toast.success('Draft restored');
+  };
+
+  const handleDiscardDraft = () => {
+    clearDraft();
+    setShowDraftRestore(false);
+  };
+
   const handleBack = () => {
     if (selectedType) {
+      saveDraft();
       setSelectedType(null);
     } else {
       navigate('/');
@@ -77,6 +135,46 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
     }));
   };
 
+  const handleUploadComplete = (url: string, type: 'image' | 'video') => {
+    setForm(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
+  };
+
+  const handleSaveDraft = async () => {
+    if (!user || !selectedType) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.from('user_content').insert({
+        user_id: user.id,
+        content_type: selectedType,
+        title: form.title || null,
+        caption: form.caption,
+        tags: form.tags,
+        media_url: form.mediaUrl || null,
+        media_type: form.mediaType,
+        location_address: form.locationAddress || null,
+        status: 'draft',
+        is_draft: true,
+        draft_saved_at: new Date().toISOString(),
+        call_to_action: (selectedType === 'promotion' || selectedType === 'campaign') ? (form.callToAction || null) : null,
+        external_link: (selectedType === 'promotion' || selectedType === 'campaign') ? (form.externalLink || null) : null,
+        budget: (selectedType === 'promotion' || selectedType === 'campaign') && form.budget ? parseInt(form.budget) : null,
+        target_audience: (selectedType === 'promotion' || selectedType === 'campaign') ? (form.targetAudience || null) : null,
+      });
+
+      if (error) throw error;
+
+      clearDraft();
+      toast.success('Draft saved to your content');
+      navigate('/mypage');
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      toast.error('Failed to save draft');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!user || !selectedType) return;
 
@@ -90,6 +188,17 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
         expiresAt = expires.toISOString();
       }
 
+      // Build scheduled_at if scheduling enabled
+      let scheduledAt: string | null = null;
+      let status: 'active' | 'scheduled' = 'active';
+      let publishedAt: string | null = new Date().toISOString();
+
+      if (enableSchedule && scheduleDate && scheduleTime) {
+        scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+        status = 'scheduled';
+        publishedAt = null;
+      }
+
       const { error } = await supabase.from('user_content').insert({
         user_id: user.id,
         content_type: selectedType,
@@ -99,9 +208,11 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
         media_url: form.mediaUrl || null,
         media_type: form.mediaType,
         location_address: form.locationAddress || null,
-        status: 'active' as const,
-        published_at: new Date().toISOString(),
+        status,
+        published_at: publishedAt,
+        scheduled_at: scheduledAt,
         expires_at: expiresAt,
+        is_draft: false,
         call_to_action: (selectedType === 'promotion' || selectedType === 'campaign') ? (form.callToAction || null) : null,
         external_link: (selectedType === 'promotion' || selectedType === 'campaign') ? (form.externalLink || null) : null,
         budget: (selectedType === 'promotion' || selectedType === 'campaign') && form.budget ? parseInt(form.budget) : null,
@@ -110,9 +221,17 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
 
       if (error) throw error;
 
-      toast.success(`${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)} created!`, {
-        description: 'Earn rewards as people engage with your content.',
-      });
+      clearDraft();
+      
+      if (status === 'scheduled') {
+        toast.success(`${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)} scheduled!`, {
+          description: `Will be published on ${format(new Date(scheduledAt!), 'MMM d, h:mm a')}`,
+        });
+      } else {
+        toast.success(`${selectedType.charAt(0).toUpperCase() + selectedType.slice(1)} published!`, {
+          description: 'Earn rewards as people engage with your content.',
+        });
+      }
 
       navigate('/');
     } catch (error) {
@@ -124,6 +243,7 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
   };
 
   const selectedTypeInfo = contentTypes.find(t => t.id === selectedType);
+  const draftTime = getDraftTimestamp();
 
   return (
     <div ref={ref} className="min-h-screen bg-background">
@@ -136,7 +256,12 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
           <h1 className="text-lg font-semibold">
             {selectedType ? `Create ${selectedTypeInfo?.label}` : 'Create'}
           </h1>
-          <div className="w-9" />
+          {selectedType && (
+            <Button variant="ghost" size="sm" onClick={handleSaveDraft} disabled={isSubmitting}>
+              <Save className="w-4 h-4" />
+            </Button>
+          )}
+          {!selectedType && <div className="w-9" />}
         </div>
       </header>
 
@@ -191,31 +316,57 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
         ) : (
           /* Content Creation Form */
           <div className="p-4 space-y-6">
-            {/* Media Upload Area */}
-            <div className="aspect-[4/3] rounded-2xl border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-4 cursor-pointer">
-              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                <Upload className="w-8 h-8 text-primary" />
-              </div>
-              <div className="text-center">
-                <p className="font-medium">Tap to upload media</p>
-                <p className="text-sm text-muted-foreground">Photos, videos, or carousel</p>
-              </div>
-              <div className="flex gap-2">
-                {(['image', 'video', 'carousel'] as MediaType[]).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setForm(prev => ({ ...prev, mediaType: type }))}
-                    className={cn(
-                      'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
-                      form.mediaType === type
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted hover:bg-muted/80'
-                    )}
-                  >
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </button>
-                ))}
-              </div>
+            {/* Draft Restore Prompt */}
+            {showDraftRestore && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <RotateCcw className="w-5 h-5 text-primary mt-0.5" />
+                      <div>
+                        <p className="font-medium">Restore Draft?</p>
+                        <p className="text-sm text-muted-foreground">
+                          You have an unsaved draft from {draftTime ? formatDistanceToNow(draftTime, { addSuffix: true }) : 'earlier'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={handleDiscardDraft}>
+                        Discard
+                      </Button>
+                      <Button size="sm" onClick={handleRestoreDraft}>
+                        Restore
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Media Upload Area - Now with real functionality */}
+            <ContentUpload
+              onUploadComplete={handleUploadComplete}
+              mediaType={form.mediaType}
+              existingUrl={form.mediaUrl || undefined}
+              onRemove={() => setForm(prev => ({ ...prev, mediaUrl: null }))}
+            />
+
+            {/* Media Type Selection */}
+            <div className="flex justify-center gap-2">
+              {(['image', 'video', 'carousel'] as MediaType[]).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setForm(prev => ({ ...prev, mediaType: type }))}
+                  className={cn(
+                    'px-4 py-2 rounded-full text-sm font-medium transition-colors',
+                    form.mediaType === type
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted hover:bg-muted/80'
+                  )}
+                >
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
+              ))}
             </div>
 
             {/* Studio Button */}
@@ -314,6 +465,44 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
               />
             </div>
 
+            {/* Scheduling */}
+            <Card>
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-primary" />
+                    <div>
+                      <p className="font-medium">Schedule Post</p>
+                      <p className="text-sm text-muted-foreground">Publish at a specific time</p>
+                    </div>
+                  </div>
+                  <Switch checked={enableSchedule} onCheckedChange={setEnableSchedule} />
+                </div>
+
+                {enableSchedule && (
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Date</Label>
+                      <Input
+                        type="date"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        min={format(new Date(), 'yyyy-MM-dd')}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Time</Label>
+                      <Input
+                        type="time"
+                        value={scheduleTime}
+                        onChange={(e) => setScheduleTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Promotion/Campaign specific fields */}
             {(selectedType === 'promotion' || selectedType === 'campaign') && (
               <>
@@ -387,7 +576,7 @@ const Create = forwardRef<HTMLDivElement>((_, ref) => {
             disabled={isSubmitting || !form.caption.trim()}
             className="w-full h-12 text-base font-semibold"
           >
-            {isSubmitting ? 'Publishing...' : `Publish ${selectedTypeInfo?.label}`}
+            {isSubmitting ? 'Publishing...' : enableSchedule ? `Schedule ${selectedTypeInfo?.label}` : `Publish ${selectedTypeInfo?.label}`}
           </Button>
         </div>
       )}

@@ -1482,9 +1482,11 @@ export type Database = {
           comments_count: number | null
           content_type: string
           created_at: string
+          draft_saved_at: string | null
           expires_at: string | null
           external_link: string | null
           id: string
+          is_draft: boolean | null
           is_public: boolean | null
           likes_count: number | null
           location_address: string | null
@@ -1494,6 +1496,7 @@ export type Database = {
           media_url: string | null
           published_at: string | null
           reward_type: string | null
+          scheduled_at: string | null
           shares_count: number | null
           status: string
           tags: string[] | null
@@ -1512,9 +1515,11 @@ export type Database = {
           comments_count?: number | null
           content_type: string
           created_at?: string
+          draft_saved_at?: string | null
           expires_at?: string | null
           external_link?: string | null
           id?: string
+          is_draft?: boolean | null
           is_public?: boolean | null
           likes_count?: number | null
           location_address?: string | null
@@ -1524,6 +1529,7 @@ export type Database = {
           media_url?: string | null
           published_at?: string | null
           reward_type?: string | null
+          scheduled_at?: string | null
           shares_count?: number | null
           status?: string
           tags?: string[] | null
@@ -1542,9 +1548,11 @@ export type Database = {
           comments_count?: number | null
           content_type?: string
           created_at?: string
+          draft_saved_at?: string | null
           expires_at?: string | null
           external_link?: string | null
           id?: string
+          is_draft?: boolean | null
           is_public?: boolean | null
           likes_count?: number | null
           location_address?: string | null
@@ -1554,6 +1562,7 @@ export type Database = {
           media_url?: string | null
           published_at?: string | null
           reward_type?: string | null
+          scheduled_at?: string | null
           shares_count?: number | null
           status?: string
           tags?: string[] | null

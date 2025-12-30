@@ -29,6 +29,7 @@ import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
 import { useContentFeed } from '@/hooks/useContentFeed';
+import { useContentLikes } from '@/hooks/useContentLikes';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -65,7 +66,6 @@ const Index = () => {
   } = usePageNavigation();
   
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isLiked, setIsLiked] = useState(false);
   const [showCoinSlide, setShowCoinSlide] = useState(false);
   const [coinSlideType, setCoinSlideType] = useState<'vicoin' | 'icoin'>('vicoin');
   const [showWallet, setShowWallet] = useState(false);
@@ -90,6 +90,9 @@ const Index = () => {
   // Current media from real feed
   const currentMedia = useMemo(() => feedContent[currentIndex] || feedContent[0], [feedContent, currentIndex]);
   const isPromoContent = currentMedia?.type === 'promo' && !!currentMedia?.reward;
+  
+  // Like/Save persistence
+  const { isLiked, isSaved, likesCount, toggleLike, toggleSave } = useContentLikes(currentMedia?.id || null);
   
   // Pull to refresh handler
   const handleRefresh = useCallback(async () => {
@@ -219,7 +222,6 @@ const Index = () => {
       } else {
         setCurrentIndex(prev => (prev - 1 + feedContent.length) % feedContent.length);
       }
-      setIsLiked(false);
       setSwipeDirection(null);
       setIsTransitioning(false);
     }, 300);
@@ -255,13 +257,14 @@ const Index = () => {
     onSwipeRight: () => handleNavigate('right'),
   });
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
-    if (!isLiked) {
-      if (navigator.vibrate) navigator.vibrate(10);
-      toast('Liked!', { description: 'Added to your favorites' });
-    }
-  };
+  const handleLike = useCallback(() => {
+    toggleLike();
+    if (!isLiked && navigator.vibrate) navigator.vibrate(10);
+  }, [toggleLike, isLiked]);
+
+  const handleSave = useCallback(() => {
+    toggleSave();
+  }, [toggleSave]);
 
   const handleTip = useCallback(async (coinType: 'vicoin' | 'icoin', amount: number) => {
     if (!profile) {

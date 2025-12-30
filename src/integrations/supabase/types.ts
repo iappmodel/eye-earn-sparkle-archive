@@ -495,6 +495,27 @@ export type Database = {
         }
         Relationships: []
       }
+      content_likes: {
+        Row: {
+          content_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       conversation_participants: {
         Row: {
           conversation_id: string
@@ -1713,6 +1734,27 @@ export type Database = {
           created_at?: string
           id?: string
           reward_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      saved_content: {
+        Row: {
+          content_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          created_at?: string
+          id?: string
           user_id?: string
         }
         Relationships: []

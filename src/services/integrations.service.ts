@@ -262,7 +262,11 @@ export const analytics = {
   startSession(): void {
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     sessionStorage.setItem("analytics_session_id", sessionId);
-    this.track("session_start", { sessionId });
+
+    // Fire-and-forget; never crash the app if analytics tracking fails.
+    void this.track("session_start", { sessionId }).catch((err) => {
+      console.warn("[Analytics] Failed to start session", err);
+    });
   },
 
   /**

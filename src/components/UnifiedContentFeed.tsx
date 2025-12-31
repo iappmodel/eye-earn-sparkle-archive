@@ -107,25 +107,36 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
   const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<'all' | 'native' | 'imported'>('all');
 
-  // Real-time updates for imported media
-  useImportedMediaRealtime({
-    onInsert: (newMedia) => {
-      setFeed(prev => [{
+  // Real-time updates for imported media (callbacks must be stable to avoid re-subscribing every render)
+  const handleRealtimeInsert = useCallback((newMedia: any) => {
+    setFeed((prev) => [
+      {
         ...newMedia,
-        source: 'imported' as const
-      }, ...prev]);
-      toast.success('New media imported!', { description: newMedia.title || 'Media ready' });
-    },
-    onUpdate: (updatedMedia) => {
-      setFeed(prev => prev.map(item => 
-        item.id === updatedMedia.id 
+        source: 'imported' as const,
+      },
+      ...prev,
+    ]);
+    toast.success('New media imported!', { description: newMedia?.title || 'Media ready' });
+  }, []);
+
+  const handleRealtimeUpdate = useCallback((updatedMedia: any) => {
+    setFeed((prev) =>
+      prev.map((item) =>
+        item.id === updatedMedia.id
           ? { ...updatedMedia, source: 'imported' as const }
           : item
-      ));
-    },
-    onDelete: (deletedId) => {
-      setFeed(prev => prev.filter(item => item.id !== deletedId));
-    },
+      )
+    );
+  }, []);
+
+  const handleRealtimeDelete = useCallback((deletedId: string) => {
+    setFeed((prev) => prev.filter((item) => item.id !== deletedId));
+  }, []);
+
+  useImportedMediaRealtime({
+    onInsert: handleRealtimeInsert,
+    onUpdate: handleRealtimeUpdate,
+    onDelete: handleRealtimeDelete,
   });
 
   const loadFeed = useCallback(async () => {
@@ -202,19 +213,21 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
     if (!item) return;
 
     try {
-      if (item.source === 'native') {
-        const nativeItem = item as NativeFeedItem;
-        await supabase.functions.invoke('track-interaction', {
-          body: {
-            contentId,
-            contentType: 'video',
-            action,
-            feedback,
-            tags: nativeItem.tags,
-            category: nativeItem.category,
-          },
-        });
-      }
+       if (item.source === 'native') {
+         const nativeItem = item as NativeFeedItem;
+         const tags = Array.isArray(nativeItem.tags) ? nativeItem.tags : [];
+
+         await supabase.functions.invoke('track-interaction', {
+           body: {
+             contentId,
+             contentType: 'video',
+             action,
+             feedback,
+             tags,
+             category: nativeItem.category,
+           },
+         });
+       }
 
       if (action === 'like') {
         setLikedItems(prev => new Set([...prev, contentId]));
@@ -310,7 +323,7 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
         </div>
 
         <div className="flex flex-wrap gap-1 mt-2">
-          {item.tags.slice(0, 3).map(tag => (
+          {(Array.isArray(item.tags) ? item.tags : []).slice(0, 3).map(tag => (
             <span key={tag} className="text-[10px] bg-muted px-2 py-0.5 rounded-full">
               #{tag}
             </span>

@@ -87,11 +87,15 @@ const Index = () => {
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
   
-  // Current media from real feed
-  const currentMedia = useMemo(() => feedContent[currentIndex] || feedContent[0], [feedContent, currentIndex]);
+  // Current media from real feed - with safety check
+  const currentMedia = useMemo(() => {
+    if (!feedContent || feedContent.length === 0) return null;
+    return feedContent[currentIndex] || feedContent[0];
+  }, [feedContent, currentIndex]);
+  
   const isPromoContent = currentMedia?.type === 'promo' && !!currentMedia?.reward;
   
-  // Like/Save persistence
+  // Like/Save persistence - only when we have current media
   const { isLiked, isSaved, likesCount, toggleLike, toggleSave } = useContentLikes(currentMedia?.id || null);
   
   // Pull to refresh handler
@@ -158,7 +162,9 @@ const Index = () => {
 
   // Handle promo completion - use rewards service for secure backend validation
   const handleMediaComplete = useCallback(async (attentionValidated: boolean = true, attentionScore?: number) => {
-    // Only give rewards if attention was validated for promo content
+    // Only give rewards if attention was validated for promo content and we have current media
+    if (!currentMedia) return;
+    
     if (currentMedia.reward && profile && attentionValidated) {
       // Use rewards service for secure backend validation
       const result = await rewardsService.issueReward(
@@ -271,6 +277,11 @@ const Index = () => {
       toast.error('Please log in to tip');
       return;
     }
+    
+    if (!currentMedia) {
+      toast.error('No content selected');
+      return;
+    }
 
     // Check balance before attempting tip
     const balance = coinType === 'vicoin' ? (profile.vicoin_balance ?? 0) : (profile.icoin_balance ?? 0);
@@ -340,7 +351,7 @@ const Index = () => {
       console.error('[Index] Tip failed:', err);
       toast.error('Failed to send tip');
     }
-  }, [profile, currentMedia.id, refreshProfile]);
+  }, [profile, currentMedia, refreshProfile]);
 
   const handleComment = () => {
     setShowComments(true);
@@ -398,76 +409,95 @@ const Index = () => {
           {isAtCenter ? (
             // Main Media Feed (Center)
             <div className="absolute inset-0">
-              <div className={cn(
-                'absolute inset-0 transition-transform duration-300 ease-out',
-                swipeDirection === 'up' && 'animate-swipe-exit-up',
-                swipeDirection === 'down' && 'animate-swipe-exit-down'
-              )}>
-                <MediaCard
-                  key={currentMedia.id}
-                  type={currentMedia.type}
-                  src={currentMedia.src}
-                  videoSrc={currentMedia.videoSrc}
-                  duration={currentMedia.duration}
-                  reward={currentMedia.reward}
-                  contentId={currentMedia.id}
-                  onComplete={handleMediaComplete}
-                  onSkip={handleSkip}
-                  isActive={!isTransitioning && isAtCenter}
-                />
-              </div>
+              {/* Show loading skeleton or empty state when no content */}
+              {isLoading ? (
+                <MediaCardSkeleton />
+              ) : !currentMedia ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-background">
+                  <div className="text-center p-8">
+                    <p className="text-muted-foreground mb-4">No content available</p>
+                    <button 
+                      onClick={handleRefresh}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg"
+                    >
+                      Refresh Feed
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className={cn(
+                    'absolute inset-0 transition-transform duration-300 ease-out',
+                    swipeDirection === 'up' && 'animate-swipe-exit-up',
+                    swipeDirection === 'down' && 'animate-swipe-exit-down'
+                  )}>
+                    <MediaCard
+                      key={currentMedia.id}
+                      type={currentMedia.type}
+                      src={currentMedia.src}
+                      videoSrc={currentMedia.videoSrc}
+                      duration={currentMedia.duration}
+                      reward={currentMedia.reward}
+                      contentId={currentMedia.id}
+                      onComplete={handleMediaComplete}
+                      onSkip={handleSkip}
+                      isActive={!isTransitioning && isAtCenter}
+                    />
+                  </div>
 
-              {/* Cross Navigation hints */}
-              <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
+                  {/* Cross Navigation hints */}
+                  <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
 
-              {/* Feed toggle */}
-              <div className="absolute top-16 left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50">
-                <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
-                  Unified Feed
-                </Label>
-                <Switch
-                  id="unified-feed"
-                  checked={useUnifiedFeed}
-                  onCheckedChange={setUseUnifiedFeed}
-                  className="scale-75"
-                />
-              </div>
+                  {/* Feed toggle */}
+                  <div className="absolute top-16 left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50">
+                    <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
+                      Unified Feed
+                    </Label>
+                    <Switch
+                      id="unified-feed"
+                      checked={useUnifiedFeed}
+                      onCheckedChange={setUseUnifiedFeed}
+                      className="scale-75"
+                    />
+                  </div>
 
-              {/* Floating Controls */}
-              <FloatingControls
-                onWalletClick={() => setShowWallet(true)}
-                onProfileClick={() => setShowProfile(true)}
-                onLikeClick={handleLike}
-                onTip={handleTip}
-                onCommentClick={handleComment}
-                onShareClick={handleShare}
-                onSettingsClick={handleSettings}
-                onAchievementsClick={() => setShowAchievementsPanel(true)}
-                isLiked={isLiked}
-                likeCount={1234}
-                commentCount={89}
-                showAchievements={isPromoContent && eyeTrackingEnabled}
-                achievementsCount={unlockedAchievements.size}
-                creatorInfo={currentMedia.creator}
-                onViewCreatorProfile={() => {
-                  // TODO: Navigate to creator's public profile
-                  toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
-                }}
-              />
+                  {/* Floating Controls */}
+                  <FloatingControls
+                    onWalletClick={() => setShowWallet(true)}
+                    onProfileClick={() => setShowProfile(true)}
+                    onLikeClick={handleLike}
+                    onTip={handleTip}
+                    onCommentClick={handleComment}
+                    onShareClick={handleShare}
+                    onSettingsClick={handleSettings}
+                    onAchievementsClick={() => setShowAchievementsPanel(true)}
+                    isLiked={isLiked}
+                    likeCount={1234}
+                    commentCount={89}
+                    showAchievements={isPromoContent && eyeTrackingEnabled}
+                    achievementsCount={unlockedAchievements.size}
+                    creatorInfo={currentMedia.creator}
+                    onViewCreatorProfile={() => {
+                      // TODO: Navigate to creator's public profile
+                      toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
+                    }}
+                  />
 
-              {/* Achievements panel */}
-              <AttentionAchievementsPanel
-                isVisible={showAchievementsPanel}
-                onClose={() => setShowAchievementsPanel(false)}
-                stats={achievementStats}
-                unlockedAchievements={unlockedAchievements}
-              />
+                  {/* Achievements panel */}
+                  <AttentionAchievementsPanel
+                    isVisible={showAchievementsPanel}
+                    onClose={() => setShowAchievementsPanel(false)}
+                    stats={achievementStats}
+                    unlockedAchievements={unlockedAchievements}
+                  />
 
-              {/* Achievement unlock notification */}
-              <AchievementUnlockNotification
-                achievement={newlyUnlocked}
-                onDismiss={dismissNotification}
-              />
+                  {/* Achievement unlock notification */}
+                  <AchievementUnlockNotification
+                    achievement={newlyUnlocked}
+                    onDismiss={dismissNotification}
+                  />
+                </>
+              )}
             </div>
           ) : currentPage ? (
             // Dynamic page content based on configured layout

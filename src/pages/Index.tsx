@@ -476,10 +476,11 @@ const Index = () => {
                     commentCount={89}
                     showAchievements={isPromoContent && eyeTrackingEnabled}
                     achievementsCount={unlockedAchievements.size}
-                    creatorInfo={currentMedia.creator}
+                    creatorInfo={currentMedia?.creator}
                     onViewCreatorProfile={() => {
-                      // TODO: Navigate to creator's public profile
-                      toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
+                      if (currentMedia?.creator) {
+                        toast.info(`Viewing ${currentMedia.creator.displayName}'s profile`);
+                      }
                     }}
                   />
 
@@ -595,19 +596,23 @@ const Index = () => {
 
 
         {/* Comments Panel */}
-        <CommentsPanel
-          isOpen={showComments}
-          onClose={() => setShowComments(false)}
-          contentId={currentMedia.id}
-        />
+        {currentMedia && (
+          <CommentsPanel
+            isOpen={showComments}
+            onClose={() => setShowComments(false)}
+            contentId={currentMedia.id}
+          />
+        )}
 
         {/* Share Sheet */}
-        <ShareSheet
-          isOpen={showShare}
-          onClose={() => setShowShare(false)}
-          title={currentMedia.title || 'Check out this content!'}
-          url={`${window.location.origin}/content/${currentMedia.id}`}
-        />
+        {currentMedia && (
+          <ShareSheet
+            isOpen={showShare}
+            onClose={() => setShowShare(false)}
+            title={currentMedia.title || 'Check out this content!'}
+            url={`${window.location.origin}/content/${currentMedia.id}`}
+          />
+        )}
 
         {/* Network Status Indicator */}
         <div className="fixed top-4 right-4 z-50">

@@ -400,7 +400,7 @@ const Index = () => {
     <ControlsVisibilityProvider>
       <DoubleTapGestureDetector onTripleTap={handleSettings}>
         <div 
-          className="fixed inset-0 bg-background overflow-hidden touch-none"
+          className="fixed inset-0 bg-background overflow-hidden"
           {...handlers}
         >
         {/* Dynamic Page Container with transitions */}

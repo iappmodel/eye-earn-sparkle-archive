@@ -21,17 +21,17 @@ export interface FeedContent {
   };
 }
 
-// Comprehensive fallback content with mock users and promos
+// Comprehensive fallback content with mock users and promos (using valid UUIDs)
 const fallbackContent: FeedContent[] = [
   {
-    id: 'mock-video-1',
+    id: '00000000-0000-0000-0000-000000000001',
     type: 'video',
     src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     duration: 15,
     title: 'Amazing street food in Tokyo 🍜',
     creator: {
-      id: 'user-1',
+      id: '00000000-0000-0000-0000-000000000101',
       username: 'foodie_traveler',
       displayName: 'Sarah Chen',
       avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=sarah',
@@ -42,7 +42,7 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-promo-1',
+    id: '00000000-0000-0000-0000-000000000002',
     type: 'promo',
     src: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
@@ -50,7 +50,7 @@ const fallbackContent: FeedContent[] = [
     title: 'Fresh organic meals delivered to your door! 🥗',
     reward: { amount: 25, type: 'vicoin' },
     creator: {
-      id: 'brand-1',
+      id: '00000000-0000-0000-0000-000000000102',
       username: 'freshbox_meals',
       displayName: 'FreshBox Meals',
       avatarUrl: 'https://api.dicebear.com/7.x/identicon/svg?seed=freshbox',
@@ -61,14 +61,14 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-video-2',
+    id: '00000000-0000-0000-0000-000000000003',
     type: 'video',
     src: 'https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     duration: 20,
     title: 'Morning workout routine 💪 #fitness',
     creator: {
-      id: 'user-2',
+      id: '00000000-0000-0000-0000-000000000103',
       username: 'fit_with_mike',
       displayName: 'Mike Johnson',
       avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mike',
@@ -79,7 +79,7 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-promo-2',
+    id: '00000000-0000-0000-0000-000000000004',
     type: 'promo',
     src: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
@@ -87,7 +87,7 @@ const fallbackContent: FeedContent[] = [
     title: 'Get 50% off your first purchase! 🛍️',
     reward: { amount: 50, type: 'icoin' },
     creator: {
-      id: 'brand-2',
+      id: '00000000-0000-0000-0000-000000000104',
       username: 'stylemart',
       displayName: 'StyleMart',
       avatarUrl: 'https://api.dicebear.com/7.x/identicon/svg?seed=stylemart',
@@ -98,14 +98,14 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-video-3',
+    id: '00000000-0000-0000-0000-000000000005',
     type: 'video',
     src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
     duration: 18,
     title: 'Sunrise at the mountains 🏔️ #nature',
     creator: {
-      id: 'user-3',
+      id: '00000000-0000-0000-0000-000000000105',
       username: 'adventure_jules',
       displayName: 'Julia Martinez',
       avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=julia',
@@ -116,13 +116,13 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-video-4',
+    id: '00000000-0000-0000-0000-000000000006',
     type: 'image',
     src: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=1920&h=1080&fit=crop',
     duration: 10,
     title: 'Late night coding session 💻 #developer',
     creator: {
-      id: 'user-4',
+      id: '00000000-0000-0000-0000-000000000106',
       username: 'dev_alex',
       displayName: 'Alex Kumar',
       avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex',
@@ -133,7 +133,7 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-promo-3',
+    id: '00000000-0000-0000-0000-000000000007',
     type: 'promo',
     src: 'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
@@ -141,7 +141,7 @@ const fallbackContent: FeedContent[] = [
     title: 'Join the premium fitness membership today! 🏋️',
     reward: { amount: 100, type: 'vicoin' },
     creator: {
-      id: 'brand-3',
+      id: '00000000-0000-0000-0000-000000000107',
       username: 'elitefit_gym',
       displayName: 'EliteFit Gym',
       avatarUrl: 'https://api.dicebear.com/7.x/identicon/svg?seed=elitefit',
@@ -152,14 +152,14 @@ const fallbackContent: FeedContent[] = [
     },
   },
   {
-    id: 'mock-video-5',
+    id: '00000000-0000-0000-0000-000000000008',
     type: 'video',
     src: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
     duration: 22,
     title: 'New track dropping next week! 🎵 #music',
     creator: {
-      id: 'user-5',
+      id: '00000000-0000-0000-0000-000000000108',
       username: 'dj_beats',
       displayName: 'DJ Beats',
       avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=djbeats',

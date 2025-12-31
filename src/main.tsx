@@ -3,10 +3,18 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import App from "./App.tsx";
 import "./index.css";
 
-// Register PWA service worker (only in production to avoid stale-cache blank screens in preview/dev)
+// Register PWA service worker.
+// NOTE: We explicitly disable SW on Lovable preview domains to avoid stale-cache blank screens in the in-app preview/embedded contexts.
+const isLovablePreviewHost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname.endsWith('lovableproject.com') ||
+    window.location.hostname.endsWith('lovable.app'));
+
+const shouldEnableServiceWorker = import.meta.env.PROD && !isLovablePreviewHost;
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    if (import.meta.env.PROD) {
+    if (shouldEnableServiceWorker) {
       navigator.serviceWorker
         .register('/sw.js')
         .then((registration) => {

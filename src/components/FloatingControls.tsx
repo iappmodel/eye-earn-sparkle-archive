@@ -616,18 +616,18 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
     ) {
       return;
     }
-    
+
     const now = Date.now();
     tapTimesRef.current = tapTimesRef.current.filter(t => now - t < 500);
     tapTimesRef.current.push(now);
-    
+
     if (tapTimeoutRef.current) {
       clearTimeout(tapTimeoutRef.current);
     }
-    
+
     tapTimeoutRef.current = setTimeout(() => {
       const recentTaps = tapTimesRef.current.filter(t => now - t < 500);
-      
+
       if (recentTaps.length >= 3) {
         onTripleTap?.();
         tapTimesRef.current = [];
@@ -638,8 +638,6 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
         tapTimesRef.current = [];
       }
     }, 100);
-    
-    e.preventDefault();
   }, [onTripleTap]);
 
   return (

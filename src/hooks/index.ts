@@ -44,6 +44,7 @@ export { useGestureCombos } from './useGestureCombos';
 export { useRateLimiter, useDebounce, useThrottle, RATE_LIMIT_CONFIGS } from './useRateLimiter';
 export { useSessionSecurity } from './useSessionSecurity';
 export { useBiometricAuth } from './useBiometricAuth';
+export { useSanitizedInput, useSanitizedForm } from './useSanitizedInput';
 
 // Network & Offline
 export { useOfflineMode } from './useOfflineMode';

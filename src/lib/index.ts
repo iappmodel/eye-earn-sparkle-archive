@@ -6,3 +6,4 @@ export * from './sanitize';
 export * from './cache';
 export * from './performance';
 export * from './logger';
+export * from './security';

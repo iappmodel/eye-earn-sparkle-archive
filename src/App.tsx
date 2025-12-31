@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,27 +16,30 @@ import { GlobalNetworkStatus } from "@/components/layout/GlobalNetworkStatus";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { BreadcrumbNavigation } from "@/components/BreadcrumbNavigation";
 import { PageTransition } from "@/components/layout/PageTransition";
+import { PageLoader } from "@/components/ui/PageLoader";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
-import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import Admin from "./pages/Admin";
-import Install from "./pages/Install";
-import Create from "./pages/Create";
-import Studio from "./pages/Studio";
-import MyPage from "./pages/MyPage";
-import Search from "./pages/Search";
-import Hashtag from "./pages/Hashtag";
-import UserProfile from "./pages/UserProfile";
-import VideoDetail from "./pages/VideoDetail";
-import Drafts from "./pages/Drafts";
-import Sounds from "./pages/Sounds";
-import Trending from "./pages/Trending";
-import Challenges from "./pages/Challenges";
-import Wallet from "./pages/Wallet";
-import Earnings from "./pages/Earnings";
-import NotFound from "./pages/NotFound";
-import SocialConnect from "./pages/SocialConnect";
-import { PromotionDetails } from "./components/PromotionDetails";
+
+// Lazy load all pages for code splitting
+const Index = lazy(() => import("./pages/Index"));
+const Auth = lazy(() => import("./pages/Auth"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Install = lazy(() => import("./pages/Install"));
+const Create = lazy(() => import("./pages/Create"));
+const Studio = lazy(() => import("./pages/Studio"));
+const MyPage = lazy(() => import("./pages/MyPage"));
+const Search = lazy(() => import("./pages/Search"));
+const Hashtag = lazy(() => import("./pages/Hashtag"));
+const UserProfile = lazy(() => import("./pages/UserProfile"));
+const VideoDetail = lazy(() => import("./pages/VideoDetail"));
+const Drafts = lazy(() => import("./pages/Drafts"));
+const Sounds = lazy(() => import("./pages/Sounds"));
+const Trending = lazy(() => import("./pages/Trending"));
+const Challenges = lazy(() => import("./pages/Challenges"));
+const Wallet = lazy(() => import("./pages/Wallet"));
+const Earnings = lazy(() => import("./pages/Earnings"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const SocialConnect = lazy(() => import("./pages/SocialConnect"));
+const PromotionDetails = lazy(() => import("./components/PromotionDetails").then(m => ({ default: m.PromotionDetails })));
 
 const queryClient = new QueryClient();
 
@@ -53,148 +57,150 @@ const AppContent = () => {
       <BreadcrumbNavigation />
       <OfflineBanner />
       <PageTransition>
-        <Routes>
-        <Route path="/auth" element={<Auth />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Index />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/create"
-          element={
-            <ProtectedRoute>
-              <Create />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/studio"
-          element={
-            <ProtectedRoute>
-              <Studio />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <Admin />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/my-page"
-          element={
-            <ProtectedRoute>
-              <MyPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/social-connect"
-          element={
-            <ProtectedRoute>
-              <SocialConnect />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/install" element={<Install />} />
-        <Route
-          path="/drafts"
-          element={
-            <ProtectedRoute>
-              <Drafts />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/search"
-          element={
-            <ProtectedRoute>
-              <Search />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/tag/:tag"
-          element={
-            <ProtectedRoute>
-              <Hashtag />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/u/:userId"
-          element={
-            <ProtectedRoute>
-              <UserProfile />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/v/:videoId"
-          element={
-            <ProtectedRoute>
-              <VideoDetail />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/promotion/:id"
-          element={
-            <ProtectedRoute>
-              <PromotionDetails />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/sounds"
-          element={
-            <ProtectedRoute>
-              <Sounds />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/trending"
-          element={
-            <ProtectedRoute>
-              <Trending />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/challenges"
-          element={
-            <ProtectedRoute>
-              <Challenges />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/wallet"
-          element={
-            <ProtectedRoute>
-              <Wallet />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/earnings"
-          element={
-            <ProtectedRoute>
-              <Earnings />
-            </ProtectedRoute>
-          }
-        />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+        <Suspense fallback={<PageLoader message="Loading page..." />}>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/create"
+              element={
+                <ProtectedRoute>
+                  <Create />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/studio"
+              element={
+                <ProtectedRoute>
+                  <Studio />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-page"
+              element={
+                <ProtectedRoute>
+                  <MyPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/social-connect"
+              element={
+                <ProtectedRoute>
+                  <SocialConnect />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/install" element={<Install />} />
+            <Route
+              path="/drafts"
+              element={
+                <ProtectedRoute>
+                  <Drafts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/search"
+              element={
+                <ProtectedRoute>
+                  <Search />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tag/:tag"
+              element={
+                <ProtectedRoute>
+                  <Hashtag />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/u/:userId"
+              element={
+                <ProtectedRoute>
+                  <UserProfile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/v/:videoId"
+              element={
+                <ProtectedRoute>
+                  <VideoDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/promotion/:id"
+              element={
+                <ProtectedRoute>
+                  <PromotionDetails />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sounds"
+              element={
+                <ProtectedRoute>
+                  <Sounds />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/trending"
+              element={
+                <ProtectedRoute>
+                  <Trending />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/challenges"
+              element={
+                <ProtectedRoute>
+                  <Challenges />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/wallet"
+              element={
+                <ProtectedRoute>
+                  <Wallet />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/earnings"
+              element={
+                <ProtectedRoute>
+                  <Earnings />
+                </ProtectedRoute>
+              }
+            />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </PageTransition>
     </>
   );
@@ -209,13 +215,13 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <BrowserRouter>
-                <AuthProvider>
+              <AuthProvider>
+                <BrowserRouter>
                   <OfflineProvider>
                     <AppContent />
                   </OfflineProvider>
-                </AuthProvider>
-              </BrowserRouter>
+                </BrowserRouter>
+              </AuthProvider>
             </TooltipProvider>
           </DragContextProvider>
         </UICustomizationProvider>

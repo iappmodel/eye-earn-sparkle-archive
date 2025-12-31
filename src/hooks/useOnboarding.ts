@@ -5,14 +5,16 @@ import { supabase } from '@/integrations/supabase/client';
 
 export function useOnboarding() {
   const { user, profile } = useAuth();
-  // Enable onboarding for KYC flow
-  const [showOnboarding, setShowOnboarding] = useState(true);
+
+  // Onboarding is a blocking, full-screen overlay, so default must be CLOSED.
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [kycStatus, setKycStatus] = useState<string>('pending');
 
   useEffect(() => {
     const checkOnboardingStatus = async () => {
       if (!user) {
+        setShowOnboarding(false);
         setIsLoading(false);
         return;
       }
@@ -28,19 +30,21 @@ export function useOnboarding() {
         const status = kycData?.status || profile?.kyc_status || 'pending';
         setKycStatus(status);
 
-        // Show onboarding if KYC is not approved and hasn't been dismissed
         const dismissed = localStorage.getItem(`onboarding_dismissed_${user.id}`);
+
+        // Only show onboarding for brand-new users who still need verification
+        let shouldShow = false;
         if (status !== 'approved' && !dismissed) {
-          // Check if this is a new user (created in the last hour)
           const createdAt = new Date(user.created_at);
           const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-          
-          if (createdAt > hourAgo) {
-            setShowOnboarding(true);
-          }
+          shouldShow = createdAt > hourAgo;
         }
+
+        setShowOnboarding(shouldShow);
       } catch (error) {
         console.error('Error checking onboarding status:', error);
+        // Fail closed so we never block the app
+        setShowOnboarding(false);
       } finally {
         setIsLoading(false);
       }
@@ -50,7 +54,7 @@ export function useOnboarding() {
   }, [user, profile]);
 
   const openOnboarding = () => setShowOnboarding(true);
-  
+
   const closeOnboarding = () => {
     setShowOnboarding(false);
     if (user) {
@@ -60,7 +64,10 @@ export function useOnboarding() {
 
   const completeOnboarding = () => {
     setShowOnboarding(false);
-    // Don't set dismissed - user can access it again from profile
+    // Treat completion as dismissal to prevent blocking on refresh.
+    if (user) {
+      localStorage.setItem(`onboarding_dismissed_${user.id}`, 'true');
+    }
   };
 
   return {

@@ -208,6 +208,14 @@
     --destructive: 0 85% 55%;
     --destructive-foreground: 0 0% 100%;
 
+    /* Warning - Amber */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Success - Green */
+    --success: 142 76% 45%;
+    --success-foreground: 0 0% 100%;
+
     --border: 270 30% 20%;
     --input: 240 15% 12%;
     --ring: 270 95% 65%;

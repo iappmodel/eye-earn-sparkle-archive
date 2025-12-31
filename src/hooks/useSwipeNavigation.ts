@@ -103,6 +103,7 @@ export const useSwipeNavigation = ({
       onTouchStart: handleTouchStart,
       onTouchMove: handleTouchMove,
       onTouchEnd: handleTouchEnd,
+      onTouchCancel: handleTouchEnd,
       onMouseDown: handleTouchStart,
       onMouseMove: handleTouchMove,
       onMouseUp: handleTouchEnd,

@@ -1,5 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { errorTrackingService } from "@/services/errorTracking.service";
+import { CURRENT_APP_VERSION } from "@/services/appVersion.service";
 import App from "./App.tsx";
 import "./index.css";
 
@@ -35,6 +37,8 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+
+errorTrackingService.init({ appVersion: CURRENT_APP_VERSION });
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary componentName="Root">

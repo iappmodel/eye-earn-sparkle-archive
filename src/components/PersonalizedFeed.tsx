@@ -79,7 +79,7 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ onSelectCont
           contentType: 'video',
           action,
           feedback,
-          tags: item.tags,
+          tags: Array.isArray(item.tags) ? item.tags : [],
           category: item.category,
         },
       });
@@ -204,7 +204,7 @@ export const PersonalizedFeed: React.FC<PersonalizedFeedProps> = ({ onSelectCont
 
                 {/* Tags */}
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {item.tags.slice(0, 3).map(tag => (
+                  {(Array.isArray(item.tags) ? item.tags : []).slice(0, 3).map(tag => (
                     <span key={tag} className="text-[10px] bg-muted px-2 py-0.5 rounded-full">
                       #{tag}
                     </span>

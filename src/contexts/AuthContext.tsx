@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { subscriptionService, SubscriptionStatus } from '@/services/subscription.service';
+import { errorTrackingService } from '@/services/errorTracking.service';
 
 interface Profile {
   id: string;
@@ -96,6 +97,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        errorTrackingService.setUserId(session?.user?.id ?? null);
         
         // Defer profile and subscription fetch with setTimeout to avoid deadlock
         if (session?.user) {
@@ -114,6 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      errorTrackingService.setUserId(session?.user?.id ?? null);
       
       if (session?.user) {
         Promise.all([
@@ -198,6 +201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    errorTrackingService.setUserId(null);
     setUser(null);
     setSession(null);
     setProfile(null);

@@ -489,11 +489,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           playsInline
           loop={type !== 'promo'}
         />
-      ) : (
+      ) : src ? (
         <div 
           className="absolute inset-0 bg-cover bg-center transition-transform duration-300"
           style={{ backgroundImage: `url(${src})` }}
         />
+      ) : (
+        /* Fallback gradient when no media URL */
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20" />
       )}
       
       {/* Subtle vignette overlay for depth */}

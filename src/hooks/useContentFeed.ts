@@ -226,40 +226,47 @@ export const useContentFeed = () => {
 
       const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
 
-      // Transform to FeedContent format
-      const feedContent: FeedContent[] = contentData.map(item => {
-        const profile = profileMap.get(item.user_id);
-        // Check if media is video by URL extension
-        const hasVideoUrl = item.media_url?.includes('.mp4') || item.media_url?.includes('.webm');
-        // Map database content_type to feed type
-        const isPromo = item.content_type === 'promotion' || item.content_type === 'campaign' || !!item.reward_type;
-        const isVideo = hasVideoUrl || item.content_type === 'post'; // posts with .mp4 are videos
-        const feedType: 'video' | 'image' | 'promo' = isPromo ? 'promo' : (hasVideoUrl ? 'video' : 'image');
+      // Transform to FeedContent format - filter out items with no media
+      const feedContent: FeedContent[] = contentData
+        .filter(item => item.media_url || item.thumbnail_url) // Skip items with no media
+        .map(item => {
+          const profile = profileMap.get(item.user_id);
+          // Check if media is video by URL extension
+          const hasVideoUrl = item.media_url?.includes('.mp4') || item.media_url?.includes('.webm');
+          // Map database content_type to feed type
+          const isPromo = item.content_type === 'promotion' || item.content_type === 'campaign' || !!item.reward_type;
+          const feedType: 'video' | 'image' | 'promo' = isPromo ? 'promo' : (hasVideoUrl ? 'video' : 'image');
 
-        return {
-          id: item.id,
-          type: feedType,
-          src: item.thumbnail_url || item.media_url || '',
-          videoSrc: hasVideoUrl ? item.media_url : undefined,
-          duration: hasVideoUrl ? 15 : undefined,
-          title: item.title || item.caption || '',
-          reward: isPromo && item.budget ? {
-            amount: item.budget,
-            type: (item.reward_type === 'icoin' ? 'icoin' : 'vicoin') as 'vicoin' | 'icoin',
-          } : undefined,
-          creator: {
-            id: item.user_id,
-            username: profile?.username || 'user',
-            displayName: profile?.display_name || profile?.username || 'Creator',
-            avatarUrl: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.user_id}`,
-            postsCount: 0,
-            followersCount: profile?.followers_count || 0,
-            followingCount: profile?.following_count || 0,
-            isVerified: profile?.is_verified || false,
-          },
-        };
-      });
+          // Build a valid src - prioritize thumbnail for images, media_url for videos
+          const mediaSrc = hasVideoUrl 
+            ? (item.thumbnail_url || item.media_url || '')
+            : (item.media_url || item.thumbnail_url || '');
 
+          return {
+            id: item.id,
+            type: feedType,
+            src: mediaSrc,
+            videoSrc: hasVideoUrl ? item.media_url : undefined,
+            duration: hasVideoUrl ? 15 : undefined,
+            title: item.title || item.caption || '',
+            reward: isPromo && item.budget ? {
+              amount: item.budget,
+              type: (item.reward_type === 'icoin' ? 'icoin' : 'vicoin') as 'vicoin' | 'icoin',
+            } : undefined,
+            creator: {
+              id: item.user_id,
+              username: profile?.username || 'user',
+              displayName: profile?.display_name || profile?.username || 'Creator',
+              avatarUrl: profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.user_id}`,
+              postsCount: 0,
+              followersCount: profile?.followers_count || 0,
+              followingCount: profile?.following_count || 0,
+              isVerified: profile?.is_verified || false,
+            },
+          };
+        });
+
+      // Use fetched content if available, otherwise fallback
       setContent(feedContent.length > 0 ? feedContent : fallbackContent);
     } catch (err) {
       console.error('[useContentFeed] Unexpected error:', err);

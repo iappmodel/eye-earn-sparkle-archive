@@ -275,9 +275,15 @@ export const usePageNavigation = (): UsePageNavigationReturn => {
   }, [transition, transitionState]);
 
   // Get transition inline styles (for more precise control)
+  // IMPORTANT: Always return visible state when idle to prevent blank screens
   const getTransitionStyles = useCallback((): React.CSSProperties => {
+    // Always ensure content is visible when not actively transitioning
     if (!transition || transitionState === 'idle') {
-      return {};
+      return { 
+        opacity: 1, 
+        transform: 'none',
+        visibility: 'visible' as const,
+      };
     }
     
     const { type, direction, duration } = transition;
@@ -286,12 +292,10 @@ export const usePageNavigation = (): UsePageNavigationReturn => {
     const styles: React.CSSProperties = {
       transitionDuration: `${duration}ms`,
       transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+      visibility: 'visible' as const,
     };
     
     if (type === 'slide') {
-      const offset = isExiting ? '100%' : '0%';
-      const startOffset = isExiting ? '0%' : '100%';
-      
       switch (direction) {
         case 'up':
           styles.transform = isExiting ? 'translateY(-100%)' : 'translateY(0)';
@@ -305,12 +309,20 @@ export const usePageNavigation = (): UsePageNavigationReturn => {
         case 'right':
           styles.transform = isExiting ? 'translateX(100%)' : 'translateX(0)';
           break;
+        default:
+          styles.transform = 'none';
       }
+      styles.opacity = isExiting ? 0 : 1;
     } else if (type === 'fade') {
       styles.opacity = isExiting ? 0 : 1;
+      styles.transform = 'none';
     } else if (type === 'zoom') {
       styles.transform = isExiting ? 'scale(0.9)' : 'scale(1)';
       styles.opacity = isExiting ? 0 : 1;
+    } else {
+      // Fallback - always visible
+      styles.opacity = 1;
+      styles.transform = 'none';
     }
     
     return styles;

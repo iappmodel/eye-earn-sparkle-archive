@@ -181,7 +181,7 @@ export const useContentFeed = () => {
     setError(null);
     
     try {
-      // Fetch published content with creator profiles
+      // Fetch active/published content with creator profiles
       const { data: contentData, error: contentError } = await supabase
         .from('user_content')
         .select(`
@@ -197,7 +197,7 @@ export const useContentFeed = () => {
           views_count,
           likes_count
         `)
-        .eq('status', 'published')
+        .in('status', ['active', 'published'])
         .eq('is_public', true)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -229,15 +229,19 @@ export const useContentFeed = () => {
       // Transform to FeedContent format
       const feedContent: FeedContent[] = contentData.map(item => {
         const profile = profileMap.get(item.user_id);
-        const isVideo = item.content_type === 'video' || item.media_url?.includes('.mp4');
-        const isPromo = item.content_type === 'promo' || item.reward_type;
+        // Check if media is video by URL extension
+        const hasVideoUrl = item.media_url?.includes('.mp4') || item.media_url?.includes('.webm');
+        // Map database content_type to feed type
+        const isPromo = item.content_type === 'promotion' || item.content_type === 'campaign' || !!item.reward_type;
+        const isVideo = hasVideoUrl || item.content_type === 'post'; // posts with .mp4 are videos
+        const feedType: 'video' | 'image' | 'promo' = isPromo ? 'promo' : (hasVideoUrl ? 'video' : 'image');
 
         return {
           id: item.id,
-          type: isPromo ? 'promo' : isVideo ? 'video' : 'image',
+          type: feedType,
           src: item.thumbnail_url || item.media_url || '',
-          videoSrc: isVideo ? item.media_url : undefined,
-          duration: isVideo ? 15 : undefined, // Default duration
+          videoSrc: hasVideoUrl ? item.media_url : undefined,
+          duration: hasVideoUrl ? 15 : undefined,
           title: item.title || item.caption || '',
           reward: isPromo && item.budget ? {
             amount: item.budget,

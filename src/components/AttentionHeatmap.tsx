@@ -27,12 +27,12 @@ const getHeatOpacity = (score: number): number => {
   return 0.5 + (score / 100) * 0.5;
 };
 
-export const AttentionHeatmap: React.FC<AttentionHeatmapProps> = ({
+export const AttentionHeatmap = React.forwardRef<HTMLDivElement, AttentionHeatmapProps>(({
   segments,
   currentProgress,
   isVisible,
   className,
-}) => {
+}, ref) => {
   // Create a visual representation of attention over time
   const heatmapBars = useMemo(() => {
     if (segments.length === 0) return [];
@@ -58,8 +58,8 @@ export const AttentionHeatmap: React.FC<AttentionHeatmapProps> = ({
     }, 0);
 
     const avgScore = weightedSum / totalWidth;
-    const bestSegment = segments.reduce((best, s) => s.avgScore > best.avgScore ? s : best, segments[0]);
-    const worstSegment = segments.reduce((worst, s) => s.avgScore < worst.avgScore ? s : worst, segments[0]);
+    const bestSegment = segments.reduce((best, s) => (s.avgScore > best.avgScore ? s : best), segments[0]);
+    const worstSegment = segments.reduce((worst, s) => (s.avgScore < worst.avgScore ? s : worst), segments[0]);
 
     return {
       avgScore: Math.round(avgScore),
@@ -73,7 +73,7 @@ export const AttentionHeatmap: React.FC<AttentionHeatmapProps> = ({
   if (!isVisible || segments.length === 0) return null;
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div ref={ref} className={cn('space-y-2', className)}>
       {/* Heatmap visualization */}
       <div className="relative h-6 bg-muted/30 rounded-lg overflow-hidden">
         {/* Background grid lines */}
@@ -160,7 +160,9 @@ export const AttentionHeatmap: React.FC<AttentionHeatmapProps> = ({
       )}
     </div>
   );
-};
+});
+
+AttentionHeatmap.displayName = 'AttentionHeatmap';
 
 // Hook to track attention over time and build heatmap data
 export const useAttentionHeatmap = () => {

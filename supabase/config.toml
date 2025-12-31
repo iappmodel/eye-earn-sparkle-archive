@@ -117,3 +117,30 @@ verify_jwt = false
 
 [functions.session-security]
 verify_jwt = false
+
+[functions.stripe-connect-onboard]
+verify_jwt = false
+
+[functions.stripe-connect-payout]
+verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false
+
+[functions.cloudflare-stream-upload]
+verify_jwt = false
+
+[functions.cloudflare-stream-status]
+verify_jwt = false
+
+[functions.twilio-send-verification]
+verify_jwt = false
+
+[functions.twilio-verify-code]
+verify_jwt = false
+
+[functions.ai-moderate-content]
+verify_jwt = false
+
+[functions.track-analytics]
+verify_jwt = false

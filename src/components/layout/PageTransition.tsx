@@ -9,42 +9,24 @@ interface PageTransitionProps {
 
 export const PageTransition: React.FC<PageTransitionProps> = ({ children, className }) => {
   const location = useLocation();
-  const [displayChildren, setDisplayChildren] = useState(children);
-  const [transitionStage, setTransitionStage] = useState<'enter' | 'exit' | 'idle'>('idle');
 
-  useEffect(() => {
-    if (children !== displayChildren) {
-      setTransitionStage('exit');
-      
-      const timer = setTimeout(() => {
-        setDisplayChildren(children);
-        setTransitionStage('enter');
-        
-        const enterTimer = setTimeout(() => {
-          setTransitionStage('idle');
-        }, 300);
-        
-        return () => clearTimeout(enterTimer);
-      }, 150);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [children, displayChildren]);
-
+  // NOTE: Previously we compared `children` by reference and ran an exit/enter state machine.
+  // In React, `children` can be a new element every render (even on the same route), which can
+  // keep the wrapper stuck at `opacity-0` on frequent re-renders (appears as a blank screen).
+  // Keying by route avoids that while still giving a smooth page fade-in.
   return (
     <div
+      key={location.key}
       className={cn(
-        "transition-all duration-300 ease-out",
-        transitionStage === 'exit' && "opacity-0 scale-[0.98] translate-y-2",
-        transitionStage === 'enter' && "opacity-100 scale-100 translate-y-0 animate-fade-in",
-        transitionStage === 'idle' && "opacity-100 scale-100 translate-y-0",
+        'w-full transition-opacity duration-200 ease-out animate-fade-in motion-reduce:animate-none',
         className
       )}
     >
-      {displayChildren}
+      {children}
     </div>
   );
 };
+
 
 // Slide transition for horizontal navigation
 export const SlideTransition: React.FC<PageTransitionProps & { direction?: 'left' | 'right' }> = ({ 

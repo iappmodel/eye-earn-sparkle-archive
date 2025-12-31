@@ -1,5 +1,5 @@
 // Multi-directional page navigation hook using configured page layout
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useUICustomization, PageSlot, PageDirection } from '@/contexts/UICustomizationContext';
 
 export type TransitionType = 'slide' | 'fade' | 'zoom' | 'flip';
@@ -45,184 +45,233 @@ const getTransitionType = (direction: PageDirection): TransitionType => {
 
 export const usePageNavigation = (): UsePageNavigationReturn => {
   const { pageLayout, getPagesByDirection: getPages } = useUICustomization();
-  
+
   // Current page state
   const [currentState, setCurrentState] = useState<PageState>({
     direction: 'center',
     index: 0,
   });
-  
+
   // Transition state
   const [transition, setTransition] = useState<TransitionConfig | null>(null);
   const [transitionState, setTransitionState] = useState<TransitionState>('idle');
   const isNavigating = useRef(false);
+  const navId = useRef(0);
+
+  // Fail-open watchdog: if a transition ever gets stuck, reset so the UI stays interactive.
+  useEffect(() => {
+    if (!transition || transitionState === 'idle') return;
+
+    const idAtStart = navId.current;
+    const maxMs = Math.max(transition.duration ?? 300, 300) * 3;
+
+    const timer = window.setTimeout(() => {
+      if (navId.current !== idAtStart) return;
+
+      navId.current += 1; // invalidate any pending timeouts from this navigation
+      setTransitionState('idle');
+      setTransition(null);
+      isNavigating.current = false;
+    }, maxMs);
+
+    return () => window.clearTimeout(timer);
+  }, [transition, transitionState]);
 
   // Get current page
   const currentPage = useMemo(() => {
-    const pages = pageLayout.pages.filter(p => p.direction === currentState.direction);
-    return pages[currentState.index] || pageLayout.pages.find(p => p.direction === 'center') || null;
+    const pages = pageLayout.pages.filter((p) => p.direction === currentState.direction);
+    return pages[currentState.index] || pageLayout.pages.find((p) => p.direction === 'center') || null;
   }, [pageLayout.pages, currentState]);
 
   // Get pages by direction (memoized)
-  const getPagesByDirection = useCallback((direction: PageDirection) => {
-    return getPages(direction);
-  }, [getPages]);
+  const getPagesByDirection = useCallback(
+    (direction: PageDirection) => {
+      return getPages(direction);
+    },
+    [getPages]
+  );
 
   // Check if navigation is possible in a direction
-  const canNavigate = useCallback((direction: PageDirection): boolean => {
-    if (isNavigating.current) return false;
-    
-    // From center, can go in any direction that has pages
-    if (currentState.direction === 'center') {
-      const targetPages = getPagesByDirection(direction);
-      return targetPages.length > 0 || direction === 'up' || direction === 'down';
-    }
-    
-    // From a non-center direction
-    const oppositeDirections: Record<PageDirection, PageDirection> = {
-      up: 'down',
-      down: 'up',
-      left: 'right',
-      right: 'left',
-      center: 'center',
-    };
-    
-    // Can always go back to center via opposite direction
-    if (direction === oppositeDirections[currentState.direction]) {
-      return true;
-    }
-    
-    // Can navigate within same axis (up/down or left/right)
-    if ((currentState.direction === 'up' || currentState.direction === 'down') &&
-        (direction === 'up' || direction === 'down')) {
-      return true;
-    }
-    
-    if ((currentState.direction === 'left' || currentState.direction === 'right') &&
-        (direction === 'left' || direction === 'right')) {
-      return true;
-    }
-    
-    return false;
-  }, [currentState, getPagesByDirection]);
+  const canNavigate = useCallback(
+    (direction: PageDirection): boolean => {
+      if (isNavigating.current) return false;
+
+      // From center, can go in any direction that has pages
+      if (currentState.direction === 'center') {
+        const targetPages = getPagesByDirection(direction);
+        return targetPages.length > 0 || direction === 'up' || direction === 'down';
+      }
+
+      // From a non-center direction
+      const oppositeDirections: Record<PageDirection, PageDirection> = {
+        up: 'down',
+        down: 'up',
+        left: 'right',
+        right: 'left',
+        center: 'center',
+      };
+
+      // Can always go back to center via opposite direction
+      if (direction === oppositeDirections[currentState.direction]) {
+        return true;
+      }
+
+      // Can navigate within same axis (up/down or left/right)
+      if (
+        (currentState.direction === 'up' || currentState.direction === 'down') &&
+        (direction === 'up' || direction === 'down')
+      ) {
+        return true;
+      }
+
+      if (
+        (currentState.direction === 'left' || currentState.direction === 'right') &&
+        (direction === 'left' || direction === 'right')
+      ) {
+        return true;
+      }
+
+      return false;
+    },
+    [currentState, getPagesByDirection]
+  );
 
   // Navigate in a direction
-  const navigate = useCallback((direction: PageDirection) => {
-    if (!canNavigate(direction) || isNavigating.current) return;
-    
-    isNavigating.current = true;
-    
-    // Determine transition type
-    const transitionType = getTransitionType(direction);
-    const transitionDuration = 300;
-    
-    // Start exit transition
-    setTransition({
-      type: transitionType,
-      duration: transitionDuration,
-      direction,
-    });
-    setTransitionState('exiting');
-    
-    // Calculate new state
-    setTimeout(() => {
-      let newState: PageState;
-      
-      if (currentState.direction === 'center') {
-        // Going from center to a direction
-        const targetPages = getPagesByDirection(direction);
-        if (targetPages.length > 0) {
-          newState = { direction, index: 0 };
-        } else {
-          // No pages in that direction, stay at center (for vertical scroll)
-          newState = currentState;
-        }
-      } else {
-        // Check if going back to center
-        const oppositeDirections: Record<PageDirection, PageDirection> = {
-          up: 'down',
-          down: 'up',
-          left: 'right',
-          right: 'left',
-          center: 'center',
-        };
-        
-        if (direction === oppositeDirections[currentState.direction]) {
-          // Going back to center
-          newState = { direction: 'center', index: 0 };
-        } else if ((currentState.direction === 'left' || currentState.direction === 'right') &&
-                   (direction === 'left' || direction === 'right')) {
-          // Navigating within horizontal pages
-          const pages = getPagesByDirection(currentState.direction);
-          if (direction === currentState.direction) {
-            // Continue in same direction (next page)
-            newState = {
-              direction: currentState.direction,
-              index: Math.min(currentState.index + 1, pages.length - 1),
-            };
+  const navigate = useCallback(
+    (direction: PageDirection) => {
+      if (!canNavigate(direction) || isNavigating.current) return;
+
+      isNavigating.current = true;
+      const id = ++navId.current;
+
+      // Determine transition type
+      const transitionType = getTransitionType(direction);
+      const transitionDuration = 300;
+
+      // Start exit transition
+      setTransition({
+        type: transitionType,
+        duration: transitionDuration,
+        direction,
+      });
+      setTransitionState('exiting');
+
+      // Calculate new state
+      setTimeout(() => {
+        if (navId.current !== id) return;
+
+        let newState: PageState;
+
+        if (currentState.direction === 'center') {
+          // Going from center to a direction
+          const targetPages = getPagesByDirection(direction);
+          if (targetPages.length > 0) {
+            newState = { direction, index: 0 };
           } else {
-            // Going opposite (previous page or back to center)
-            if (currentState.index > 0) {
-              newState = {
-                direction: currentState.direction,
-                index: currentState.index - 1,
-              };
-            } else {
-              newState = { direction: 'center', index: 0 };
-            }
+            // No pages in that direction, stay at center (for vertical scroll)
+            newState = currentState;
           }
         } else {
-          // Stay in current position
-          newState = currentState;
+          // Check if going back to center
+          const oppositeDirections: Record<PageDirection, PageDirection> = {
+            up: 'down',
+            down: 'up',
+            left: 'right',
+            right: 'left',
+            center: 'center',
+          };
+
+          if (direction === oppositeDirections[currentState.direction]) {
+            // Going back to center
+            newState = { direction: 'center', index: 0 };
+          } else if (
+            (currentState.direction === 'left' || currentState.direction === 'right') &&
+            (direction === 'left' || direction === 'right')
+          ) {
+            // Navigating within horizontal pages
+            const pages = getPagesByDirection(currentState.direction);
+            if (direction === currentState.direction) {
+              // Continue in same direction (next page)
+              newState = {
+                direction: currentState.direction,
+                index: Math.min(currentState.index + 1, pages.length - 1),
+              };
+            } else {
+              // Going opposite (previous page or back to center)
+              if (currentState.index > 0) {
+                newState = {
+                  direction: currentState.direction,
+                  index: currentState.index - 1,
+                };
+              } else {
+                newState = { direction: 'center', index: 0 };
+              }
+            }
+          } else {
+            // Stay in current position
+            newState = currentState;
+          }
         }
-      }
-      
-      setCurrentState(newState);
-      setTransitionState('entering');
-      
-      // Complete transition
-      setTimeout(() => {
-        setTransitionState('idle');
-        setTransition(null);
-        isNavigating.current = false;
+
+        setCurrentState(newState);
+        setTransitionState('entering');
+
+        // Complete transition
+        setTimeout(() => {
+          if (navId.current !== id) return;
+
+          setTransitionState('idle');
+          setTransition(null);
+          isNavigating.current = false;
+        }, transitionDuration);
       }, transitionDuration);
-    }, transitionDuration);
-  }, [canNavigate, currentState, getPagesByDirection]);
+    },
+    [canNavigate, currentState, getPagesByDirection]
+  );
 
   // Navigate directly to a page
-  const navigateToPage = useCallback((pageId: string) => {
-    if (isNavigating.current) return;
-    
-    const targetPage = pageLayout.pages.find(p => p.id === pageId);
-    if (!targetPage) return;
-    
-    const pagesInDirection = getPagesByDirection(targetPage.direction);
-    const pageIndex = pagesInDirection.findIndex(p => p.id === pageId);
-    
-    if (pageIndex === -1) return;
-    
-    isNavigating.current = true;
-    setTransition({
-      type: 'zoom',
-      duration: 400,
-      direction: targetPage.direction,
-    });
-    setTransitionState('exiting');
-    
-    setTimeout(() => {
-      setCurrentState({
+  const navigateToPage = useCallback(
+    (pageId: string) => {
+      if (isNavigating.current) return;
+
+      const targetPage = pageLayout.pages.find((p) => p.id === pageId);
+      if (!targetPage) return;
+
+      const pagesInDirection = getPagesByDirection(targetPage.direction);
+      const pageIndex = pagesInDirection.findIndex((p) => p.id === pageId);
+
+      if (pageIndex === -1) return;
+
+      isNavigating.current = true;
+      const id = ++navId.current;
+
+      setTransition({
+        type: 'zoom',
+        duration: 400,
         direction: targetPage.direction,
-        index: pageIndex,
       });
-      setTransitionState('entering');
-      
+      setTransitionState('exiting');
+
       setTimeout(() => {
-        setTransitionState('idle');
-        setTransition(null);
-        isNavigating.current = false;
+        if (navId.current !== id) return;
+
+        setCurrentState({
+          direction: targetPage.direction,
+          index: pageIndex,
+        });
+        setTransitionState('entering');
+
+        setTimeout(() => {
+          if (navId.current !== id) return;
+
+          setTransitionState('idle');
+          setTransition(null);
+          isNavigating.current = false;
+        }, 400);
       }, 400);
-    }, 400);
-  }, [pageLayout.pages, getPagesByDirection]);
+    },
+    [pageLayout.pages, getPagesByDirection]
+  );
 
   // Get transition CSS classes
   const getTransitionClasses = useCallback((): string => {

@@ -112,25 +112,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      errorTrackingService.setUserId(session?.user?.id ?? null);
-      
-      if (session?.user) {
-        Promise.all([
-          fetchProfile(session.user.id),
-          subscriptionService.checkSubscription().catch(() => null),
-        ]).then(([profileData, subStatus]) => {
+    // THEN check for existing session (fail-open: never block UI forever)
+    supabase.auth
+      .getSession()
+      .then(async ({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        errorTrackingService.setUserId(session?.user?.id ?? null);
+
+        if (session?.user) {
+          const timeoutMs = 4000;
+          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+
+          const result = (await Promise.race([
+            Promise.all([
+              fetchProfile(session.user.id),
+              subscriptionService.checkSubscription().catch(() => null),
+            ]) as Promise<[Profile | null, SubscriptionStatus | null]>,
+            timeout,
+          ])) as [Profile | null, SubscriptionStatus | null] | null;
+
+          if (result === null) {
+            // Timed out: unblock UI, then fetch in background
+            setLoading(false);
+            fetchProfile(session.user.id).then(setProfile);
+            subscriptionService.checkSubscription().then(setSubscription).catch(() => null);
+            return;
+          }
+
+          const [profileData, subStatus] = result;
           setProfile(profileData);
           if (subStatus) setSubscription(subStatus);
           setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    });
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => setLoading(false));
 
     return () => subscription.unsubscribe();
   }, []);

@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { errorTrackingService } from '@/services/errorTracking.service';
+import { attemptChunkRecovery, isChunkLoadError } from '@/lib/chunkRecovery';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -29,6 +30,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         componentStack: errorInfo.componentStack,
       },
     });
+
+    // If a lazy-loaded route chunk fails (stale cache / transient network), recover via hard reload.
+    if (isChunkLoadError(error)) {
+      void attemptChunkRecovery();
+    }
   }
 
   render(): ReactNode {
@@ -36,6 +42,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       if (this.props.fallback) {
         return this.props.fallback;
       }
+
+      const chunkError = isChunkLoadError(this.state.error);
+
       return (
         <div className="flex flex-col items-center justify-center p-8 text-center">
           <h2 className="text-lg font-semibold text-destructive mb-2">Something went wrong</h2>
@@ -43,10 +52,16 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             {this.state.error?.message || 'An unexpected error occurred'}
           </p>
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() => {
+              if (chunkError) {
+                void attemptChunkRecovery({ force: true });
+                return;
+              }
+              this.setState({ hasError: false, error: null });
+            }}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm"
           >
-            Try Again
+            {chunkError ? 'Reload app' : 'Try Again'}
           </button>
         </div>
       );
@@ -55,3 +70,4 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return this.props.children;
   }
 }
+

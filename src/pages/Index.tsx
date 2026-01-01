@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, QuickVisibilityToggle } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -80,6 +80,26 @@ const Index = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [useUnifiedFeed, setUseUnifiedFeed] = useState(false);
+
+  // Safety: if a transition ever gets stuck (can appear as a blank, non-interactive screen),
+  // force the container back to a visible, interactive state.
+  const [forceVisible, setForceVisible] = useState(false);
+  useEffect(() => {
+    if (transitionState === 'idle') {
+      setForceVisible(false);
+      return;
+    }
+
+    const maxMs = Math.max(transition?.duration ?? 300, 300) * 4;
+    const t = window.setTimeout(() => setForceVisible(true), maxMs);
+    return () => window.clearTimeout(t);
+  }, [transitionState, transition?.duration]);
+
+  const safeTransitionStyles: React.CSSProperties = forceVisible
+    ? { opacity: 1, transform: 'none', visibility: 'visible' }
+    : getTransitionStyles();
+
+  const safeTransitionClasses = cn('absolute inset-0', !forceVisible && getTransitionClasses());
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
@@ -404,7 +424,7 @@ const Index = () => {
           {...handlers}
         >
         {/* Dynamic Page Container with transitions */}
-        <div className={cn("absolute inset-0", getTransitionClasses())} style={getTransitionStyles()}>
+        <div className={safeTransitionClasses} style={safeTransitionStyles}>
           {/* Render based on current page content type */}
           {isAtCenter ? (
             // Main Media Feed (Center)

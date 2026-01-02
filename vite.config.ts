@@ -51,6 +51,10 @@ export default defineConfig(({ mode }) => ({
         // Skip caching for large video files
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/, /\.mp4$/, /\.m3u8$/],
+        // Aggressive SW update behavior to prevent stale caches
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           // API responses - Network first with cache fallback
           {

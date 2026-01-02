@@ -25,6 +25,8 @@ import { PullToRefresh } from '@/components/ui/PullToRefresh';
 import { CommentsPanel } from '@/components/CommentsPanel';
 import { ShareSheet } from '@/components/ShareSheet';
 import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
+import { SafeComponentWrapper } from '@/components/SafeComponentWrapper';
+import { EMPTY_HOOK_DEFAULTS } from '@/hooks/useSafeHook';
 
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
@@ -38,23 +40,86 @@ import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
 type HorizontalScreen = 'friends' | 'main' | 'promos';
 
+// Safe hook wrappers - these catch errors during initialization
+const useSafeAttentionAchievements = () => {
+  try {
+    return useAttentionAchievements();
+  } catch (error) {
+    console.error('[Index] useAttentionAchievements failed:', error);
+    return EMPTY_HOOK_DEFAULTS.useAttentionAchievements;
+  }
+};
+
+const useSafeMediaSettings = () => {
+  try {
+    return useMediaSettings();
+  } catch (error) {
+    console.error('[Index] useMediaSettings failed:', error);
+    return EMPTY_HOOK_DEFAULTS.useMediaSettings;
+  }
+};
+
+const useSafeCelebration = () => {
+  try {
+    return useCelebration();
+  } catch (error) {
+    console.error('[Index] useCelebration failed:', error);
+    return EMPTY_HOOK_DEFAULTS.useCelebration;
+  }
+};
+
+const useSafePageNavigation = () => {
+  try {
+    return usePageNavigation();
+  } catch (error) {
+    console.error('[Index] usePageNavigation failed:', error);
+    return EMPTY_HOOK_DEFAULTS.usePageNavigation;
+  }
+};
+
+const useSafeContentFeed = () => {
+  try {
+    return useContentFeed();
+  } catch (error) {
+    console.error('[Index] useContentFeed failed:', error);
+    return EMPTY_HOOK_DEFAULTS.useContentFeed;
+  }
+};
+
+const useSafeOnboarding = () => {
+  try {
+    return useOnboarding();
+  } catch (error) {
+    console.error('[Index] useOnboarding failed:', error);
+    return EMPTY_HOOK_DEFAULTS.useOnboarding;
+  }
+};
+
 const Index = () => {
+  // Add top-level error logging
+  console.log('[Index] Rendering Index component...');
+
+  // Use safe versions of hooks that might throw
   const { profile, refreshProfile } = useAuth();
-  const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
-  const { pageLayout, getPagesByDirection } = useUICustomization();
+  const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useSafeOnboarding();
+  const uiCustomization = useUICustomization();
+  const pageLayout = uiCustomization?.pageLayout;
+  const getPagesByDirection = uiCustomization?.getPagesByDirection ?? (() => []);
+  
   // Gesture tutorial temporarily disabled
-  const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useCelebration();
-  const { light, medium } = useHapticFeedback();
-  const { eyeTrackingEnabled } = useMediaSettings();
-  const { stats: achievementStats, unlockedAchievements, newlyUnlocked, dismissNotification } = useAttentionAchievements();
+  const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useSafeCelebration();
+  const haptic = useHapticFeedback();
+  const { eyeTrackingEnabled } = useSafeMediaSettings();
+  const { stats: achievementStats, unlockedAchievements, newlyUnlocked, dismissNotification } = useSafeAttentionAchievements();
   const [showAchievementsPanel, setShowAchievementsPanel] = useState(false);
   
-  // Real content from database
-  const { content: feedContent, isLoading, refresh: refreshFeed } = useContentFeed();
+  // Real content from database - with safe wrapper
+  const { content: feedContent, isLoading, refresh: refreshFeed } = useSafeContentFeed();
   
-  // Page navigation from configured layout
+  // Page navigation from configured layout - with safe wrapper
   const {
     currentPage,
     currentState,
@@ -64,7 +129,7 @@ const Index = () => {
     navigate: pageNavigate,
     getTransitionClasses,
     getTransitionStyles,
-  } = usePageNavigation();
+  } = useSafePageNavigation();
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showCoinSlide, setShowCoinSlide] = useState(false);
@@ -450,18 +515,32 @@ const Index = () => {
                     swipeDirection === 'up' && 'animate-swipe-exit-up',
                     swipeDirection === 'down' && 'animate-swipe-exit-down'
                   )}>
-                    <MediaCard
-                      key={currentMedia.id}
-                      type={currentMedia.type}
-                      src={currentMedia.src}
-                      videoSrc={currentMedia.videoSrc}
-                      duration={currentMedia.duration}
-                      reward={currentMedia.reward}
-                      contentId={currentMedia.id}
-                      onComplete={handleMediaComplete}
-                      onSkip={handleSkip}
-                      isActive={!isTransitioning && isAtCenter}
-                    />
+                    <SafeComponentWrapper 
+                      componentName="MediaCard"
+                      fallback={
+                        <div className="absolute inset-0 flex items-center justify-center bg-background">
+                          <div className="text-center p-8">
+                            <p className="text-muted-foreground mb-4">Content failed to load</p>
+                            <Button onClick={() => window.location.reload()} variant="secondary">
+                              Reload
+                            </Button>
+                          </div>
+                        </div>
+                      }
+                    >
+                      <MediaCard
+                        key={currentMedia.id}
+                        type={currentMedia.type}
+                        src={currentMedia.src}
+                        videoSrc={currentMedia.videoSrc}
+                        duration={currentMedia.duration}
+                        reward={currentMedia.reward}
+                        contentId={currentMedia.id}
+                        onComplete={handleMediaComplete}
+                        onSkip={handleSkip}
+                        isActive={!isTransitioning && isAtCenter}
+                      />
+                    </SafeComponentWrapper>
                   </div>
 
                   {/* Cross Navigation hints */}

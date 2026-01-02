@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Sparkles, Smile, Sun, Moon, Zap, Star, Heart, Flower2, RefreshCw } from 'lucide-react';
+import { X, Camera, Sparkles, Smile, Sun, Moon, Zap, Star, Heart, Flower2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 interface ARFilter {
   id: string;
@@ -99,6 +100,29 @@ export const ARFiltersCamera: React.FC<ARFiltersCameraProps> = ({ isOpen, onClos
   };
 
   if (!isOpen) return null;
+
+  // Crash guard: show safe-mode fallback
+  if (shouldDisableHeavyComponents()) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-amber-500">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-semibold text-sm">AR Camera Paused</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          AR filters temporarily disabled to stabilize the app.
+        </p>
+        <Button variant="outline" onClick={onClose} className="w-full">
+          Close
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md max-h-[25vh] overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl">

@@ -3,10 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { 
   Camera, Check, X, User, RotateCcw, AlertCircle, 
-  Volume2, Smartphone, Move, ArrowRight, ArrowDown
+  Volume2, Smartphone, Move, ArrowRight, ArrowDown, AlertTriangle
 } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { Progress } from '@/components/ui/progress';
+import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 export interface BodyScanResult {
   poses: {
@@ -421,6 +422,29 @@ export const BodyScanning: React.FC<BodyScanningProps> = ({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  // Crash guard: show safe-mode fallback
+  if (shouldDisableHeavyComponents()) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-amber-500">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-semibold text-sm">Body Scan Paused</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Body scanning is temporarily disabled to stabilize the app.
+        </p>
+        <Button variant="outline" onClick={onClose} className="w-full">
+          Close
+        </Button>
+      </div>
+    );
+  }
 
   // Frame overlay component
   const FrameOverlay = () => (

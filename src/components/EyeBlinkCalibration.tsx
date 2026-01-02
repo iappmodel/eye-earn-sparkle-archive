@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, Target, Check, X, Volume2, VolumeX, Loader2, RotateCcw, Smartphone } from 'lucide-react';
+import { Eye, Target, Check, X, Volume2, VolumeX, Loader2, RotateCcw, Smartphone, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 // 9 calibration positions in the specified order (portrait mode)
 const CALIBRATION_POSITIONS_PORTRAIT = [
@@ -452,6 +453,29 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
   };
 
   if (!isOpen) return null;
+
+  // Crash guard: show safe-mode fallback
+  if (shouldDisableHeavyComponents()) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2 text-amber-500">
+            <AlertTriangle className="w-5 h-5" />
+            <span className="font-semibold text-sm">Eye Calibration Paused</span>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Eye tracking calibration temporarily disabled to stabilize the app.
+        </p>
+        <Button variant="outline" onClick={onClose} className="w-full">
+          Close
+        </Button>
+      </div>
+    );
+  }
 
   const currentPosition = CALIBRATION_POSITIONS[currentPositionIndex];
   const requiredBlinks = getBlinkRequirement(currentPositionIndex);

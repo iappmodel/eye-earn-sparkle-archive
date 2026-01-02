@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { errorTrackingService } from '@/services/errorTracking.service';
 import { attemptChunkRecovery, isChunkLoadError } from '@/lib/chunkRecovery';
+import { recordCrash, shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -11,15 +12,20 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  crashLoopDetected: boolean;
 }
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { 
+      hasError: false, 
+      error: null,
+      crashLoopDetected: shouldDisableHeavyComponents(),
+    };
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error };
   }
 
@@ -30,6 +36,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         componentStack: errorInfo.componentStack,
       },
     });
+
+    // Record crash for crash-loop detection
+    const inCrashLoop = recordCrash();
+    if (inCrashLoop) {
+      this.setState({ crashLoopDetected: true });
+    }
 
     // If a lazy-loaded route chunk fails (stale cache / transient network), recover via hard reload.
     if (isChunkLoadError(error)) {
@@ -44,6 +56,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       const chunkError = isChunkLoadError(this.state.error);
+      const { crashLoopDetected } = this.state;
 
       return (
         <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -51,6 +64,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <p className="text-sm text-muted-foreground mb-4">
             {this.state.error?.message || 'An unexpected error occurred'}
           </p>
+          {crashLoopDetected && (
+            <p className="text-xs text-amber-600 mb-4">
+              Heavy features temporarily disabled to stabilize the app.
+            </p>
+          )}
           <button
             onClick={() => {
               if (chunkError) {

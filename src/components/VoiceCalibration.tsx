@@ -4,7 +4,6 @@ import {
   Sparkles, Waves, AlertCircle, RotateCcw, Music
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -304,17 +303,30 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
 
   if (!isOpen) return null;
 
+  // Use 25% floating overlay instead of full sheet
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="bottom" className="h-[90vh] overflow-hidden">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Mic className="w-5 h-5 text-primary" />
-            Voice Calibration
-          </SheetTitle>
-        </SheetHeader>
+    <div 
+      className={cn(
+        "fixed bottom-4 right-4 z-[100] w-[90%] max-w-md max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl overflow-hidden transition-all duration-300",
+        !isOpen && "opacity-0 pointer-events-none translate-y-4"
+      )}
+    >
+      <div className="flex items-center justify-between p-3 border-b border-border/50">
+        <div className="flex items-center gap-2">
+          <Mic className="w-5 h-5 text-primary" />
+          <span className="font-semibold text-sm">Voice Calibration</span>
+          {phase !== 'intro' && phase !== 'complete' && (
+            <span className="text-xs text-muted-foreground">
+              Step {phase === 'phrases' ? 1 : phase === 'tones' ? 2 : 3}/3
+            </span>
+          )}
+        </div>
+        <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-        <div className="flex flex-col h-full pt-4 overflow-y-auto">
+      <div className="p-3 overflow-y-auto max-h-[calc(25vh-60px)]">
           {/* Intro Phase */}
           {phase === 'intro' && (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-6">
@@ -788,8 +800,8 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </div>
   );
 };
 

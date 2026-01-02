@@ -103,12 +103,36 @@ export const InteractionDebugger: React.FC = () => {
   };
 
   // Auto-fix: disable pointer events for full-screen blockers that look closed/invisible.
+  // Also fix global body/root blocking and stuck scroll locks.
   const autoFixBlockers = useCallback(() => {
+    let fixed = false;
+
+    // Fix body/root pointer-events blocking
+    const body = document.body;
+    const root = document.getElementById('root');
+    
+    if (body && window.getComputedStyle(body).pointerEvents === 'none') {
+      body.style.pointerEvents = '';
+      fixed = true;
+      console.log('[InteractionDebugger] Fixed body pointer-events:none');
+    }
+    
+    if (root && window.getComputedStyle(root).pointerEvents === 'none') {
+      root.style.pointerEvents = '';
+      fixed = true;
+      console.log('[InteractionDebugger] Fixed root pointer-events:none');
+    }
+    
+    // Fix stuck scroll locks
+    if (body?.style.overflow === 'hidden') {
+      body.style.overflow = '';
+      fixed = true;
+      console.log('[InteractionDebugger] Removed stuck body overflow:hidden');
+    }
+
     const point = lastTapRef.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     const els = document.elementsFromPoint(point.x, point.y);
     const infos = els.map(getElementInfo);
-
-    let fixed = false;
 
     for (const info of infos) {
       if (isDebuggerEl(info.el)) continue;

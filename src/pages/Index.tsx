@@ -14,7 +14,6 @@ import { OnboardingFlow } from '@/components/onboarding';
 import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
-import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
 import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from '@/components/AttentionAchievements';
 import { useMediaSettings } from '@/components/MediaSettings';
 import { Switch } from '@/components/ui/switch';
@@ -45,7 +44,7 @@ const Index = () => {
   const { profile, refreshProfile } = useAuth();
   const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
   const { pageLayout, getPagesByDirection } = useUICustomization();
-  const { showTutorial, completeTutorial } = useGestureTutorial();
+  // Gesture tutorial temporarily disabled
   const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useCelebration();
   const { light, medium } = useHapticFeedback();
   const { eyeTrackingEnabled } = useMediaSettings();
@@ -504,19 +503,18 @@ const Index = () => {
                     }}
                   />
 
-                  {/* Achievements panel */}
-                  <AttentionAchievementsPanel
-                    isVisible={showAchievementsPanel}
-                    onClose={() => setShowAchievementsPanel(false)}
-                    stats={achievementStats}
-                    unlockedAchievements={unlockedAchievements}
-                  />
+                   {/* Achievements overlays - TEMPORARILY DISABLED */}
+                   {/* <AttentionAchievementsPanel
+                     isVisible={showAchievementsPanel}
+                     onClose={() => setShowAchievementsPanel(false)}
+                     stats={achievementStats}
+                     unlockedAchievements={unlockedAchievements}
+                   /> */}
 
-                  {/* Achievement unlock notification */}
-                  <AchievementUnlockNotification
-                    achievement={newlyUnlocked}
-                    onDismiss={dismissNotification}
-                  />
+                   {/* <AchievementUnlockNotification
+                     achievement={newlyUnlocked}
+                     onDismiss={dismissNotification}
+                   /> */}
                 </>
               )}
             </div>
@@ -545,58 +543,53 @@ const Index = () => {
           )}
         </div>
 
-        {/* Coin slide animation on reward */}
-        <CoinSlideAnimation
-          type={coinSlideType}
-          isAnimating={showCoinSlide}
-          onComplete={handleCoinSlideComplete}
-        />
+         {/* Overlays / popups - TEMPORARILY DISABLED (main feed only) */}
+         {/* <CoinSlideAnimation
+           type={coinSlideType}
+           isAnimating={showCoinSlide}
+           onComplete={handleCoinSlideComplete}
+         /> */}
 
-        {/* Wallet Screen */}
-        <WalletScreen
-          isOpen={showWallet}
-          onClose={() => setShowWallet(false)}
-          vicoins={vicoins}
-          icoins={icoins}
-        />
+         {/* <WalletScreen
+           isOpen={showWallet}
+           onClose={() => setShowWallet(false)}
+           vicoins={vicoins}
+           icoins={icoins}
+         /> */}
 
-        {/* Profile Screen */}
-        <ProfileScreen
-          isOpen={showProfile}
-          onClose={() => { setShowProfile(false); setActiveTab('home'); }}
-        />
+         {/* <ProfileScreen
+           isOpen={showProfile}
+           onClose={() => { setShowProfile(false); setActiveTab('home'); }}
+         /> */}
 
-        {/* Discovery Map */}
-        <DiscoveryMap
-          isOpen={showMap}
-          onClose={() => { setShowMap(false); setActiveTab('home'); }}
-        />
+         {/* <DiscoveryMap
+           isOpen={showMap}
+           onClose={() => { setShowMap(false); setActiveTab('home'); }}
+         /> */}
 
-        {/* Personalized AI Feed */}
-        {showFeed && (
-          <div className="fixed inset-0 z-40 bg-background">
-            <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between p-4 border-b">
-                <h1 className="text-xl font-bold">For You</h1>
-                <button 
-                  onClick={() => { setShowFeed(false); setActiveTab('home'); }}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden pb-20">
-                <PersonalizedFeed />
-              </div>
-            </div>
-          </div>
-        )}
+         {/* {showFeed && (
+           <div className="fixed inset-0 z-40 bg-background">
+             <div className="h-full flex flex-col">
+               <div className="flex items-center justify-between p-4 border-b">
+                 <h1 className="text-xl font-bold">For You</h1>
+                 <button
+                   onClick={() => { setShowFeed(false); setActiveTab('home'); }}
+                   className="text-muted-foreground hover:text-foreground"
+                 >
+                   ✕
+                 </button>
+               </div>
+               <div className="flex-1 overflow-hidden pb-20">
+                 <PersonalizedFeed />
+               </div>
+             </div>
+           </div>
+         )} */}
 
-        {/* Messages Screen */}
-        <MessagesScreen
-          isOpen={showMessages}
-          onClose={() => { setShowMessages(false); setActiveTab('home'); }}
-        />
+         {/* <MessagesScreen
+           isOpen={showMessages}
+           onClose={() => { setShowMessages(false); setActiveTab('home'); }}
+         /> */}
 
         {/* Bottom Navigation - centered at bottom */}
         <BottomNavigation 

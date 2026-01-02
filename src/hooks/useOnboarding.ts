@@ -1,7 +1,5 @@
-// Hook to manage onboarding state
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+// Hook to manage onboarding state (TEMPORARILY DISABLED)
+import { useState } from 'react';
 
 export function useOnboarding() {
   // TEMPORARILY DISABLED - always return false to skip onboarding and go straight to feed

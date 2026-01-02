@@ -159,6 +159,15 @@ export const InteractionDebugger: React.FC = () => {
     return fixed;
   }, [sample]);
 
+  // Pre-emptive cleanup: clear stale/closed fullscreen overlays left behind after navigation/render errors.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      autoFixBlockers();
+    }, 1200);
+
+    return () => window.clearTimeout(t);
+  }, [autoFixBlockers]);
+
   // Track *successful* interactions only.
   useEffect(() => {
     const onClick = (e: MouseEvent) => {

@@ -129,8 +129,8 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   const role = userRole?.role || 'user';
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
-      <div className="max-w-md mx-auto h-full flex flex-col overflow-hidden">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md max-h-[25vh] overflow-auto rounded-2xl border border-border/50 bg-background/95 backdrop-blur-md shadow-xl">
+      <div className="h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="relative">
           {/* Banner */}

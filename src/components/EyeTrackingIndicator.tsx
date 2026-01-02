@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
 export type EyeIndicatorPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -19,13 +19,13 @@ const positionClasses: Record<EyeIndicatorPosition, string> = {
   'bottom-right': 'bottom-20 right-4',
 };
 
-export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
+export const EyeTrackingIndicator = forwardRef<HTMLDivElement, EyeTrackingIndicatorProps>(({
   isTracking,
   isFaceDetected,
   attentionScore,
   position = 'top-center',
   className,
-}) => {
+}, ref) => {
   const [visibility, setVisibility] = useState<'full' | 'iris-only' | 'hidden'>('full');
   const [irisOffset, setIrisOffset] = useState({ x: 0, y: 0 });
   const goodAttentionStartRef = useRef<number | null>(null);
@@ -214,4 +214,6 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
       </div>
     </div>
   );
-};
+});
+
+EyeTrackingIndicator.displayName = 'EyeTrackingIndicator';

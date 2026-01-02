@@ -15,6 +15,7 @@ import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { GlobalNetworkStatus } from "@/components/layout/GlobalNetworkStatus";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { BreadcrumbNavigation } from "@/components/BreadcrumbNavigation";
+import { RenderWatchdog } from "@/components/debug/RenderWatchdog";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { PageLoader } from "@/components/ui/PageLoader";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
@@ -53,6 +54,7 @@ const AppContent = () => {
   return (
     <>
       <GlobalNetworkStatus />
+      <RenderWatchdog />
       <SwipeBackIndicator isActive={isSwipingBack} progress={swipeProgress} />
       <BreadcrumbNavigation />
       <OfflineBanner />

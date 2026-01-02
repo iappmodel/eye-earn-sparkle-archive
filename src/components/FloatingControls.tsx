@@ -603,46 +603,52 @@ interface GestureDetectorProps {
 
 export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ children, onTripleTap }) => {
   const tapTimesRef = useRef<number[]>([]);
-  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  const handleTap = useCallback((e: React.PointerEvent) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.closest('button') ||
-      target.closest('a') ||
-      target.closest('input') ||
-      target.closest('[role="button"]') ||
-      target.closest('[data-draggable]')
-    ) {
-      return;
-    }
+  const tapTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
-    const now = Date.now();
-    tapTimesRef.current = tapTimesRef.current.filter(t => now - t < 500);
-    tapTimesRef.current.push(now);
+  useEffect(() => {
+    const handler = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
 
-    if (tapTimeoutRef.current) {
-      clearTimeout(tapTimeoutRef.current);
-    }
-
-    tapTimeoutRef.current = setTimeout(() => {
-      const recentTaps = tapTimesRef.current.filter(t => now - t < 500);
-
-      if (recentTaps.length >= 3) {
-        onTripleTap?.();
-        tapTimesRef.current = [];
-      } else if (recentTaps.length === 2) {
-        const currentHidden = getButtonsHidden();
-        setButtonsHidden(!currentHidden);
-        window.dispatchEvent(new Event('storage'));
-        tapTimesRef.current = [];
+      // Avoid interpreting interactions with controls as global gestures
+      if (
+        target.closest(
+          'button, a, input, textarea, select, [role="button"], [data-no-swipe], [data-draggable]'
+        )
+      ) {
+        return;
       }
-    }, 100);
+
+      const now = Date.now();
+      tapTimesRef.current = tapTimesRef.current.filter((t) => now - t < 500);
+      tapTimesRef.current.push(now);
+
+      if (tapTimeoutRef.current) {
+        window.clearTimeout(tapTimeoutRef.current);
+      }
+
+      tapTimeoutRef.current = window.setTimeout(() => {
+        const recentTaps = tapTimesRef.current.filter((t) => now - t < 500);
+
+        if (recentTaps.length >= 3) {
+          onTripleTap?.();
+          tapTimesRef.current = [];
+        } else if (recentTaps.length === 2) {
+          const currentHidden = getButtonsHidden();
+          setButtonsHidden(!currentHidden);
+          window.dispatchEvent(new Event('storage'));
+          tapTimesRef.current = [];
+        }
+      }, 100);
+    };
+
+    window.addEventListener('pointerdown', handler, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', handler);
+      if (tapTimeoutRef.current) window.clearTimeout(tapTimeoutRef.current);
+    };
   }, [onTripleTap]);
 
-  return (
-    <div onPointerDown={handleTap} className="contents">
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 };
+

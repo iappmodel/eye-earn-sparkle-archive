@@ -31,7 +31,7 @@ export const SwipeBackIndicator: React.FC<SwipeBackIndicatorProps> = ({
       {/* Back arrow */}
       <div
         className={cn(
-          'fixed left-4 top-1/2 -translate-y-1/2 z-[100]',
+          'fixed left-4 top-1/2 -translate-y-1/2 z-[100] pointer-events-none',
           'w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md',
           'flex items-center justify-center',
           'transition-all duration-150',
@@ -42,10 +42,12 @@ export const SwipeBackIndicator: React.FC<SwipeBackIndicatorProps> = ({
           transform: `translateY(-50%) translateX(${progress * 20}px)`,
         }}
       >
-        <ChevronLeft className={cn(
-          'w-6 h-6 text-primary transition-transform duration-150',
-          progress >= 0.5 ? '-translate-x-0.5' : ''
-        )} />
+        <ChevronLeft
+          className={cn(
+            'w-6 h-6 text-primary transition-transform duration-150',
+            progress >= 0.5 ? '-translate-x-0.5' : ''
+          )}
+        />
       </div>
     </>
   );

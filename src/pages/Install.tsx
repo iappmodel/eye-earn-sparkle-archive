@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Download, Smartphone, CheckCircle, Share, MoreVertical, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card3D } from '@/components/ui/Card3D';
@@ -16,6 +17,7 @@ const Install: React.FC = () => {
   const [isIOS, setIsIOS] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Check if already installed
@@ -73,7 +75,7 @@ const Install: React.FC = () => {
             iView is already installed on your device. Enjoy earning rewards!
           </p>
           <Button 
-            onClick={() => window.location.href = '/'}
+            onClick={() => navigate('/')}
             className="w-full bg-gradient-to-r from-primary to-accent"
           >
             Open App

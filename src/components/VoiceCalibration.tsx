@@ -799,7 +799,6 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
               </Button>
             </div>
           )}
-        </div>
       </div>
     </div>
   );

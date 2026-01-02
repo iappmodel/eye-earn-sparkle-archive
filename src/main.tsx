@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { registerSW } from "virtual:pwa-register";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { errorTrackingService } from "@/services/errorTracking.service";
 import { CURRENT_APP_VERSION } from "@/services/appVersion.service";
@@ -33,15 +34,21 @@ if (typeof window !== "undefined") {
 
 if ("serviceWorker" in navigator) {
   if (shouldEnableServiceWorker) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then((registration) => {
+    // Use VitePWA's registerSW for better update handling
+    registerSW({
+      immediate: true,
+      onRegistered(registration) {
+        if (registration) {
           console.log("SW registered:", registration.scope);
-        })
-        .catch((error) => {
-          console.log("SW registration failed:", error);
-        });
+          // Check for updates every 60 seconds
+          setInterval(() => {
+            registration.update();
+          }, 60 * 1000);
+        }
+      },
+      onRegisterError(error) {
+        console.log("SW registration failed:", error);
+      },
     });
   } else {
     // In preview/dev, unregister any previously-registered SW immediately to prevent caching issues.

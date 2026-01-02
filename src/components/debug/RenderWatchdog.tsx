@@ -23,8 +23,18 @@ const forceVisible = (el: HTMLElement, reason: string) => {
   // Only override minimal properties needed to make the UI paint again.
   el.style.opacity = "1";
   el.style.visibility = "visible";
-  if (el.style.pointerEvents === "none") {
-    // keep none if it was already none
+  
+  // Fix global pointer-events blocking on body/root
+  if (el.tagName === "BODY" || el.id === "root") {
+    if (el.style.pointerEvents === "none") {
+      el.style.pointerEvents = "";
+      console.warn("[RenderWatchdog] Removed pointer-events:none from", el.tagName || el.id);
+    }
+    // Fix stuck overflow hidden (scroll lock)
+    if (el.style.overflow === "hidden") {
+      el.style.overflow = "";
+      console.warn("[RenderWatchdog] Removed overflow:hidden from", el.tagName || el.id);
+    }
   }
 
   // Extreme filters can make the app appear blank even though it renders.
@@ -60,6 +70,16 @@ export const RenderWatchdog = () => {
   useEffect(() => {
     const run = () => {
       try {
+        // Check body for global blocking
+        const body = document.body;
+        if (body) {
+          const bs = window.getComputedStyle(body);
+          if (bs.pointerEvents === "none") {
+            body.style.pointerEvents = "";
+            console.warn("[RenderWatchdog] Fixed body pointer-events:none");
+          }
+        }
+
         const root = document.getElementById("root");
         if (isHTMLElement(root)) {
           const s = window.getComputedStyle(root);
@@ -67,6 +87,11 @@ export const RenderWatchdog = () => {
           if (opacity < 0.05 || s.visibility === "hidden") {
             forceVisible(root, "root_hidden");
             return;
+          }
+          // Check root for pointer-events blocking
+          if (s.pointerEvents === "none") {
+            root.style.pointerEvents = "";
+            console.warn("[RenderWatchdog] Fixed root pointer-events:none");
           }
         }
 

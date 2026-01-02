@@ -75,6 +75,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   // Eye tracking for promo content
   const isPromoContent = type === 'promo' && !!reward;
+  // DISABLED: Eye tracking system temporarily disabled for debugging page responsiveness
   const {
     isTracking,
     isFaceDetected,
@@ -82,36 +83,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     resetAttention,
     getAttentionResult,
   } = useEyeTracking({
-    enabled: isPromoContent && isActive && isPlaying && eyeTrackingEnabled,
+    enabled: false, // DISABLED: was (isPromoContent && isActive && isPlaying && eyeTrackingEnabled)
     onAttentionLost: () => {
-      if (isPromoContent) {
-        setAttentionWarning(true);
-        setAttentionLostCount(prev => prev + 1);
-        
-        // Throttle warning feedback to once per 3 seconds
-        const now = Date.now();
-        if (now - lastWarningTimeRef.current > 3000) {
-          lastWarningTimeRef.current = now;
-          if (soundEffects) {
-            notificationSoundService.playAttentionWarning();
-          }
-          haptic.error();
-        }
-        
-        // Trigger focus challenge after multiple attention losses (every 3rd time, max once per 10 seconds)
-        if (attentionLostCount > 0 && attentionLostCount % 3 === 2 && now - lastChallengeTriggerRef.current > 10000) {
-          lastChallengeTriggerRef.current = now;
-          setShowFocusChallenge(true);
-          // Pause video during challenge
-          setIsPlaying(false);
-          if (videoRef.current) {
-            videoRef.current.pause();
-          }
-        }
-      }
+      // Disabled - no-op
     },
     onAttentionRestored: () => {
-      setAttentionWarning(false);
+      // Disabled - no-op
     },
     requiredAttentionThreshold: 85,
   });
@@ -505,29 +482,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Bottom gradient for controls visibility */}
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
-      {/* Eye tracking indicator - top center edge, minimal design */}
-      {(() => {
-        // Safety: prevent a bad/incorrect import from crashing the entire feed.
-        // (We saw runtime "Component is not a function" errors tied to EyeTrackingIndicator.)
-        const eyeIndicatorType = EyeTrackingIndicator as unknown as any;
-        const canRenderEyeIndicator =
-          !!eyeIndicatorType &&
-          (typeof eyeIndicatorType === 'function' ||
-            (typeof eyeIndicatorType === 'object' && '$$typeof' in eyeIndicatorType));
-
-        if (!canRenderEyeIndicator) return null;
-
-        if (!(isPromoContent && (isPlaying || attentionPaused) && eyeTrackingEnabled)) return null;
-
-        return (
-          <EyeTrackingIndicator
-            isTracking={isTracking}
-            isFaceDetected={isFaceDetected}
-            attentionScore={attentionScore}
-            position="top-center"
-          />
-        );
-      })()}
+      {/* Eye tracking indicator - DISABLED for debugging page responsiveness */}
+      {/* The entire eye tracking system has been temporarily disabled */}
+      {null}
 
       {/* Focus Challenge Mini-Game overlay */}
       {showFocusChallenge && (

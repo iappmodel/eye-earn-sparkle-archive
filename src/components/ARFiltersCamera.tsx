@@ -101,7 +101,7 @@ export const ARFiltersCamera: React.FC<ARFiltersCameraProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md max-h-[25vh] overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl">
       {/* Camera View */}
       <div className="absolute inset-0">
         <video

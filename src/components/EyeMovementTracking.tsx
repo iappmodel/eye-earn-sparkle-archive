@@ -278,7 +278,7 @@ export const EyeMovementTracking: React.FC<EyeMovementTrackingProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] bg-black flex flex-col"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md max-h-[25vh] overflow-auto rounded-2xl border border-border/50 bg-background/95 backdrop-blur-md shadow-xl"
     >
       {/* Header */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">

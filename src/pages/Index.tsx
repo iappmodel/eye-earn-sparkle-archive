@@ -25,10 +25,10 @@ import { PullToRefresh } from '@/components/ui/PullToRefresh';
 import { CommentsPanel } from '@/components/CommentsPanel';
 import { ShareSheet } from '@/components/ShareSheet';
 import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
+import { InteractionDebugger } from '@/components/debug/InteractionDebugger';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
-import { useContentFeed } from '@/hooks/useContentFeed';
 import { useContentLikes } from '@/hooks/useContentLikes';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -423,8 +423,11 @@ const Index = () => {
           className="fixed inset-0 bg-background overflow-hidden"
           {...handlers}
         >
-        {/* Dynamic Page Container with transitions */}
-        <div className={safeTransitionClasses} style={safeTransitionStyles}>
+          {/* Debug overlay (useful when the UI becomes unclickable due to a full-screen blocker) */}
+          <InteractionDebugger />
+
+          {/* Dynamic Page Container with transitions */}
+          <div className={safeTransitionClasses} style={safeTransitionStyles}>
           {/* Render based on current page content type */}
           {isAtCenter ? (
             // Main Media Feed (Center)
@@ -436,12 +439,9 @@ const Index = () => {
                 <div className="absolute inset-0 flex items-center justify-center bg-background">
                   <div className="text-center p-8">
                     <p className="text-muted-foreground mb-4">No content available</p>
-                    <button 
-                      onClick={handleRefresh}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg"
-                    >
+                    <Button onClick={handleRefresh} variant="secondary">
                       Refresh Feed
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : (

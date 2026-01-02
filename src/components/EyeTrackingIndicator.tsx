@@ -139,6 +139,7 @@ export const EyeTrackingIndicator = forwardRef<HTMLDivElement, EyeTrackingIndica
 
   return (
     <div 
+      ref={ref}
       className={cn(
         'absolute z-50 flex items-center justify-center transition-all duration-500',
         positionClasses[position],

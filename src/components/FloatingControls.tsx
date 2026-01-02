@@ -4,7 +4,6 @@ import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { LongPressButtonWrapper } from './LongPressButtonWrapper';
-import { BlinkRemoteControl } from './BlinkRemoteControl';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 // Context for sharing visibility state across components
@@ -540,18 +539,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         <VisibilityToggleButton />
       </div>
       
-      {/* Remote Control Component */}
-      <BlinkRemoteControl
-        enabled={remoteControlEnabled}
-        onToggle={setRemoteControlEnabled}
-        onNavigate={(action, direction) => {
-          console.log('[FloatingControls] Remote Control navigation:', action, direction);
-          window.dispatchEvent(new CustomEvent('gazeNavigate', { detail: { action, direction } }));
-        }}
-        showSettings={showRemoteSettings}
-        onCloseSettings={() => setShowRemoteSettings(false)}
-        className="left-4 top-20"
-      />
+      {/* BlinkRemoteControl disabled - eye tracking removed */}
     </>
   );
 };

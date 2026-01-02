@@ -603,7 +603,7 @@ interface GestureDetectorProps {
 
 export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ children, onTripleTap }) => {
   const tapTimesRef = useRef<number[]>([]);
-  const tapTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const tapTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handler = (e: PointerEvent) => {

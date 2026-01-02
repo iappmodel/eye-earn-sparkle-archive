@@ -604,51 +604,50 @@ const Index = () => {
           onTabChange={handleTabChange} 
         />
 
-        {/* Onboarding Flow for new users */}
-        <OnboardingFlow
+        {/* Onboarding Flow - TEMPORARILY DISABLED */}
+        {/* <OnboardingFlow
           isOpen={showOnboarding}
           onClose={closeOnboarding}
           onComplete={completeOnboarding}
-        />
+        /> */}
 
-        {/* Theme Presets Bottom Sheet */}
-        <ThemePresetsSheet
+        {/* Theme Presets Bottom Sheet - TEMPORARILY DISABLED */}
+        {/* <ThemePresetsSheet
           isOpen={showThemePresets}
           onClose={() => setShowThemePresets(false)}
-        />
+        /> */}
 
-
-        {/* Comments Panel */}
-        {currentMedia && (
+        {/* Comments Panel - TEMPORARILY DISABLED */}
+        {/* {currentMedia && (
           <CommentsPanel
             isOpen={showComments}
             onClose={() => setShowComments(false)}
             contentId={currentMedia.id}
           />
-        )}
+        )} */}
 
-        {/* Share Sheet */}
-        {currentMedia && (
+        {/* Share Sheet - TEMPORARILY DISABLED */}
+        {/* {currentMedia && (
           <ShareSheet
             isOpen={showShare}
             onClose={() => setShowShare(false)}
             title={currentMedia.title || 'Check out this content!'}
             url={`${window.location.origin}/content/${currentMedia.id}`}
           />
-        )}
+        )} */}
 
         {/* Network Status Indicator */}
         <div className="fixed top-4 right-4 z-50">
           <NetworkStatusIndicator variant="badge" />
         </div>
 
-        {/* Gesture Tutorial for new users */}
-        {showTutorial && (
+        {/* Gesture Tutorial - TEMPORARILY DISABLED */}
+        {/* {showTutorial && (
           <GestureTutorial
             onComplete={completeTutorial}
             onSkip={completeTutorial}
           />
-        )}
+        )} */}
 
         {/* Confetti Celebration */}
         <ConfettiCelebration

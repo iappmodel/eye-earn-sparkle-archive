@@ -1,8 +1,25 @@
 import { useCallback } from 'react';
 
+// Track if user has interacted with the page (required for vibrate API)
+let hasUserInteracted = false;
+
+const markUserInteraction = () => {
+  hasUserInteracted = true;
+  window.removeEventListener('touchstart', markUserInteraction);
+  window.removeEventListener('click', markUserInteraction);
+  window.removeEventListener('pointerdown', markUserInteraction);
+};
+
+// Set up listeners once
+if (typeof window !== 'undefined') {
+  window.addEventListener('touchstart', markUserInteraction, { once: true, passive: true });
+  window.addEventListener('click', markUserInteraction, { once: true });
+  window.addEventListener('pointerdown', markUserInteraction, { once: true });
+}
+
 export const useHapticFeedback = () => {
   const vibrate = useCallback((pattern: number | number[] = 10) => {
-    if ('vibrate' in navigator) {
+    if (hasUserInteracted && 'vibrate' in navigator) {
       navigator.vibrate(pattern);
     }
   }, []);

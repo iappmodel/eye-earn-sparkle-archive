@@ -4,7 +4,10 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Dialog = DialogPrimitive.Root;
+const Dialog = ({ modal = false, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) => (
+  <DialogPrimitive.Root modal={modal} {...props} />
+);
+Dialog.displayName = "Dialog";
 
 const DialogTrigger = DialogPrimitive.Trigger;
 
@@ -19,7 +22,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 pointer-events-none bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -33,12 +36,12 @@ interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof Dialo
 }
 
 const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Content>, DialogContentProps>(
-  ({ className, children, autoClose = true, autoCloseDelay = 5000, ...props }, ref) => {
+  ({ className, children, autoClose = true, autoCloseDelay = 5000, onInteractOutside, ...props }, ref) => {
     const closeRef = React.useRef<HTMLButtonElement>(null);
 
     React.useEffect(() => {
       if (!autoClose) return;
-      
+
       const timer = setTimeout(() => {
         closeRef.current?.click();
       }, autoCloseDelay);
@@ -51,10 +54,13 @@ const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.C
         <DialogOverlay />
         <DialogPrimitive.Content
           ref={ref}
-          aria-modal="true"
           role="dialog"
+          onInteractOutside={(e) => {
+            onInteractOutside?.(e);
+            if (!e.defaultPrevented) e.preventDefault();
+          }}
           className={cn(
-            "fixed left-[50%] top-[50%] z-50 grid w-[90%] max-w-md max-h-[40vh] overflow-auto translate-x-[-50%] translate-y-[-50%] gap-4 border border-border/50 bg-background/95 backdrop-blur-md p-6 shadow-xl rounded-2xl",
+            "fixed left-[50%] top-[50%] z-50 grid w-[90%] max-w-md max-h-[25vh] overflow-auto translate-x-[-50%] translate-y-[-50%] gap-4 border border-border/50 bg-background/95 backdrop-blur-md p-6 shadow-xl rounded-2xl",
             // Reduced motion: disable animations
             "motion-reduce:animate-none motion-reduce:transition-none",
             // Standard animations when motion is allowed
@@ -64,7 +70,7 @@ const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.C
           {...props}
         >
           {children}
-          <DialogPrimitive.Close 
+          <DialogPrimitive.Close
             ref={closeRef}
             className="absolute right-3 top-3 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full bg-muted/80 opacity-70 ring-offset-background transition-all hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none motion-reduce:transition-none z-10"
             aria-label="Close dialog"
@@ -75,7 +81,7 @@ const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.C
         </DialogPrimitive.Content>
       </DialogPortal>
     );
-  }
+  },
 );
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 

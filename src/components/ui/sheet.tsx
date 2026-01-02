@@ -5,7 +5,10 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Sheet = SheetPrimitive.Root;
+const Sheet = ({ modal = false, ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) => (
+  <SheetPrimitive.Root modal={modal} {...props} />
+);
+Sheet.displayName = "Sheet";
 
 const SheetTrigger = SheetPrimitive.Trigger;
 
@@ -19,7 +22,7 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 pointer-events-none bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -33,12 +36,12 @@ const sheetVariants = cva(
   {
     variants: {
       side: {
-        top: "left-[50%] translate-x-[-50%] top-4 w-[90%] max-w-md max-h-[40vh] overflow-auto data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+        top: "left-[50%] translate-x-[-50%] top-4 w-[90%] max-w-md max-h-[25vh] overflow-auto data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
         bottom:
-          "left-[50%] translate-x-[-50%] bottom-4 w-[90%] max-w-md max-h-[40vh] overflow-auto data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-        left: "left-4 top-[50%] translate-y-[-50%] h-[40vh] w-[80%] max-w-sm overflow-auto data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+          "left-[50%] translate-x-[-50%] bottom-4 w-[90%] max-w-md max-h-[25vh] overflow-auto data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+        left: "left-4 top-[50%] translate-y-[-50%] h-[25vh] w-[80%] max-w-sm overflow-auto data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
         right:
-          "right-4 top-[50%] translate-y-[-50%] h-[40vh] w-[80%] max-w-sm overflow-auto data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+          "right-4 top-[50%] translate-y-[-50%] h-[25vh] w-[80%] max-w-sm overflow-auto data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
       },
     },
     defaultVariants: {
@@ -55,12 +58,23 @@ interface SheetContentProps
 }
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, children, autoClose = true, autoCloseDelay = 5000, ...props }, ref) => {
+  (
+    {
+      side = "right",
+      className,
+      children,
+      autoClose = true,
+      autoCloseDelay = 5000,
+      onInteractOutside,
+      ...props
+    },
+    ref,
+  ) => {
     const closeRef = React.useRef<HTMLButtonElement>(null);
 
     React.useEffect(() => {
       if (!autoClose) return;
-      
+
       const timer = setTimeout(() => {
         closeRef.current?.click();
       }, autoCloseDelay);
@@ -71,8 +85,16 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
     return (
       <SheetPortal>
         <SheetOverlay />
-        <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
-          <SheetPrimitive.Close 
+        <SheetPrimitive.Content
+          ref={ref}
+          onInteractOutside={(e) => {
+            onInteractOutside?.(e);
+            if (!e.defaultPrevented) e.preventDefault();
+          }}
+          className={cn(sheetVariants({ side }), className)}
+          {...props}
+        >
+          <SheetPrimitive.Close
             ref={closeRef}
             className="absolute right-3 top-3 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full bg-muted/80 opacity-70 ring-offset-background transition-all hover:opacity-100 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none z-10"
           >

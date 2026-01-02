@@ -270,10 +270,8 @@ const Index = () => {
         await refreshProfile();
         toast.success(`+${result.amount} ${result.coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}!`);
 
-        // Haptic feedback
-        if (navigator.vibrate) {
-          navigator.vibrate([50, 30, 50]);
-        }
+        // Haptic feedback - use hook instead of direct navigator.vibrate
+        haptic.success();
       } else if (result.error) {
         // Check for specific errors
         if (result.error.includes('already claimed') || result.error.includes('Reward already')) {
@@ -351,8 +349,8 @@ const Index = () => {
 
   const handleLike = useCallback(() => {
     toggleLike();
-    if (!isLiked && navigator.vibrate) navigator.vibrate(10);
-  }, [toggleLike, isLiked]);
+    if (!isLiked) haptic.light();
+  }, [toggleLike, isLiked, haptic]);
 
   const handleSave = useCallback(() => {
     toggleSave();
@@ -426,8 +424,8 @@ const Index = () => {
         // Refresh profile to update balance
         await refreshProfile();
         
-        // Haptic feedback
-        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+        // Haptic feedback - use hook instead of direct navigator.vibrate
+        haptic.success();
       } else {
         // Handle non-success response in data
         const errorMsg = data?.error || 'Failed to send tip';

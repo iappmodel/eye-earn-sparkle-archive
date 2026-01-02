@@ -64,8 +64,11 @@ export const InteractionDebugger: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [lastPoint, setLastPoint] = useState<{ x: number; y: number } | null>(null);
   const [stack, setStack] = useState<ElementInfo[]>([]);
+  const [autoFixApplied, setAutoFixApplied] = useState(false);
 
   const patchedRef = useRef<Map<Element, string>>(new Map());
+  const lastInteractionRef = useRef<number>(Date.now());
+  const watchdogIntervalRef = useRef<number | null>(null);
 
   const sample = useCallback((x: number, y: number) => {
     const els = document.elementsFromPoint(x, y);
@@ -75,10 +78,104 @@ export const InteractionDebugger: React.FC = () => {
     return infos;
   }, []);
 
+  // Auto-fix: detect and disable invisible full-screen blockers
+  const autoFixBlockers = useCallback(() => {
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    const els = document.elementsFromPoint(centerX, centerY);
+    const infos = els.map(getElementInfo);
+    
+    let fixed = false;
+    for (const info of infos) {
+      if (isDebuggerEl(info.el)) continue;
+      if (info.tag === 'html' || info.tag === 'body') continue;
+      
+      const el = info.el as HTMLElement;
+      const rect = el.getBoundingClientRect();
+      const coverX = rect.width / window.innerWidth;
+      const coverY = rect.height / window.innerHeight;
+      
+      // If this element covers most of the screen and is invisible/transparent
+      if (coverX > 0.8 && coverY > 0.8) {
+        const opacity = parseFloat(info.opacity || '1');
+        const bgColor = window.getComputedStyle(el).backgroundColor;
+        const isTransparentBg = bgColor === 'transparent' || bgColor === 'rgba(0, 0, 0, 0)';
+        
+        // If it's a transparent/invisible overlay blocking interactions
+        if ((opacity < 0.1 || isTransparentBg) && info.pointerEvents !== 'none') {
+          if (!patchedRef.current.has(el)) {
+            patchedRef.current.set(el, el.style.pointerEvents || '');
+          }
+          el.style.pointerEvents = 'none';
+          fixed = true;
+          console.log('[InteractionDebugger] Auto-fixed invisible blocker:', info.tag, info.className);
+        }
+      }
+    }
+    
+    if (fixed) {
+      setAutoFixApplied(true);
+    }
+    return fixed;
+  }, []);
+
+  // Track user interactions to detect unresponsive UI
+  useEffect(() => {
+    const trackInteraction = () => {
+      lastInteractionRef.current = Date.now();
+    };
+
+    // Listen for successful interactions (clicks that reach actual elements)
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('button, a, input, [role="button"]')) {
+        trackInteraction();
+      }
+    };
+
+    document.addEventListener('click', handleClick, true);
+    document.addEventListener('touchend', trackInteraction, { passive: true });
+
+    return () => {
+      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('touchend', trackInteraction);
+    };
+  }, []);
+
+  // Watchdog: if no successful interactions for 10 seconds after initial load, auto-fix
+  useEffect(() => {
+    // Wait for app to stabilize, then start watchdog
+    const startWatchdog = () => {
+      watchdogIntervalRef.current = window.setInterval(() => {
+        const timeSinceInteraction = Date.now() - lastInteractionRef.current;
+        
+        // If it's been more than 10 seconds since last successful interaction
+        // and we haven't already applied a fix, try to auto-fix
+        if (timeSinceInteraction > 10000 && !autoFixApplied) {
+          const fixed = autoFixBlockers();
+          if (fixed) {
+            console.log('[InteractionDebugger] Watchdog triggered auto-fix');
+          }
+        }
+      }, 5000);
+    };
+
+    // Start watchdog after 5 seconds to let app initialize
+    const initTimer = window.setTimeout(startWatchdog, 5000);
+
+    return () => {
+      window.clearTimeout(initTimer);
+      if (watchdogIntervalRef.current) {
+        window.clearInterval(watchdogIntervalRef.current);
+      }
+    };
+  }, [autoFixApplied, autoFixBlockers]);
+
   useEffect(() => {
     const handler = (e: PointerEvent) => {
       // Capture what receives touches/clicks
       sample(e.clientX, e.clientY);
+      lastInteractionRef.current = Date.now();
     };
 
     document.addEventListener('pointerdown', handler, true);
@@ -109,6 +206,7 @@ export const InteractionDebugger: React.FC = () => {
       (el as HTMLElement).style.pointerEvents = prev;
     }
     patchedRef.current.clear();
+    setAutoFixApplied(false);
     scanCenter();
   }, [scanCenter]);
 
@@ -128,11 +226,13 @@ export const InteractionDebugger: React.FC = () => {
             'rounded-full border border-border/50 bg-background/80 backdrop-blur-md',
             'shadow-lg',
             'h-10 px-3 flex items-center gap-2',
-            'text-xs text-foreground'
+            'text-xs text-foreground',
+            autoFixApplied && 'ring-2 ring-amber-500'
           )}
         >
           <ShieldAlert className="h-4 w-4 text-primary" />
           Debug
+          {autoFixApplied && <span className="text-amber-500">•</span>}
         </button>
       ) : (
         <div
@@ -146,6 +246,11 @@ export const InteractionDebugger: React.FC = () => {
             <div className="flex items-center gap-2">
               <ShieldAlert className="h-4 w-4 text-primary" />
               <span className="text-sm font-semibold">Interaction Debug</span>
+              {autoFixApplied && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded">
+                  Auto-fixed
+                </span>
+              )}
             </div>
             <Button variant="ghost" size="icon" onClick={() => setOpen(false)} className="h-8 w-8">
               <X className="h-4 w-4" />
@@ -153,7 +258,7 @@ export const InteractionDebugger: React.FC = () => {
           </div>
 
           <div className="p-3 space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button variant="secondary" size="sm" onClick={scanCenter} className="gap-2">
                 <MousePointer2 className="h-4 w-4" />
                 Scan center
@@ -198,7 +303,7 @@ export const InteractionDebugger: React.FC = () => {
             </details>
 
             <p className="text-[11px] text-muted-foreground">
-              If the app is “dead”, it’s usually a full-screen overlay. “Disable blocker” turns off pointer-events for the most likely overlay (this session only).
+              If the app is "dead", it's usually a full-screen overlay. "Disable blocker" turns off pointer-events for the most likely overlay (this session only). Auto-fix runs if no interactions detected for 10s.
             </p>
           </div>
         </div>

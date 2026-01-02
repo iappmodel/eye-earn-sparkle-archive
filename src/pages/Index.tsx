@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, QuickVisibilityToggle } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -603,8 +603,7 @@ const Index = () => {
           ) : null}
         </div>
 
-        {/* Always-available sidebar visibility toggle (fail-open UI control) */}
-        <QuickVisibilityToggle />
+        {/* QuickVisibilityToggle removed - eye tracking disabled */}
 
         {/* Screen Indicators - show configured pages */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">

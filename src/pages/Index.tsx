@@ -26,7 +26,7 @@ import { PullToRefresh } from '@/components/ui/PullToRefresh';
 import { CommentsPanel } from '@/components/CommentsPanel';
 import { ShareSheet } from '@/components/ShareSheet';
 import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
-import { InteractionDebugger } from '@/components/debug/InteractionDebugger';
+
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
@@ -425,8 +425,6 @@ const Index = () => {
           className="fixed inset-0 bg-background overflow-hidden"
           {...handlers}
         >
-          {/* Debug overlay (useful when the UI becomes unclickable due to a full-screen blocker) */}
-          <InteractionDebugger />
 
           {/* Dynamic Page Container with transitions */}
           <div className={safeTransitionClasses} style={safeTransitionStyles}>

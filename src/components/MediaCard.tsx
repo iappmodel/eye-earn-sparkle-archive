@@ -506,14 +506,28 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-background/90 to-transparent pointer-events-none" />
 
       {/* Eye tracking indicator - top center edge, minimal design */}
-      {isPromoContent && (isPlaying || attentionPaused) && eyeTrackingEnabled && (
-        <EyeTrackingIndicator
-          isTracking={isTracking}
-          isFaceDetected={isFaceDetected}
-          attentionScore={attentionScore}
-          position="top-center"
-        />
-      )}
+      {(() => {
+        // Safety: prevent a bad/incorrect import from crashing the entire feed.
+        // (We saw runtime "Component is not a function" errors tied to EyeTrackingIndicator.)
+        const eyeIndicatorType = EyeTrackingIndicator as unknown as any;
+        const canRenderEyeIndicator =
+          !!eyeIndicatorType &&
+          (typeof eyeIndicatorType === 'function' ||
+            (typeof eyeIndicatorType === 'object' && '$$typeof' in eyeIndicatorType));
+
+        if (!canRenderEyeIndicator) return null;
+
+        if (!(isPromoContent && (isPlaying || attentionPaused) && eyeTrackingEnabled)) return null;
+
+        return (
+          <EyeTrackingIndicator
+            isTracking={isTracking}
+            isFaceDetected={isFaceDetected}
+            attentionScore={attentionScore}
+            position="top-center"
+          />
+        );
+      })()}
 
       {/* Focus Challenge Mini-Game overlay */}
       {showFocusChallenge && (

@@ -19,6 +19,7 @@ import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttention
 import { useMediaSettings } from '@/components/MediaSettings';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
@@ -29,6 +30,7 @@ import { InteractionDebugger } from '@/components/debug/InteractionDebugger';
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
+import { useContentFeed } from '@/hooks/useContentFeed';
 import { useContentLikes } from '@/hooks/useContentLikes';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';

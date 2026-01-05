@@ -174,8 +174,9 @@ const fallbackContent: FeedContent[] = [
 
 export const useContentFeed = () => {
   const { isDemo } = useDemoMode();
-  const [content, setContent] = useState<FeedContent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Initialize with fallback content to prevent blank screen
+  const [content, setContent] = useState<FeedContent[]>(fallbackContent);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchContent = useCallback(async () => {

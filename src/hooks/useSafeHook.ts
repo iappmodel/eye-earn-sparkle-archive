@@ -96,8 +96,29 @@ export const EMPTY_HOOK_DEFAULTS = {
     getTransitionStyles: () => ({}),
   },
   useContentFeed: {
-    content: [],
+    content: [
+      {
+        id: 'fallback-001',
+        type: 'video' as const,
+        src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
+        videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+        duration: 15,
+        title: 'Welcome to the feed!',
+        reward: undefined,
+        creator: {
+          id: 'fallback-creator',
+          username: 'viewi',
+          displayName: 'Viewi',
+          avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=viewi',
+          postsCount: 0,
+          followersCount: 0,
+          followingCount: 0,
+          isVerified: true,
+        },
+      },
+    ],
     isLoading: false,
+    error: null,
     refresh: async () => {},
   },
   useSwipeNavigation: {

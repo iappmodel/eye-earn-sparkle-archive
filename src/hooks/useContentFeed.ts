@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useDemoMode } from '@/contexts/DemoModeContext';
 
 export interface FeedContent {
   id: string;
@@ -172,11 +173,19 @@ const fallbackContent: FeedContent[] = [
 ];
 
 export const useContentFeed = () => {
+  const { isDemo } = useDemoMode();
   const [content, setContent] = useState<FeedContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchContent = useCallback(async () => {
+    // In demo mode, use mock data immediately without backend calls
+    if (isDemo) {
+      setContent(fallbackContent);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     
@@ -275,7 +284,7 @@ export const useContentFeed = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isDemo]);
 
   useEffect(() => {
     fetchContent();

@@ -10,6 +10,7 @@ import { LocalizationProvider } from "@/contexts/LocalizationContext";
 import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import { UICustomizationProvider } from "@/contexts/UICustomizationContext";
 import { DragContextProvider } from "@/components/DraggableButton";
+import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { GlobalNetworkStatus } from "@/components/layout/GlobalNetworkStatus";
@@ -220,9 +221,11 @@ const App = () => (
               <Sonner />
               <AuthProvider>
                 <BrowserRouter>
-                  <OfflineProvider>
-                    <AppContent />
-                  </OfflineProvider>
+                  <DemoModeProvider>
+                    <OfflineProvider>
+                      <AppContent />
+                    </OfflineProvider>
+                  </DemoModeProvider>
                 </BrowserRouter>
               </AuthProvider>
             </TooltipProvider>

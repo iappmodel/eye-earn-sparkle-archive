@@ -543,6 +543,32 @@ const Auth: React.FC = () => {
                     Apple (Coming Soon)
                   </Button>
                 </div>
+
+                {/* Try Demo Button */}
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="bg-background px-4 text-muted-foreground">or explore first</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/demo')}
+                  className="w-full h-14 border-primary/50 hover:bg-primary/10 hover:border-primary group transition-all duration-300"
+                >
+                  <div className="flex flex-col items-center">
+                    <span className="font-semibold text-primary group-hover:scale-105 transition-transform">
+                      🎬 Try Demo Mode
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Explore the app without signing up
+                    </span>
+                  </div>
+                </Button>
               </>
             )}
 

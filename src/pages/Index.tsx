@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { MediaCard } from '@/components/MediaCard';
 import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
@@ -102,8 +103,13 @@ const Index = () => {
   // Add top-level error logging
   console.log('[Index] Rendering Index component...');
 
+  // Demo mode detection
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isDemoMode = location.pathname === '/demo';
+
   // Use safe versions of hooks that might throw
-  const { profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useSafeOnboarding();
   const uiCustomization = useUICustomization();
   const pageLayout = uiCustomization?.pageLayout;
@@ -347,16 +353,35 @@ const Index = () => {
     onSwipeRight: () => handleNavigate('right'),
   });
 
+  // Helper to require auth for interactive actions in demo mode
+  const requireAuth = useCallback((action: string) => {
+    if (isDemoMode || !user) {
+      toast('Sign in to ' + action, {
+        description: 'Create an account to unlock all features',
+        action: {
+          label: 'Sign In',
+          onClick: () => navigate('/auth'),
+        },
+      });
+      return true; // Auth required, action blocked
+    }
+    return false; // User authenticated, proceed
+  }, [isDemoMode, user, navigate]);
+
   const handleLike = useCallback(() => {
+    if (requireAuth('like content')) return;
     toggleLike();
     if (!isLiked) haptic.light();
-  }, [toggleLike, isLiked, haptic]);
+  }, [requireAuth, toggleLike, isLiked, haptic]);
 
   const handleSave = useCallback(() => {
+    if (requireAuth('save content')) return;
     toggleSave();
-  }, [toggleSave]);
+  }, [requireAuth, toggleSave]);
 
   const handleTip = useCallback(async (coinType: 'vicoin' | 'icoin', amount: number) => {
+    if (requireAuth('tip creators')) return;
+    
     if (!profile) {
       toast.error('Please log in to tip');
       return;
@@ -437,9 +462,10 @@ const Index = () => {
     }
   }, [profile, currentMedia, refreshProfile]);
 
-  const handleComment = () => {
+  const handleComment = useCallback(() => {
+    if (requireAuth('comment')) return;
     setShowComments(true);
-  };
+  }, [requireAuth]);
 
   const handleShare = () => {
     setShowShare(true);
@@ -487,6 +513,22 @@ const Index = () => {
           className="fixed inset-0 bg-background overflow-hidden"
           {...handlers}
         >
+          {/* Demo Mode Banner */}
+          {isDemoMode && (
+            <div className="absolute top-0 left-0 right-0 z-50 bg-primary/90 backdrop-blur-sm px-4 py-2 flex items-center justify-between">
+              <span className="text-primary-foreground text-sm font-medium">
+                🎬 Demo Mode - Exploring the app
+              </span>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={() => navigate('/auth')}
+                className="h-7 text-xs"
+              >
+                Sign Up Free
+              </Button>
+            </div>
+          )}
 
           {/* Dynamic Page Container with transitions */}
           <div className={safeTransitionClasses} style={safeTransitionStyles}>

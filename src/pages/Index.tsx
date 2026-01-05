@@ -27,6 +27,7 @@ import { CommentsPanel } from '@/components/CommentsPanel';
 import { ShareSheet } from '@/components/ShareSheet';
 import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
 import { SafeComponentWrapper } from '@/components/SafeComponentWrapper';
+import DemoBanner from '@/components/DemoBanner';
 import { EMPTY_HOOK_DEFAULTS } from '@/hooks/useSafeHook';
 
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
@@ -36,6 +37,7 @@ import { useContentFeed } from '@/hooks/useContentFeed';
 import { useContentLikes } from '@/hooks/useContentLikes';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useDemoMode } from '@/contexts/DemoModeContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
@@ -103,10 +105,9 @@ const Index = () => {
   // Add top-level error logging
   console.log('[Index] Rendering Index component...');
 
-  // Demo mode detection
-  const location = useLocation();
+  // Demo mode from context
+  const { isDemo, gateAction } = useDemoMode();
   const navigate = useNavigate();
-  const isDemoMode = location.pathname === '/demo';
 
   // Use safe versions of hooks that might throw
   const { user, profile, refreshProfile } = useAuth();
@@ -355,18 +356,11 @@ const Index = () => {
 
   // Helper to require auth for interactive actions in demo mode
   const requireAuth = useCallback((action: string) => {
-    if (isDemoMode || !user) {
-      toast('Sign in to ' + action, {
-        description: 'Create an account to unlock all features',
-        action: {
-          label: 'Sign In',
-          onClick: () => navigate('/auth'),
-        },
-      });
-      return true; // Auth required, action blocked
+    if (isDemo || !user) {
+      return !gateAction(action);
     }
     return false; // User authenticated, proceed
-  }, [isDemoMode, user, navigate]);
+  }, [isDemo, user, gateAction]);
 
   const handleLike = useCallback(() => {
     if (requireAuth('like content')) return;
@@ -514,21 +508,7 @@ const Index = () => {
           {...handlers}
         >
           {/* Demo Mode Banner */}
-          {isDemoMode && (
-            <div className="absolute top-0 left-0 right-0 z-50 bg-primary/90 backdrop-blur-sm px-4 py-2 flex items-center justify-between">
-              <span className="text-primary-foreground text-sm font-medium">
-                🎬 Demo Mode - Exploring the app
-              </span>
-              <Button 
-                size="sm" 
-                variant="secondary"
-                onClick={() => navigate('/auth')}
-                className="h-7 text-xs"
-              >
-                Sign Up Free
-              </Button>
-            </div>
-          )}
+          {isDemo && <DemoBanner />}
 
           {/* Dynamic Page Container with transitions */}
           <div className={safeTransitionClasses} style={safeTransitionStyles}>

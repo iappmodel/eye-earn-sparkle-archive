@@ -62,7 +62,15 @@ const AppContent = () => {
         <Suspense fallback={<PageLoader message="Loading page..." />}>
           <Routes>
             <Route path="/auth" element={<Auth />} />
-            <Route path="/" element={<Index />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/demo" element={<Index />} />
             <Route
               path="/create"
               element={

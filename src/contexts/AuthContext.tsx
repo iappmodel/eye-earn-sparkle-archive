@@ -52,12 +52,40 @@ export const useAuth = () => {
   return context;
 };
 
+// Development auto-login configuration
+const DEV_AUTO_LOGIN = import.meta.env.VITE_DEV_AUTO_LOGIN === 'true';
+const DEV_USER_EMAIL = import.meta.env.VITE_DEV_USER_EMAIL || 'dev@example.com';
+const DEV_USER_PASSWORD = import.meta.env.VITE_DEV_USER_PASSWORD || 'devpassword123';
+
+// Mock profile for development when no real profile exists
+const createMockProfile = (userId: string): Profile => ({
+  id: userId,
+  user_id: userId,
+  username: 'demo_user',
+  display_name: 'Demo User',
+  avatar_url: null,
+  bio: 'This is a demo account for testing',
+  phone_number: null,
+  phone_verified: false,
+  vicoin_balance: 1000,
+  icoin_balance: 500,
+  total_views: 0,
+  total_likes: 0,
+  followers_count: 0,
+  following_count: 0,
+  is_verified: false,
+  kyc_status: 'pending',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+});
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [devAutoLoginAttempted, setDevAutoLoginAttempted] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -152,6 +180,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Development auto-login: automatically sign in when VITE_DEV_AUTO_LOGIN=true
+  useEffect(() => {
+    if (!DEV_AUTO_LOGIN || devAutoLoginAttempted || user) return;
+    
+    setDevAutoLoginAttempted(true);
+    console.log('[AuthContext] Dev auto-login enabled, attempting sign in...');
+    
+    const attemptDevLogin = async () => {
+      try {
+        // First try to sign in with dev credentials
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: DEV_USER_EMAIL,
+          password: DEV_USER_PASSWORD,
+        });
+        
+        if (error) {
+          // If user doesn't exist, create one
+          if (error.message.includes('Invalid login credentials')) {
+            console.log('[AuthContext] Dev user not found, creating...');
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: DEV_USER_EMAIL,
+              password: DEV_USER_PASSWORD,
+              options: {
+                data: {
+                  username: 'dev_user',
+                  display_name: 'Dev User',
+                },
+              },
+            });
+            
+            if (signUpError) {
+              console.error('[AuthContext] Dev auto-login failed:', signUpError);
+              // Fallback to mock profile for demo
+              setProfile(createMockProfile('dev-mock-user'));
+              setLoading(false);
+            } else {
+              console.log('[AuthContext] Dev user created:', signUpData.user?.email);
+            }
+          } else {
+            console.error('[AuthContext] Dev auto-login error:', error);
+            // Fallback to mock profile
+            setProfile(createMockProfile('dev-mock-user'));
+            setLoading(false);
+          }
+        } else {
+          console.log('[AuthContext] Dev auto-login successful:', data.user?.email);
+        }
+      } catch (err) {
+        console.error('[AuthContext] Dev auto-login exception:', err);
+        setLoading(false);
+      }
+    };
+    
+    attemptDevLogin();
+  }, [user, devAutoLoginAttempted]);
 
   const signUp = async (email: string, password: string, username: string) => {
     const redirectUrl = `${window.location.origin}/`;

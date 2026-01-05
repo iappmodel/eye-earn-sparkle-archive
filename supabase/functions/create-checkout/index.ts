@@ -93,12 +93,9 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    // Log full error for debugging only
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
-    
-    // Return safe generic message to client
-    return new Response(JSON.stringify({ error: "Unable to start checkout. Please try again." }), {
+    return new Response(JSON.stringify({ error: message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });

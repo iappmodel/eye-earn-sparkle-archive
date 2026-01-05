@@ -111,7 +111,8 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md max-h-[25vh] overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl">
+    <div className="fixed inset-0 z-[100] bg-black">
+      {/* Progress Bars */}
       <div className="absolute top-2 left-2 right-2 flex gap-1 z-10">
         {story.items.map((_, index) => (
           <div key={index} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">

@@ -12,19 +12,16 @@ interface NeuButtonProps {
   showTooltipOnHover?: boolean;
   badge?: number | string;
   disabled?: boolean;
-  /** Accessible label for screen readers */
-  'aria-label'?: string;
 }
 
-// Minimum 44px touch targets per WCAG 2.5.5
 const sizeClasses = {
-  sm: 'w-11 h-11 min-w-[44px] min-h-[44px]',
-  md: 'w-11 h-11 min-w-[44px] min-h-[44px]',
-  lg: 'w-12 h-12 min-w-[44px] min-h-[44px]',
+  sm: 'w-8 h-8',
+  md: 'w-10 h-10',
+  lg: 'w-12 h-12',
 };
 
 const iconSizeClasses = {
-  sm: '[&>svg]:w-4 [&>svg]:h-4',
+  sm: '[&>svg]:w-3.5 [&>svg]:h-3.5',
   md: '[&>svg]:w-4 [&>svg]:h-4',
   lg: '[&>svg]:w-5 [&>svg]:h-5',
 };
@@ -40,7 +37,6 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
   showTooltipOnHover = true,
   badge,
   disabled = false,
-  'aria-label': ariaLabel,
 }) => {
   const [pressed, setPressed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -79,16 +75,11 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
     <div className="relative group">
       <button
         disabled={disabled}
-        aria-label={ariaLabel || tooltip}
-        aria-pressed={isPressed || pressed}
-        aria-disabled={disabled}
-        type="button"
         className={cn(
-          // Base styles with focus ring for keyboard navigation
+          // Base styles
           'rounded-2xl flex items-center justify-center',
-          'transition-all duration-200 ease-out motion-reduce:transition-none motion-reduce:transform-none',
+          'transition-all duration-200 ease-out',
           'transform-gpu will-change-transform',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           // Size
           sizeClasses[size],
           iconSizeClasses[size],

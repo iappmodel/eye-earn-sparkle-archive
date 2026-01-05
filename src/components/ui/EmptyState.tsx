@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from './button';
 
-export type EmptyStateType = 
+type EmptyStateType = 
   | 'content' 
   | 'search' 
   | 'images' 

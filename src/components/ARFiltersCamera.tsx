@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Camera, Sparkles, Smile, Sun, Moon, Zap, Star, Heart, Flower2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { X, Camera, Sparkles, Smile, Sun, Moon, Zap, Star, Heart, Flower2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 interface ARFilter {
   id: string;
@@ -35,70 +34,37 @@ export const ARFiltersCamera: React.FC<ARFiltersCameraProps> = ({ isOpen, onClos
   const [selectedFilter, setSelectedFilter] = useState<ARFilter>(filters[0]);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
-  const [cameraLoading, setCameraLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const cameraTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       startCamera();
     } else {
       stopCamera();
-      setPermissionDenied(false);
     }
 
     return () => stopCamera();
   }, [isOpen, isFrontCamera]);
 
   const startCamera = async () => {
-    setCameraLoading(true);
-    setPermissionDenied(false);
-    
-    // Timeout to prevent indefinite stall
-    cameraTimeoutRef.current = setTimeout(() => {
-      setCameraLoading(false);
-      toast.error('Camera initialization timed out');
-      onClose();
-    }, 8000);
-    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: isFrontCamera ? 'user' : 'environment' },
         audio: false,
       });
       
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
-      }
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
       }
-      setCameraLoading(false);
-    } catch (err: any) {
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
-      }
-      setCameraLoading(false);
+    } catch (err) {
       console.error('Camera access error:', err);
-      
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setPermissionDenied(true);
-        toast.error('Camera permission denied');
-      } else {
-        toast.error('Could not access camera');
-        onClose();
-      }
+      toast.error('Could not access camera');
     }
   };
 
   const stopCamera = () => {
-    if (cameraTimeoutRef.current) {
-      clearTimeout(cameraTimeoutRef.current);
-    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -134,66 +100,8 @@ export const ARFiltersCamera: React.FC<ARFiltersCameraProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  // Crash guard: show safe-mode fallback
-  if (shouldDisableHeavyComponents()) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-amber-500">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">AR Camera Paused</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          AR filters temporarily disabled to stabilize the app.
-        </p>
-        <Button variant="outline" onClick={onClose} className="w-full">
-          Close
-        </Button>
-      </div>
-    );
-  }
-
-  // Permission denied: show 25% overlay
-  if (permissionDenied) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Camera Access Denied</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Please enable camera access in your browser settings.
-        </p>
-        <Button variant="outline" onClick={onClose} className="w-full">
-          Close
-        </Button>
-      </div>
-    );
-  }
-
-  // Loading state
-  if (cameraLoading) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center gap-2">
-          <Camera className="w-5 h-5 animate-pulse" />
-          <span className="font-semibold text-sm">Starting Camera...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-md max-h-[25vh] overflow-hidden rounded-2xl border border-border/50 bg-background shadow-xl">
+    <div className="fixed inset-0 z-[100] bg-black">
       {/* Camera View */}
       <div className="absolute inset-0">
         <video

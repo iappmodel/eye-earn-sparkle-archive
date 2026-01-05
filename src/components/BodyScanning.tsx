@@ -3,11 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { 
   Camera, Check, X, User, RotateCcw, AlertCircle, 
-  Volume2, Smartphone, Move, ArrowRight, ArrowDown, AlertTriangle
+  Volume2, Smartphone, Move, ArrowRight, ArrowDown
 } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { Progress } from '@/components/ui/progress';
-import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 export interface BodyScanResult {
   poses: {
@@ -184,22 +183,8 @@ export const BodyScanning: React.FC<BodyScanningProps> = ({
     }
   }, []);
 
-  const [permissionDenied, setPermissionDenied] = useState(false);
-  const [cameraLoadingState, setCameraLoadingState] = useState(false);
-  const cameraTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Start camera with timeout and permission handling
+  // Start camera
   const startCamera = useCallback(async () => {
-    setCameraLoadingState(true);
-    setPermissionDenied(false);
-    
-    // Timeout to prevent indefinite stall
-    cameraTimeoutRef.current = setTimeout(() => {
-      setCameraLoadingState(false);
-      console.warn('[BodyScanning] Camera init timed out');
-      onClose();
-    }, 8000);
-    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -209,37 +194,19 @@ export const BodyScanning: React.FC<BodyScanningProps> = ({
         }
       });
       
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
-      }
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setCameraActive(true);
       }
-      setCameraLoadingState(false);
-    } catch (err: any) {
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
-      }
-      setCameraLoadingState(false);
+    } catch (err) {
       console.error('Camera access error:', err);
-      
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setPermissionDenied(true);
-      } else {
-        error();
-        onClose();
-      }
+      error();
     }
-  }, [error, onClose]);
+  }, [error]);
 
   // Stop camera
   const stopCamera = useCallback(() => {
-    if (cameraTimeoutRef.current) {
-      clearTimeout(cameraTimeoutRef.current);
-    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -454,67 +421,6 @@ export const BodyScanning: React.FC<BodyScanningProps> = ({
   }, [isOpen]);
 
   if (!isOpen) return null;
-
-  // Crash guard: show safe-mode fallback
-  if (shouldDisableHeavyComponents()) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-amber-500">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Body Scan Paused</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Body scanning is temporarily disabled to stabilize the app.
-        </p>
-        <Button variant="outline" onClick={onClose} className="w-full">
-          Close
-        </Button>
-      </div>
-    );
-  }
-
-  // Permission denied: show 25% overlay with settings prompt
-  if (permissionDenied) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Camera Access Denied</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Please enable camera access in your browser settings to use body scanning.
-        </p>
-        <Button variant="outline" onClick={onClose} className="w-full">
-          Close
-        </Button>
-      </div>
-    );
-  }
-
-  // Loading state: show 25% overlay
-  if (cameraLoadingState && step !== 'intro') {
-    return (
-      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center gap-2">
-          <Camera className="w-5 h-5 animate-pulse" />
-          <span className="font-semibold text-sm">Starting Camera...</span>
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Please allow camera access if prompted.
-        </p>
-      </div>
-    );
-  }
 
   // Frame overlay component
   const FrameOverlay = () => (

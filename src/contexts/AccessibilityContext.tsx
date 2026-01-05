@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { safeVibrate } from '@/lib/haptics';
 
 export type UIDensity = 'compact' | 'default' | 'comfortable';
 export type ThemePack = 'default' | 'lunar' | 'aura' | 'night' | 'focus' | 'energy' | 'nature';
@@ -152,15 +151,15 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const triggerHaptic = useCallback((type: 'light' | 'medium' | 'heavy') => {
-    if (!state.hapticFeedback) return;
+    if (!state.hapticFeedback || !navigator.vibrate) return;
     
-    const patterns: Record<string, number | number[]> = {
-      light: 10,
-      medium: 25,
+    const patterns = {
+      light: [10],
+      medium: [25],
       heavy: [50, 30, 50],
     };
     
-    safeVibrate(patterns[type]);
+    navigator.vibrate(patterns[type]);
   }, [state.hapticFeedback]);
 
   return (

@@ -2,9 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Camera, Check, X, Smile, Heart, Frown, AlertCircle, PartyPopper, AlertTriangle } from 'lucide-react';
+import { Camera, Check, X, Smile, Heart, Frown, AlertCircle, PartyPopper } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
-import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 export interface FacialExpressionResult {
   expressions: {
@@ -293,29 +292,6 @@ export const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> =
   }, [step, faceDetected, isHolding, showValidation, startHoldTimer, cancelHoldTimer]);
 
   if (!isOpen) return null;
-
-  // Crash guard: show safe-mode fallback
-  if (shouldDisableHeavyComponents()) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-amber-500">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Face Scan Paused</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Face scanning is temporarily disabled to stabilize the app.
-        </p>
-        <Button variant="outline" onClick={onClose} className="w-full">
-          Close
-        </Button>
-      </div>
-    );
-  }
 
   if (step === 'intro') {
     return (

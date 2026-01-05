@@ -1,7 +1,7 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
-import AuthGate from '@/components/AuthGate';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -24,7 +24,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   }
 
   if (!user) {
-    return <AuthGate />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;

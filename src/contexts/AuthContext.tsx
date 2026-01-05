@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { subscriptionService, SubscriptionStatus } from '@/services/subscription.service';
-import { errorTrackingService } from '@/services/errorTracking.service';
 
 interface Profile {
   id: string;
@@ -52,40 +51,12 @@ export const useAuth = () => {
   return context;
 };
 
-// Development auto-login configuration
-const DEV_AUTO_LOGIN = import.meta.env.VITE_DEV_AUTO_LOGIN === 'true';
-const DEV_USER_EMAIL = import.meta.env.VITE_DEV_USER_EMAIL || 'dev@example.com';
-const DEV_USER_PASSWORD = import.meta.env.VITE_DEV_USER_PASSWORD || 'devpassword123';
-
-// Mock profile for development when no real profile exists
-const createMockProfile = (userId: string): Profile => ({
-  id: userId,
-  user_id: userId,
-  username: 'demo_user',
-  display_name: 'Demo User',
-  avatar_url: null,
-  bio: 'This is a demo account for testing',
-  phone_number: null,
-  phone_verified: false,
-  vicoin_balance: 1000,
-  icoin_balance: 500,
-  total_views: 0,
-  total_likes: 0,
-  followers_count: 0,
-  following_count: 0,
-  is_verified: false,
-  kyc_status: 'pending',
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-});
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [devAutoLoginAttempted, setDevAutoLoginAttempted] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -125,7 +96,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        errorTrackingService.setUserId(session?.user?.id ?? null);
         
         // Defer profile and subscription fetch with setTimeout to avoid deadlock
         if (session?.user) {
@@ -140,102 +110,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // THEN check for existing session (fail-open: never block UI forever)
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        errorTrackingService.setUserId(session?.user?.id ?? null);
-
-        if (session?.user) {
-          const timeoutMs = 4000;
-          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
-
-          const result = (await Promise.race([
-            Promise.all([
-              fetchProfile(session.user.id),
-              subscriptionService.checkSubscription().catch(() => null),
-            ]) as Promise<[Profile | null, SubscriptionStatus | null]>,
-            timeout,
-          ])) as [Profile | null, SubscriptionStatus | null] | null;
-
-          if (result === null) {
-            // Timed out: unblock UI, then fetch in background
-            setLoading(false);
-            fetchProfile(session.user.id).then(setProfile);
-            subscriptionService.checkSubscription().then(setSubscription).catch(() => null);
-            return;
-          }
-
-          const [profileData, subStatus] = result;
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        Promise.all([
+          fetchProfile(session.user.id),
+          subscriptionService.checkSubscription().catch(() => null),
+        ]).then(([profileData, subStatus]) => {
           setProfile(profileData);
           if (subStatus) setSubscription(subStatus);
           setLoading(false);
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch(() => setLoading(false));
+        });
+      } else {
+        setLoading(false);
+      }
+    });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  // Development auto-login: automatically sign in when VITE_DEV_AUTO_LOGIN=true
-  useEffect(() => {
-    if (!DEV_AUTO_LOGIN || devAutoLoginAttempted || user) return;
-    
-    setDevAutoLoginAttempted(true);
-    console.log('[AuthContext] Dev auto-login enabled, attempting sign in...');
-    
-    const attemptDevLogin = async () => {
-      try {
-        // First try to sign in with dev credentials
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: DEV_USER_EMAIL,
-          password: DEV_USER_PASSWORD,
-        });
-        
-        if (error) {
-          // If user doesn't exist, create one
-          if (error.message.includes('Invalid login credentials')) {
-            console.log('[AuthContext] Dev user not found, creating...');
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-              email: DEV_USER_EMAIL,
-              password: DEV_USER_PASSWORD,
-              options: {
-                data: {
-                  username: 'dev_user',
-                  display_name: 'Dev User',
-                },
-              },
-            });
-            
-            if (signUpError) {
-              console.error('[AuthContext] Dev auto-login failed:', signUpError);
-              // Fallback to mock profile for demo
-              setProfile(createMockProfile('dev-mock-user'));
-              setLoading(false);
-            } else {
-              console.log('[AuthContext] Dev user created:', signUpData.user?.email);
-            }
-          } else {
-            console.error('[AuthContext] Dev auto-login error:', error);
-            // Fallback to mock profile
-            setProfile(createMockProfile('dev-mock-user'));
-            setLoading(false);
-          }
-        } else {
-          console.log('[AuthContext] Dev auto-login successful:', data.user?.email);
-        }
-      } catch (err) {
-        console.error('[AuthContext] Dev auto-login exception:', err);
-        setLoading(false);
-      }
-    };
-    
-    attemptDevLogin();
-  }, [user, devAutoLoginAttempted]);
 
   const signUp = async (email: string, password: string, username: string) => {
     const redirectUrl = `${window.location.origin}/`;
@@ -303,7 +198,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    errorTrackingService.setUserId(null);
     setUser(null);
     setSession(null);
     setProfile(null);

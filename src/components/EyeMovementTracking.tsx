@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, ArrowUp, ArrowLeft, ArrowDown, Check, X, Volume2, VolumeX, Eye, AlertTriangle } from 'lucide-react';
+import { ArrowRight, ArrowUp, ArrowLeft, ArrowDown, Check, X, Volume2, VolumeX, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
-import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
 
 // Arrow directions in order: right, up, left, down
 const ARROW_DIRECTIONS = [
@@ -270,29 +269,6 @@ export const EyeMovementTracking: React.FC<EyeMovementTrackingProps> = ({
 
   if (!isOpen) return null;
 
-  // Crash guard: show safe-mode fallback
-  if (shouldDisableHeavyComponents()) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[200] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-amber-500">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Eye Tracking Paused</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Eye movement tracking temporarily disabled to stabilize the app.
-        </p>
-        <Button variant="outline" onClick={onClose} className="w-full">
-          Close
-        </Button>
-      </div>
-    );
-  }
-
   const currentDirection = ARROW_DIRECTIONS[currentDirectionIndex];
   const currentSpeed = SPEED_VARIATIONS[currentSpeedIndex];
   const ArrowIcon = currentDirection?.icon || ArrowRight;
@@ -302,7 +278,7 @@ export const EyeMovementTracking: React.FC<EyeMovementTrackingProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-md max-h-[25vh] overflow-auto rounded-2xl border border-border/50 bg-background/95 backdrop-blur-md shadow-xl"
+      className="fixed inset-0 z-[200] bg-black flex flex-col"
     >
       {/* Header */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">

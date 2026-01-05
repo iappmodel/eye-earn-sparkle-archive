@@ -125,13 +125,11 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
         />
       )}
 
-      {/* Backdrop to close - only renders when coin is selected, transparent but clickable */}
+      {/* Backdrop to close */}
       {selectedCoin && (
         <div 
-          className="fixed inset-0 z-10 bg-transparent"
+          className="fixed inset-0 z-10"
           onClick={handleClose}
-          onTouchEnd={handleClose}
-          aria-hidden="true"
         />
       )}
 

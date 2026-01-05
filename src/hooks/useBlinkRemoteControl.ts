@@ -512,7 +512,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       trackingIntervalRef.current = setInterval(() => {
         if (!videoRef.current || !canvasRef.current) return;
         
-        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+        const ctx = canvasRef.current.getContext('2d');
         if (!ctx) return;
         
         ctx.drawImage(videoRef.current, 0, 0, 320, 240);

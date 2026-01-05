@@ -208,14 +208,6 @@
     --destructive: 0 85% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Warning - Amber */
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-
-    /* Success - Green */
-    --success: 142 76% 45%;
-    --success-foreground: 0 0% 100%;
-
     --border: 270 30% 20%;
     --input: 240 15% 12%;
     --ring: 270 95% 65%;
@@ -422,57 +414,12 @@
     background-clip: text;
   }
   
-  /* Reduced motion preference - comprehensive support */
+  /* Reduced motion preference */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
-    }
-    
-    /* Disable parallax and transforms */
-    .animate-pulse,
-    .animate-bounce,
-    .animate-spin,
-    .animate-ping {
-      animation: none !important;
-    }
-  }
-  
-  /* Programmatic reduced motion via class */
-  .reduce-motion,
-  .reduce-motion *, 
-  .reduce-motion *::before, 
-  .reduce-motion *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-  
-  /* Enhanced focus styles for keyboard navigation */
-  :focus-visible {
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
-  }
-  
-  /* Touch target minimum sizes (WCAG 2.5.5) */
-  .touch-target {
-    min-width: 44px;
-    min-height: 44px;
-  }
-  
-  /* High contrast mode enhancements */
-  @media (prefers-contrast: more) {
-    :root {
-      --foreground: 0 0% 100%;
-      --primary: 270 100% 70%;
-      --border: 0 0% 100%;
-      --muted-foreground: 0 0% 85%;
-    }
-    
-    button, a, [role="button"] {
-      border: 2px solid currentColor !important;
     }
   }
   

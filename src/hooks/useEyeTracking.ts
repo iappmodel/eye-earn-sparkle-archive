@@ -153,7 +153,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       detectionIntervalRef.current = setInterval(() => {
         if (!videoRef.current || !canvasRef.current) return;
         
-        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
+        const ctx = canvasRef.current.getContext('2d');
         if (!ctx) return;
 
         // Draw current frame

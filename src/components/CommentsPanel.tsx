@@ -7,9 +7,19 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Heart, MoreHorizontal, Send, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { useComments, Comment } from '@/hooks/useComments';
 import { toast } from 'sonner';
-import { Skeleton } from '@/components/ui/skeleton';
+
+interface Comment {
+  id: string;
+  userId: string;
+  username: string;
+  avatar?: string;
+  content: string;
+  timestamp: Date;
+  likes: number;
+  isLiked: boolean;
+  replies?: Comment[];
+}
 
 interface CommentsPanelProps {
   isOpen: boolean;
@@ -17,6 +27,50 @@ interface CommentsPanelProps {
   contentId: string;
   contentType?: string;
 }
+
+// Mock comments for demo
+const mockComments: Comment[] = [
+  {
+    id: '1',
+    userId: 'user1',
+    username: 'creative_alex',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=alex',
+    content: 'This is absolutely amazing! 🔥',
+    timestamp: new Date(Date.now() - 1000 * 60 * 5),
+    likes: 24,
+    isLiked: false,
+  },
+  {
+    id: '2',
+    userId: 'user2',
+    username: 'design_pro',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=design',
+    content: 'Love the creativity here. How did you make this?',
+    timestamp: new Date(Date.now() - 1000 * 60 * 30),
+    likes: 12,
+    isLiked: true,
+  },
+  {
+    id: '3',
+    userId: 'user3',
+    username: 'photo_enthusiast',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=photo',
+    content: 'Keep up the great work! Following for more content.',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60),
+    likes: 8,
+    isLiked: false,
+  },
+  {
+    id: '4',
+    userId: 'user4',
+    username: 'travel_lover',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=travel',
+    content: 'Incredible! Where is this location?',
+    timestamp: new Date(Date.now() - 1000 * 60 * 120),
+    likes: 5,
+    isLiked: false,
+  },
+];
 
 const formatTimeAgo = (date: Date): string => {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -36,7 +90,7 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
   contentId,
 }) => {
   const { user } = useAuth();
-  const { comments, isLoading, addComment, toggleLike } = useComments(contentId);
+  const [comments, setComments] = useState<Comment[]>(mockComments);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,25 +103,38 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
 
     setIsSubmitting(true);
     
-    const success = await addComment(newComment);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    if (success) {
-      setNewComment('');
-      toast.success('Comment posted!');
-    } else {
-      toast.error('Failed to post comment');
-    }
-    
+    const comment: Comment = {
+      id: Date.now().toString(),
+      userId: user.id,
+      username: user.user_metadata?.username || 'you',
+      avatar: user.user_metadata?.avatar_url,
+      content: newComment.trim(),
+      timestamp: new Date(),
+      likes: 0,
+      isLiked: false,
+    };
+
+    setComments(prev => [comment, ...prev]);
+    setNewComment('');
     setIsSubmitting(false);
-  }, [newComment, user, addComment]);
+    toast.success('Comment posted!');
+  }, [newComment, user]);
 
   const handleLikeComment = useCallback((commentId: string) => {
-    if (!user) {
-      toast.error('Please sign in to like comments');
-      return;
-    }
-    toggleLike(commentId);
-  }, [user, toggleLike]);
+    setComments(prev => prev.map(c => {
+      if (c.id === commentId) {
+        return {
+          ...c,
+          isLiked: !c.isLiked,
+          likes: c.isLiked ? c.likes - 1 : c.likes + 1,
+        };
+      }
+      return c;
+    }));
+  }, []);
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
@@ -81,23 +148,7 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
 
         <ScrollArea className="flex-1 h-[calc(100%-140px)] py-4">
           <div className="space-y-4">
-            {isLoading ? (
-              // Loading skeleton
-              Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex gap-3 px-1">
-                  <Skeleton className="h-8 w-8 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-full" />
-                  </div>
-                </div>
-              ))
-            ) : comments.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-muted-foreground text-sm">No comments yet</p>
-                <p className="text-muted-foreground text-xs mt-1">Be the first to comment!</p>
-              </div>
-            ) : comments.map(comment => (
+            {comments.map(comment => (
               <div key={comment.id} className="flex gap-3 px-1">
                 <Avatar className="h-8 w-8 flex-shrink-0">
                   <AvatarImage src={comment.avatar} />

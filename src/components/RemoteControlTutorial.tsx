@@ -196,7 +196,7 @@ export const RemoteControlTutorial: React.FC<RemoteControlTutorialProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[300] w-[90%] max-w-md max-h-[25vh] overflow-auto rounded-2xl border border-border/50 bg-background/98 backdrop-blur-md shadow-xl p-4">
+    <div className="fixed inset-0 z-[300] bg-background/98 backdrop-blur-md flex items-center justify-center p-4">
       {/* Close button */}
       <Button
         variant="ghost"

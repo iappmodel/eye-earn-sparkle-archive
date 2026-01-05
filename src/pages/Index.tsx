@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, ControlsRecoveryButton } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -15,118 +14,138 @@ import { OnboardingFlow } from '@/components/onboarding';
 import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
+import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
 import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from '@/components/AttentionAchievements';
 import { useMediaSettings } from '@/components/MediaSettings';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
 import { CommentsPanel } from '@/components/CommentsPanel';
 import { ShareSheet } from '@/components/ShareSheet';
 import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
-import { SafeComponentWrapper } from '@/components/SafeComponentWrapper';
-import DemoBanner from '@/components/DemoBanner';
-import { EMPTY_HOOK_DEFAULTS } from '@/hooks/useSafeHook';
-
 import { useSwipeNavigation } from '@/hooks/useSwipeNavigation';
 import { useOnboarding } from '@/hooks/useOnboarding';
 import { usePageNavigation } from '@/hooks/usePageNavigation';
-import { useContentFeed } from '@/hooks/useContentFeed';
-import { useContentLikes } from '@/hooks/useContentLikes';
 import { useUICustomization } from '@/contexts/UICustomizationContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useDemoMode } from '@/contexts/DemoModeContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+// Mock data - more realistic content with video support
+const mockMedia = [
+  {
+    id: '1',
+    type: 'promo' as const,
+    src: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+    duration: 8,
+    reward: { amount: 50, type: 'vicoin' as const },
+    title: 'Holiday Special',
+    creator: {
+      id: 'creator-1',
+      username: 'holiday_deals',
+      displayName: 'Holiday Deals',
+      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
+      postsCount: 156,
+      followersCount: 24500,
+      followingCount: 89,
+      isVerified: true,
+    },
+  },
+  {
+    id: '2',
+    type: 'video' as const,
+    src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    duration: 15,
+    title: 'Trending Now',
+    creator: {
+      id: 'creator-2',
+      username: 'alex_creates',
+      displayName: 'Alex Rivera',
+      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+      postsCount: 89,
+      followersCount: 12300,
+      followingCount: 234,
+      isVerified: false,
+    },
+  },
+  {
+    id: '3',
+    type: 'promo' as const,
+    src: 'https://images.unsplash.com/photo-1560472355-536de3962603?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    duration: 10,
+    reward: { amount: 1, type: 'icoin' as const },
+    title: 'Coffee Shop Reward',
+    creator: {
+      id: 'creator-3',
+      username: 'cafe_central',
+      displayName: 'Cafe Central',
+      avatarUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=100&h=100&fit=crop',
+      postsCount: 342,
+      followersCount: 8700,
+      followingCount: 156,
+      isVerified: true,
+    },
+  },
+  {
+    id: '4',
+    type: 'image' as const,
+    src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
+    title: 'Mountain View',
+    creator: {
+      id: 'creator-4',
+      username: 'nature_shots',
+      displayName: 'Maya Thompson',
+      avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
+      postsCount: 234,
+      followersCount: 45600,
+      followingCount: 123,
+      isVerified: true,
+    },
+  },
+  {
+    id: '5',
+    type: 'promo' as const,
+    src: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1920&h=1080&fit=crop',
+    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    duration: 12,
+    reward: { amount: 25, type: 'vicoin' as const },
+    title: 'Sneaker Drop',
+    creator: {
+      id: 'creator-5',
+      username: 'sneaker_drops',
+      displayName: 'Sneaker Drops',
+      avatarUrl: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=100&h=100&fit=crop',
+      postsCount: 567,
+      followersCount: 89000,
+      followingCount: 45,
+      isVerified: true,
+    },
+  },
+];
+
 type HorizontalScreen = 'friends' | 'main' | 'promos';
 
-// Safe hook wrappers - these catch errors during initialization
-const useSafeAttentionAchievements = () => {
-  try {
-    return useAttentionAchievements();
-  } catch (error) {
-    console.error('[Index] useAttentionAchievements failed:', error);
-    return EMPTY_HOOK_DEFAULTS.useAttentionAchievements;
-  }
-};
-
-const useSafeMediaSettings = () => {
-  try {
-    return useMediaSettings();
-  } catch (error) {
-    console.error('[Index] useMediaSettings failed:', error);
-    return EMPTY_HOOK_DEFAULTS.useMediaSettings;
-  }
-};
-
-const useSafeCelebration = () => {
-  try {
-    return useCelebration();
-  } catch (error) {
-    console.error('[Index] useCelebration failed:', error);
-    return EMPTY_HOOK_DEFAULTS.useCelebration;
-  }
-};
-
-const useSafePageNavigation = () => {
-  try {
-    return usePageNavigation();
-  } catch (error) {
-    console.error('[Index] usePageNavigation failed:', error);
-    return EMPTY_HOOK_DEFAULTS.usePageNavigation;
-  }
-};
-
-const useSafeContentFeed = () => {
-  try {
-    return useContentFeed();
-  } catch (error) {
-    console.error('[Index] useContentFeed failed:', error);
-    return EMPTY_HOOK_DEFAULTS.useContentFeed;
-  }
-};
-
-const useSafeOnboarding = () => {
-  try {
-    return useOnboarding();
-  } catch (error) {
-    console.error('[Index] useOnboarding failed:', error);
-    return EMPTY_HOOK_DEFAULTS.useOnboarding;
-  }
-};
-
 const Index = () => {
-  // Add top-level error logging
-  console.log('[Index] Rendering Index component...');
-
-  // Demo mode from context
-  const { isDemo, gateAction } = useDemoMode();
-  const navigate = useNavigate();
-
-  // Use safe versions of hooks that might throw
-  const { user, profile, refreshProfile } = useAuth();
-  const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useSafeOnboarding();
-  const uiCustomization = useUICustomization();
-  const pageLayout = uiCustomization?.pageLayout;
-  const getPagesByDirection = uiCustomization?.getPagesByDirection ?? (() => []);
-  
-  // Gesture tutorial temporarily disabled
-  const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useSafeCelebration();
-  const haptic = useHapticFeedback();
-  const { eyeTrackingEnabled } = useSafeMediaSettings();
-  const { stats: achievementStats, unlockedAchievements, newlyUnlocked, dismissNotification } = useSafeAttentionAchievements();
+  const { profile, refreshProfile } = useAuth();
+  const { showOnboarding, closeOnboarding, completeOnboarding, openOnboarding } = useOnboarding();
+  const { pageLayout, getPagesByDirection } = useUICustomization();
+  const { showTutorial, completeTutorial } = useGestureTutorial();
+  const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useCelebration();
+  const { light, medium } = useHapticFeedback();
+  const { eyeTrackingEnabled } = useMediaSettings();
+  const { stats: achievementStats, unlockedAchievements, newlyUnlocked, dismissNotification } = useAttentionAchievements();
+  const [isLoading, setIsLoading] = useState(true);
   const [showAchievementsPanel, setShowAchievementsPanel] = useState(false);
   
-  // Real content from database - with safe wrapper
-  const { content: feedContent, isLoading, refresh: refreshFeed } = useSafeContentFeed();
-  
-  // Page navigation from configured layout - with safe wrapper
+  // Page navigation from configured layout
   const {
     currentPage,
     currentState,
@@ -136,9 +155,10 @@ const Index = () => {
     navigate: pageNavigate,
     getTransitionClasses,
     getTransitionStyles,
-  } = useSafePageNavigation();
+  } = usePageNavigation();
   
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isLiked, setIsLiked] = useState(false);
   const [showCoinSlide, setShowCoinSlide] = useState(false);
   const [coinSlideType, setCoinSlideType] = useState<'vicoin' | 'icoin'>('vicoin');
   const [showWallet, setShowWallet] = useState(false);
@@ -153,26 +173,6 @@ const Index = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [useUnifiedFeed, setUseUnifiedFeed] = useState(false);
-
-  // Safety: if a transition ever gets stuck (can appear as a blank, non-interactive screen),
-  // force the container back to a visible, interactive state.
-  const [forceVisible, setForceVisible] = useState(false);
-  useEffect(() => {
-    if (transitionState === 'idle') {
-      setForceVisible(false);
-      return;
-    }
-
-    const maxMs = Math.max(transition?.duration ?? 300, 300) * 4;
-    const t = window.setTimeout(() => setForceVisible(true), maxMs);
-    return () => window.clearTimeout(t);
-  }, [transitionState, transition?.duration]);
-
-  const safeTransitionStyles: React.CSSProperties = forceVisible
-    ? { opacity: 1, transform: 'none', visibility: 'visible' }
-    : getTransitionStyles();
-
-  const safeTransitionClasses = cn('absolute inset-0', !forceVisible && getTransitionClasses());
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
@@ -180,20 +180,19 @@ const Index = () => {
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
   
-  // Current media from real feed - with safety check
-  const currentMedia = useMemo(() => {
-    if (!feedContent || feedContent.length === 0) return null;
-    return feedContent[currentIndex] || feedContent[0];
-  }, [feedContent, currentIndex]);
-  
+  // Check if current media is promo content
+  const currentMedia = useMemo(() => mockMedia[currentIndex], [currentIndex]);
   const isPromoContent = currentMedia?.type === 'promo' && !!currentMedia?.reward;
   
-  // Like/Save persistence - only when we have current media
-  const { isLiked, isSaved, likesCount, toggleLike, toggleSave } = useContentLikes(currentMedia?.id || null);
+  // Simulate initial load
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
   
   // Pull to refresh handler
   const handleRefresh = useCallback(async () => {
-    await Promise.all([refreshProfile(), refreshFeed()]);
+    await refreshProfile();
     toast.success('Feed refreshed!');
   }, [refreshProfile]);
 
@@ -255,9 +254,7 @@ const Index = () => {
 
   // Handle promo completion - use rewards service for secure backend validation
   const handleMediaComplete = useCallback(async (attentionValidated: boolean = true, attentionScore?: number) => {
-    // Only give rewards if attention was validated for promo content and we have current media
-    if (!currentMedia) return;
-    
+    // Only give rewards if attention was validated for promo content
     if (currentMedia.reward && profile && attentionValidated) {
       // Use rewards service for secure backend validation
       const result = await rewardsService.issueReward(
@@ -277,8 +274,10 @@ const Index = () => {
         await refreshProfile();
         toast.success(`+${result.amount} ${result.coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}!`);
 
-        // Haptic feedback - use hook instead of direct navigator.vibrate
-        haptic.success();
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate([50, 30, 50]);
+        }
       } else if (result.error) {
         // Check for specific errors
         if (result.error.includes('already claimed') || result.error.includes('Reward already')) {
@@ -308,21 +307,22 @@ const Index = () => {
 
   // Navigate with swipe animation (vertical) - for main feed content
   const navigateToMedia = useCallback((direction: 'up' | 'down') => {
-    if (isTransitioning || currentState.direction !== 'center' || feedContent.length === 0) return;
+    if (isTransitioning || currentState.direction !== 'center') return;
     
     setIsTransitioning(true);
     setSwipeDirection(direction);
 
     setTimeout(() => {
       if (direction === 'up') {
-        setCurrentIndex(prev => (prev + 1) % feedContent.length);
+        setCurrentIndex(prev => (prev + 1) % mockMedia.length);
       } else {
-        setCurrentIndex(prev => (prev - 1 + feedContent.length) % feedContent.length);
+        setCurrentIndex(prev => (prev - 1 + mockMedia.length) % mockMedia.length);
       }
+      setIsLiked(false);
       setSwipeDirection(null);
       setIsTransitioning(false);
     }, 300);
-  }, [isTransitioning, currentState.direction, feedContent.length]);
+  }, [isTransitioning, currentState.direction]);
 
   // Skip to next media
   const handleSkip = useCallback(() => {
@@ -354,35 +354,17 @@ const Index = () => {
     onSwipeRight: () => handleNavigate('right'),
   });
 
-  // Helper to require auth for interactive actions in demo mode
-  const requireAuth = useCallback((action: string) => {
-    if (isDemo || !user) {
-      return !gateAction(action);
+  const handleLike = () => {
+    setIsLiked(!isLiked);
+    if (!isLiked) {
+      if (navigator.vibrate) navigator.vibrate(10);
+      toast('Liked!', { description: 'Added to your favorites' });
     }
-    return false; // User authenticated, proceed
-  }, [isDemo, user, gateAction]);
-
-  const handleLike = useCallback(() => {
-    if (requireAuth('like content')) return;
-    toggleLike();
-    if (!isLiked) haptic.light();
-  }, [requireAuth, toggleLike, isLiked, haptic]);
-
-  const handleSave = useCallback(() => {
-    if (requireAuth('save content')) return;
-    toggleSave();
-  }, [requireAuth, toggleSave]);
+  };
 
   const handleTip = useCallback(async (coinType: 'vicoin' | 'icoin', amount: number) => {
-    if (requireAuth('tip creators')) return;
-    
     if (!profile) {
       toast.error('Please log in to tip');
-      return;
-    }
-    
-    if (!currentMedia) {
-      toast.error('No content selected');
       return;
     }
 
@@ -395,18 +377,14 @@ const Index = () => {
       return;
     }
 
-    // Use the real creator ID from the content
-    const creatorId = currentMedia?.creator?.id;
-    if (!creatorId || creatorId === 'system') {
-      toast.error('Cannot tip this content');
-      return;
-    }
+    // For demo purposes, use a mock creator ID (in real app, would come from content metadata)
+    const mockCreatorId = 'demo-creator-id';
     
     try {
       const { data, error } = await supabase.functions.invoke('tip-creator', {
         body: {
           contentId: currentMedia.id,
-          creatorId,
+          creatorId: mockCreatorId,
           amount,
           coinType,
         },
@@ -443,8 +421,8 @@ const Index = () => {
         // Refresh profile to update balance
         await refreshProfile();
         
-        // Haptic feedback - use hook instead of direct navigator.vibrate
-        haptic.success();
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
       } else {
         // Handle non-success response in data
         const errorMsg = data?.error || 'Failed to send tip';
@@ -454,12 +432,11 @@ const Index = () => {
       console.error('[Index] Tip failed:', err);
       toast.error('Failed to send tip');
     }
-  }, [profile, currentMedia, refreshProfile]);
+  }, [profile, currentMedia.id, refreshProfile]);
 
-  const handleComment = useCallback(() => {
-    if (requireAuth('comment')) return;
+  const handleComment = () => {
     setShowComments(true);
-  }, [requireAuth]);
+  };
 
   const handleShare = () => {
     setShowShare(true);
@@ -504,118 +481,85 @@ const Index = () => {
     <ControlsVisibilityProvider>
       <DoubleTapGestureDetector onTripleTap={handleSettings}>
         <div 
-          className="fixed inset-0 bg-background overflow-hidden"
+          className="fixed inset-0 bg-background overflow-hidden touch-none"
           {...handlers}
         >
-          {/* Demo Mode Banner */}
-          {isDemo && <DemoBanner />}
-
-          {/* Dynamic Page Container with transitions */}
-          <div className={safeTransitionClasses} style={safeTransitionStyles}>
+        {/* Dynamic Page Container with transitions */}
+        <div className={cn("absolute inset-0", getTransitionClasses())} style={getTransitionStyles()}>
           {/* Render based on current page content type */}
           {isAtCenter ? (
             // Main Media Feed (Center)
             <div className="absolute inset-0">
-              {/* Show loading skeleton or empty state when no content */}
-              {isLoading ? (
-                <MediaCardSkeleton />
-              ) : !currentMedia ? (
-                <div className="absolute inset-0 flex items-center justify-center bg-background">
-                  <div className="text-center p-8">
-                    <p className="text-muted-foreground mb-4">No content available</p>
-                    <Button onClick={handleRefresh} variant="secondary">
-                      Refresh Feed
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className={cn(
-                    'absolute inset-0 transition-transform duration-300 ease-out',
-                    swipeDirection === 'up' && 'animate-swipe-exit-up',
-                    swipeDirection === 'down' && 'animate-swipe-exit-down'
-                  )}>
-                    <SafeComponentWrapper 
-                      componentName="MediaCard"
-                      fallback={
-                        <div className="absolute inset-0 flex items-center justify-center bg-background">
-                          <div className="text-center p-8">
-                            <p className="text-muted-foreground mb-4">Content failed to load</p>
-                            <Button onClick={() => window.location.reload()} variant="secondary">
-                              Reload
-                            </Button>
-                          </div>
-                        </div>
-                      }
-                    >
-                      <MediaCard
-                        key={currentMedia.id}
-                        type={currentMedia.type}
-                        src={currentMedia.src}
-                        videoSrc={currentMedia.videoSrc}
-                        duration={currentMedia.duration}
-                        reward={currentMedia.reward}
-                        contentId={currentMedia.id}
-                        onComplete={handleMediaComplete}
-                        onSkip={handleSkip}
-                        isActive={!isTransitioning && isAtCenter}
-                      />
-                    </SafeComponentWrapper>
-                  </div>
+              <div className={cn(
+                'absolute inset-0 transition-transform duration-300 ease-out',
+                swipeDirection === 'up' && 'animate-swipe-exit-up',
+                swipeDirection === 'down' && 'animate-swipe-exit-down'
+              )}>
+                <MediaCard
+                  key={currentMedia.id}
+                  type={currentMedia.type}
+                  src={currentMedia.src}
+                  videoSrc={currentMedia.videoSrc}
+                  duration={currentMedia.duration}
+                  reward={currentMedia.reward}
+                  contentId={currentMedia.id}
+                  onComplete={handleMediaComplete}
+                  onSkip={handleSkip}
+                  isActive={!isTransitioning && isAtCenter}
+                />
+              </div>
 
-                  {/* Cross Navigation hints */}
-                  <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
+              {/* Cross Navigation hints */}
+              <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
 
-                  {/* Feed toggle */}
-                  <div className="absolute top-16 left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50">
-                    <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
-                      Unified Feed
-                    </Label>
-                    <Switch
-                      id="unified-feed"
-                      checked={useUnifiedFeed}
-                      onCheckedChange={setUseUnifiedFeed}
-                      className="scale-75"
-                    />
-                  </div>
+              {/* Feed toggle */}
+              <div className="absolute top-16 left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50">
+                <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
+                  Unified Feed
+                </Label>
+                <Switch
+                  id="unified-feed"
+                  checked={useUnifiedFeed}
+                  onCheckedChange={setUseUnifiedFeed}
+                  className="scale-75"
+                />
+              </div>
 
-                  {/* Floating Controls */}
-                  <FloatingControls
-                    onWalletClick={() => setShowWallet(true)}
-                    onProfileClick={() => setShowProfile(true)}
-                    onLikeClick={handleLike}
-                    onTip={handleTip}
-                    onCommentClick={handleComment}
-                    onShareClick={handleShare}
-                    onSettingsClick={handleSettings}
-                    onAchievementsClick={() => setShowAchievementsPanel(true)}
-                    isLiked={isLiked}
-                    likeCount={1234}
-                    commentCount={89}
-                    showAchievements={isPromoContent && eyeTrackingEnabled}
-                    achievementsCount={unlockedAchievements.size}
-                    creatorInfo={currentMedia?.creator}
-                    onViewCreatorProfile={() => {
-                      if (currentMedia?.creator) {
-                        toast.info(`Viewing ${currentMedia.creator.displayName}'s profile`);
-                      }
-                    }}
-                  />
+              {/* Floating Controls */}
+              <FloatingControls
+                onWalletClick={() => setShowWallet(true)}
+                onProfileClick={() => setShowProfile(true)}
+                onLikeClick={handleLike}
+                onTip={handleTip}
+                onCommentClick={handleComment}
+                onShareClick={handleShare}
+                onSettingsClick={handleSettings}
+                onAchievementsClick={() => setShowAchievementsPanel(true)}
+                isLiked={isLiked}
+                likeCount={1234}
+                commentCount={89}
+                showAchievements={isPromoContent && eyeTrackingEnabled}
+                achievementsCount={unlockedAchievements.size}
+                creatorInfo={currentMedia.creator}
+                onViewCreatorProfile={() => {
+                  // TODO: Navigate to creator's public profile
+                  toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
+                }}
+              />
 
-                   {/* Achievements overlays - TEMPORARILY DISABLED */}
-                   {/* <AttentionAchievementsPanel
-                     isVisible={showAchievementsPanel}
-                     onClose={() => setShowAchievementsPanel(false)}
-                     stats={achievementStats}
-                     unlockedAchievements={unlockedAchievements}
-                   /> */}
+              {/* Achievements panel */}
+              <AttentionAchievementsPanel
+                isVisible={showAchievementsPanel}
+                onClose={() => setShowAchievementsPanel(false)}
+                stats={achievementStats}
+                unlockedAchievements={unlockedAchievements}
+              />
 
-                   {/* <AchievementUnlockNotification
-                     achievement={newlyUnlocked}
-                     onDismiss={dismissNotification}
-                   /> */}
-                </>
-              )}
+              {/* Achievement unlock notification */}
+              <AchievementUnlockNotification
+                achievement={newlyUnlocked}
+                onDismiss={dismissNotification}
+              />
             </div>
           ) : currentPage ? (
             // Dynamic page content based on configured layout
@@ -624,9 +568,6 @@ const Index = () => {
             </div>
           ) : null}
         </div>
-
-        {/* Controls recovery button - fail-open mechanism */}
-        <ControlsRecoveryButton />
 
         {/* Screen Indicators - show configured pages */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
@@ -642,65 +583,106 @@ const Index = () => {
           )}
         </div>
 
-         {/* Overlays / popups - Re-enabled with SafeComponentWrapper protection */}
-         <SafeComponentWrapper componentName="WalletScreen" fallback={null}>
-           <WalletScreen
-             isOpen={showWallet}
-             onClose={() => setShowWallet(false)}
-             vicoins={vicoins}
-             icoins={icoins}
-           />
-         </SafeComponentWrapper>
+        {/* Coin slide animation on reward */}
+        <CoinSlideAnimation
+          type={coinSlideType}
+          isAnimating={showCoinSlide}
+          onComplete={handleCoinSlideComplete}
+        />
 
-         <SafeComponentWrapper componentName="ProfileScreen" fallback={null}>
-           <ProfileScreen
-             isOpen={showProfile}
-             onClose={() => { setShowProfile(false); setActiveTab('home'); }}
-           />
-         </SafeComponentWrapper>
+        {/* Wallet Screen */}
+        <WalletScreen
+          isOpen={showWallet}
+          onClose={() => setShowWallet(false)}
+          vicoins={vicoins}
+          icoins={icoins}
+        />
 
-         <SafeComponentWrapper componentName="MessagesScreen" fallback={null}>
-           <MessagesScreen
-             isOpen={showMessages}
-             onClose={() => { setShowMessages(false); setActiveTab('home'); }}
-           />
-         </SafeComponentWrapper>
+        {/* Profile Screen */}
+        <ProfileScreen
+          isOpen={showProfile}
+          onClose={() => { setShowProfile(false); setActiveTab('home'); }}
+        />
 
-         {/* Comments Panel */}
-         {currentMedia && (
-           <SafeComponentWrapper componentName="CommentsPanel" fallback={null}>
-             <CommentsPanel
-               isOpen={showComments}
-               onClose={() => setShowComments(false)}
-               contentId={currentMedia.id}
-             />
-           </SafeComponentWrapper>
-         )}
+        {/* Discovery Map */}
+        <DiscoveryMap
+          isOpen={showMap}
+          onClose={() => { setShowMap(false); setActiveTab('home'); }}
+        />
 
-         {/* Share Sheet */}
-         {currentMedia && (
-           <SafeComponentWrapper componentName="ShareSheet" fallback={null}>
-             <ShareSheet
-               isOpen={showShare}
-               onClose={() => setShowShare(false)}
-               title={currentMedia.title || 'Check out this content!'}
-               url={`${window.location.origin}/content/${currentMedia.id}`}
-             />
-           </SafeComponentWrapper>
-         )}
+        {/* Personalized AI Feed */}
+        {showFeed && (
+          <div className="fixed inset-0 z-40 bg-background">
+            <div className="h-full flex flex-col">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h1 className="text-xl font-bold">For You</h1>
+                <button 
+                  onClick={() => { setShowFeed(false); setActiveTab('home'); }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden pb-20">
+                <PersonalizedFeed />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Messages Screen */}
+        <MessagesScreen
+          isOpen={showMessages}
+          onClose={() => { setShowMessages(false); setActiveTab('home'); }}
+        />
+
+        {/* Bottom Navigation - centered at bottom */}
+        <BottomNavigation 
+          activeTab={activeTab} 
+          onTabChange={handleTabChange} 
+        />
+
+        {/* Onboarding Flow for new users */}
+        <OnboardingFlow
+          isOpen={showOnboarding}
+          onClose={closeOnboarding}
+          onComplete={completeOnboarding}
+        />
+
+        {/* Theme Presets Bottom Sheet */}
+        <ThemePresetsSheet
+          isOpen={showThemePresets}
+          onClose={() => setShowThemePresets(false)}
+        />
+
+
+        {/* Comments Panel */}
+        <CommentsPanel
+          isOpen={showComments}
+          onClose={() => setShowComments(false)}
+          contentId={currentMedia.id}
+        />
+
+        {/* Share Sheet */}
+        <ShareSheet
+          isOpen={showShare}
+          onClose={() => setShowShare(false)}
+          title={currentMedia.title || 'Check out this content!'}
+          url={`${window.location.origin}/content/${currentMedia.id}`}
+        />
 
         {/* Network Status Indicator */}
         <div className="fixed top-4 right-4 z-50">
           <NetworkStatusIndicator variant="badge" />
         </div>
 
-        {/* Gesture Tutorial - TEMPORARILY DISABLED */}
-        {/* {showTutorial && (
+        {/* Gesture Tutorial for new users */}
+        {showTutorial && (
           <GestureTutorial
             onComplete={completeTutorial}
             onSkip={completeTutorial}
           />
-        )} */}
+        )}
 
         {/* Confetti Celebration */}
         <ConfettiCelebration

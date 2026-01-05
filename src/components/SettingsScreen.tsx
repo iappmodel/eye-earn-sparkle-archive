@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2, MessageCircle, Crown } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
@@ -59,7 +58,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 }) => {
   const { t, localeConfig, formatCurrency, isRTL } = useLocalization();
   const { themePack, setThemePack } = useAccessibility();
-  const navigate = useNavigate();
   const { setGroupingMode, setSnapPointMode } = useDragContext();
   const { settings: timedSettings, updateSettings: updateTimedSettings } = useTimedInteractions();
   const [isDarkMode, setIsDarkMode] = useState(() => 
@@ -630,7 +628,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 size="sm"
                 onClick={() => {
                   onClose();
-                  navigate('/social-connect');
+                  window.location.href = '/social-connect';
                 }}
                 className="w-full justify-center"
               >

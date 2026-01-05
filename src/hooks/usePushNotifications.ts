@@ -198,20 +198,8 @@ export const usePushNotifications = () => {
         
         // Handle notification tap - navigate to relevant screen
         const data = action.notification?.data;
-        const route = typeof data?.route === 'string' ? data.route : null;
-
-        if (route) {
-          try {
-            const url = new URL(route, window.location.origin);
-            if (url.origin === window.location.origin) {
-              window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
-              window.dispatchEvent(new PopStateEvent('popstate'));
-            } else {
-              window.location.href = route;
-            }
-          } catch {
-            window.location.href = route;
-          }
+        if (data?.route) {
+          window.location.href = data.route;
         }
       }
     );

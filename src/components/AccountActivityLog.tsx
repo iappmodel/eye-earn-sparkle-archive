@@ -116,8 +116,8 @@ export const AccountActivityLog: React.FC<AccountActivityLogProps> = ({
   }, {} as Record<string, ActivityLog[]>);
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md max-h-[25vh] overflow-auto rounded-2xl border border-border/50 bg-background/95 backdrop-blur-md shadow-xl">
-      <div className="h-full flex flex-col">
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+      <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
           <h1 className="font-display text-lg font-bold">Account Activity</h1>

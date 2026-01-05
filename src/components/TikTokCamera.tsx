@@ -4,11 +4,11 @@ import {
   Sparkles, Smile, Palette, Layers, Image as ImageIcon,
   Video, Upload, ChevronUp, ChevronDown, Settings,
   Sun, Moon, Wand2, Heart, Star, Flower2, Ghost,
-  Glasses, PartyPopper, Crown, Flame, Snowflake, AlertTriangle
+  Glasses, PartyPopper, Crown, Flame, Snowflake
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { shouldDisableHeavyComponents } from '@/lib/crashGuard';
+
 type RecordingMode = 'photo' | 'video' | '15s' | '60s' | '3m' | 'live';
 type CameraTab = 'effects' | 'filters' | 'beauty' | 'timer';
 
@@ -113,21 +113,7 @@ export const TikTokCamera: React.FC<TikTokCameraProps> = ({
     setCountdown(null);
   };
 
-  const [permissionDenied, setPermissionDenied] = useState(false);
-  const [cameraLoading, setCameraLoading] = useState(false);
-  const cameraTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const startCamera = async () => {
-    setCameraLoading(true);
-    setPermissionDenied(false);
-    
-    // Timeout to prevent indefinite stall
-    cameraTimeoutRef.current = setTimeout(() => {
-      setCameraLoading(false);
-      toast.error('Camera initialization timed out');
-      onClose();
-    }, 8000);
-    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -138,37 +124,17 @@ export const TikTokCamera: React.FC<TikTokCameraProps> = ({
         audio: recordingMode !== 'photo',
       });
       
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
-      }
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
       }
-      setCameraLoading(false);
-    } catch (err: any) {
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
-      }
-      setCameraLoading(false);
+    } catch (err) {
       console.error('Camera access error:', err);
-      
-      // Handle permission denied specifically
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setPermissionDenied(true);
-        toast.error('Camera permission denied');
-      } else {
-        toast.error('Could not access camera');
-        onClose();
-      }
+      toast.error('Could not access camera');
     }
   };
 
   const stopCamera = () => {
-    if (cameraTimeoutRef.current) {
-      clearTimeout(cameraTimeoutRef.current);
-    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -323,78 +289,6 @@ export const TikTokCamera: React.FC<TikTokCameraProps> = ({
   };
 
   if (!isOpen) return null;
-
-  // Crash guard: show safe-mode fallback if heavy components are disabled
-  if (shouldDisableHeavyComponents()) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-amber-500">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Camera Paused</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Camera is temporarily disabled to stabilize the app. Try again in a few seconds.
-        </p>
-        <button
-          onClick={onClose}
-          className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm"
-        >
-          Close
-        </button>
-      </div>
-    );
-  }
-
-  // Permission denied: show 25% overlay with settings prompt
-  if (permissionDenied) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertTriangle className="w-5 h-5" />
-            <span className="font-semibold text-sm">Camera Access Denied</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground mb-3">
-          Please enable camera access in your browser settings to use this feature.
-        </p>
-        <button
-          onClick={onClose}
-          className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-sm"
-        >
-          Close
-        </button>
-      </div>
-    );
-  }
-
-  // Loading state: show 25% overlay
-  if (cameraLoading) {
-    return (
-      <div className="fixed bottom-4 right-4 z-[100] w-80 max-h-[25vh] bg-card border border-border rounded-2xl shadow-xl p-4 overflow-auto">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Camera className="w-5 h-5 animate-pulse" />
-            <span className="font-semibold text-sm">Starting Camera...</span>
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-muted">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Please allow camera access if prompted.
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black">

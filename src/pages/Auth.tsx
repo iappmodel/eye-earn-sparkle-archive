@@ -569,6 +569,64 @@ const Auth: React.FC = () => {
                     </span>
                   </div>
                 </Button>
+
+                {/* Dev Quick Login - only in development */}
+                {import.meta.env.DEV && (
+                  <>
+                    <div className="relative my-4">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-destructive/30" />
+                      </div>
+                      <div className="relative flex justify-center text-sm">
+                        <span className="bg-background px-4 text-destructive/70 text-xs">DEV ONLY</span>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        setIsSubmitting(true);
+                        const devEmail = 'dev@viewi.test';
+                        const devPassword = 'devtest123';
+                        try {
+                          // Try sign in first
+                          const { error } = await signIn(devEmail, devPassword);
+                          if (error) {
+                            // If login fails, try signup
+                            const { error: signUpError } = await signUp(devEmail, devPassword, 'dev_user');
+                            if (signUpError && !signUpError.message.includes('already registered')) {
+                              toast({
+                                title: 'Dev Login Failed',
+                                description: signUpError.message,
+                                variant: 'destructive',
+                              });
+                            } else {
+                              // Try sign in again after signup
+                              await signIn(devEmail, devPassword);
+                            }
+                          }
+                        } catch (err) {
+                          toast({
+                            title: 'Dev Login Error',
+                            description: 'Failed to auto-login',
+                            variant: 'destructive',
+                          });
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      disabled={isSubmitting}
+                      className="w-full h-10 border-destructive/30 hover:bg-destructive/10 text-destructive/70"
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <span className="mr-2">🔧</span>
+                      )}
+                      Quick Dev Login
+                    </Button>
+                  </>
+                )}
               </>
             )}
 

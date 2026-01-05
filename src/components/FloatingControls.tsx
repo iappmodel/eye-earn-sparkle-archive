@@ -583,6 +583,23 @@ export const QuickVisibilityToggle: React.FC = () => {
   );
 };
 
+// Fail-open recovery button - only shows when controls are hidden
+export const ControlsRecoveryButton: React.FC = () => {
+  const { isVisible, showControls } = useControlsVisibility();
+  
+  // Only show when controls are hidden
+  if (isVisible) return null;
+  
+  return (
+    <button
+      onClick={() => showControls()}
+      className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-primary/90 text-primary-foreground text-sm font-medium shadow-lg backdrop-blur-sm border border-primary/50 hover:bg-primary transition-all duration-200 animate-pulse"
+    >
+      Show Controls
+    </button>
+  );
+};
+
 // Multi-tap gesture detector
 interface GestureDetectorProps {
   children: React.ReactNode;

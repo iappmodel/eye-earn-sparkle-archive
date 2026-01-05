@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, ControlsRecoveryButton } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -645,7 +645,8 @@ const Index = () => {
           ) : null}
         </div>
 
-        {/* QuickVisibilityToggle removed - eye tracking disabled */}
+        {/* Controls recovery button - fail-open mechanism */}
+        <ControlsRecoveryButton />
 
         {/* Screen Indicators - show configured pages */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
@@ -661,91 +662,52 @@ const Index = () => {
           )}
         </div>
 
-         {/* Overlays / popups - TEMPORARILY DISABLED (main feed only) */}
-         {/* <CoinSlideAnimation
-           type={coinSlideType}
-           isAnimating={showCoinSlide}
-           onComplete={handleCoinSlideComplete}
-         /> */}
+         {/* Overlays / popups - Re-enabled with SafeComponentWrapper protection */}
+         <SafeComponentWrapper componentName="WalletScreen" fallback={null}>
+           <WalletScreen
+             isOpen={showWallet}
+             onClose={() => setShowWallet(false)}
+             vicoins={vicoins}
+             icoins={icoins}
+           />
+         </SafeComponentWrapper>
 
-         {/* <WalletScreen
-           isOpen={showWallet}
-           onClose={() => setShowWallet(false)}
-           vicoins={vicoins}
-           icoins={icoins}
-         /> */}
+         <SafeComponentWrapper componentName="ProfileScreen" fallback={null}>
+           <ProfileScreen
+             isOpen={showProfile}
+             onClose={() => { setShowProfile(false); setActiveTab('home'); }}
+           />
+         </SafeComponentWrapper>
 
-         {/* <ProfileScreen
-           isOpen={showProfile}
-           onClose={() => { setShowProfile(false); setActiveTab('home'); }}
-         /> */}
+         <SafeComponentWrapper componentName="MessagesScreen" fallback={null}>
+           <MessagesScreen
+             isOpen={showMessages}
+             onClose={() => { setShowMessages(false); setActiveTab('home'); }}
+           />
+         </SafeComponentWrapper>
 
-         {/* <DiscoveryMap
-           isOpen={showMap}
-           onClose={() => { setShowMap(false); setActiveTab('home'); }}
-         /> */}
+         {/* Comments Panel */}
+         {currentMedia && (
+           <SafeComponentWrapper componentName="CommentsPanel" fallback={null}>
+             <CommentsPanel
+               isOpen={showComments}
+               onClose={() => setShowComments(false)}
+               contentId={currentMedia.id}
+             />
+           </SafeComponentWrapper>
+         )}
 
-         {/* {showFeed && (
-           <div className="fixed inset-0 z-40 bg-background">
-             <div className="h-full flex flex-col">
-               <div className="flex items-center justify-between p-4 border-b">
-                 <h1 className="text-xl font-bold">For You</h1>
-                 <button
-                   onClick={() => { setShowFeed(false); setActiveTab('home'); }}
-                   className="text-muted-foreground hover:text-foreground"
-                 >
-                   ✕
-                 </button>
-               </div>
-               <div className="flex-1 overflow-hidden pb-20">
-                 <PersonalizedFeed />
-               </div>
-             </div>
-           </div>
-         )} */}
-
-         {/* <MessagesScreen
-           isOpen={showMessages}
-           onClose={() => { setShowMessages(false); setActiveTab('home'); }}
-         /> */}
-
-        {/* Bottom Navigation - centered at bottom */}
-        <BottomNavigation 
-          activeTab={activeTab} 
-          onTabChange={handleTabChange} 
-        />
-
-        {/* Onboarding Flow - TEMPORARILY DISABLED */}
-        {/* <OnboardingFlow
-          isOpen={showOnboarding}
-          onClose={closeOnboarding}
-          onComplete={completeOnboarding}
-        /> */}
-
-        {/* Theme Presets Bottom Sheet - TEMPORARILY DISABLED */}
-        {/* <ThemePresetsSheet
-          isOpen={showThemePresets}
-          onClose={() => setShowThemePresets(false)}
-        /> */}
-
-        {/* Comments Panel - TEMPORARILY DISABLED */}
-        {/* {currentMedia && (
-          <CommentsPanel
-            isOpen={showComments}
-            onClose={() => setShowComments(false)}
-            contentId={currentMedia.id}
-          />
-        )} */}
-
-        {/* Share Sheet - TEMPORARILY DISABLED */}
-        {/* {currentMedia && (
-          <ShareSheet
-            isOpen={showShare}
-            onClose={() => setShowShare(false)}
-            title={currentMedia.title || 'Check out this content!'}
-            url={`${window.location.origin}/content/${currentMedia.id}`}
-          />
-        )} */}
+         {/* Share Sheet */}
+         {currentMedia && (
+           <SafeComponentWrapper componentName="ShareSheet" fallback={null}>
+             <ShareSheet
+               isOpen={showShare}
+               onClose={() => setShowShare(false)}
+               title={currentMedia.title || 'Check out this content!'}
+               url={`${window.location.origin}/content/${currentMedia.id}`}
+             />
+           </SafeComponentWrapper>
+         )}
 
         {/* Network Status Indicator */}
         <div className="fixed top-4 right-4 z-50">

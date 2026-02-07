@@ -540,6 +540,8 @@ const Index = () => {
       title: currentMedia.title || 'Untitled',
       thumbnail: currentMedia.src,
       type: currentMedia.type as 'promo' | 'video' | 'image',
+      videoSrc: currentMedia.videoSrc,
+      src: currentMedia.src,
       creator: currentMedia.creator,
       reward: currentMedia.reward,
       duration: currentMedia.duration,

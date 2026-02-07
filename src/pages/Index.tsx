@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, useControlsVisibility } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
@@ -17,8 +17,6 @@ import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
 import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
 import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from '@/components/AttentionAchievements';
 import { useMediaSettings } from '@/components/MediaSettings';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
@@ -35,6 +33,45 @@ import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+// Auto-hide wrapper for the network status indicator
+const NetworkStatusAutoHide: React.FC = () => {
+  const { isVisible } = useControlsVisibility();
+  return (
+    <div className={cn(
+      'fixed top-2 left-4 z-50 transition-all duration-500',
+      isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
+    )}>
+      <NetworkStatusIndicator variant="badge" />
+    </div>
+  );
+};
+
+// Auto-hide wrapper for screen page indicators
+const ScreenIndicatorsAutoHide: React.FC<{
+  leftPages: any[];
+  rightPages: any[];
+  isAtCenter: boolean;
+}> = ({ leftPages, rightPages, isAtCenter }) => {
+  const { isVisible } = useControlsVisibility();
+  return (
+    <div className={cn(
+      'absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 transition-all duration-500',
+      isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
+    )}>
+      {leftPages.length > 0 && (
+        <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+      )}
+      <div className={cn(
+        "h-1 rounded-full transition-all duration-300",
+        isAtCenter ? "w-6 bg-white" : "w-2 bg-white/40"
+      )} />
+      {rightPages.length > 0 && (
+        <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+      )}
+    </div>
+  );
+};
 
 // Mock data - more realistic content with video support
 const mockMedia = [
@@ -172,7 +209,7 @@ const Index = () => {
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
-  const [useUnifiedFeed, setUseUnifiedFeed] = useState(false);
+  
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
@@ -223,7 +260,7 @@ const Index = () => {
         return <MessagesScreen isOpen={true} onClose={() => {}} />;
       case 'favorites':
       case 'following':
-        return useUnifiedFeed ? <UnifiedContentFeed /> : <PersonalizedFeed />;
+        return <PersonalizedFeed />;
       default:
         return null;
     }
@@ -512,18 +549,6 @@ const Index = () => {
               {/* Cross Navigation hints */}
               <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
 
-              {/* Feed toggle */}
-              <div className="absolute top-[env(safe-area-inset-top,16px)] left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50 mt-14">
-                <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
-                  Unified Feed
-                </Label>
-                <Switch
-                  id="unified-feed"
-                  checked={useUnifiedFeed}
-                  onCheckedChange={setUseUnifiedFeed}
-                  className="scale-75"
-                />
-              </div>
 
               {/* Floating Controls */}
               <FloatingControls
@@ -569,19 +594,8 @@ const Index = () => {
           ) : null}
         </div>
 
-        {/* Screen Indicators - show configured pages */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
-          {leftPages.length > 0 && (
-            <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
-          )}
-          <div className={cn(
-            "h-1 rounded-full transition-all duration-300",
-            isAtCenter ? "w-6 bg-white" : "w-2 bg-white/40"
-          )} />
-          {rightPages.length > 0 && (
-            <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
-          )}
-        </div>
+        {/* Screen Indicators - hidden with controls */}
+        <ScreenIndicatorsAutoHide leftPages={leftPages} rightPages={rightPages} isAtCenter={isAtCenter} />
 
         {/* Coin slide animation on reward */}
         <CoinSlideAnimation
@@ -671,10 +685,8 @@ const Index = () => {
           url={`${window.location.origin}/content/${currentMedia.id}`}
         />
 
-        {/* Network Status Indicator */}
-        <div className="fixed top-2 left-4 z-50">
-          <NetworkStatusIndicator variant="badge" />
-        </div>
+        {/* Network Status Indicator - hidden with controls */}
+        <NetworkStatusAutoHide />
 
         {/* Gesture Tutorial for new users */}
         {showTutorial && (

@@ -61,9 +61,9 @@ export const setAutoHideEnabled = (enabled: boolean) => {
 export const getAutoHideDelay = (): number => {
   try {
     const saved = localStorage.getItem(AUTO_HIDE_DELAY_STORAGE_KEY);
-    return saved ? parseInt(saved, 10) : 5000;
+    return saved ? parseInt(saved, 10) : 3000;
   } catch {
-    return 5000;
+    return 3000;
   }
 };
 

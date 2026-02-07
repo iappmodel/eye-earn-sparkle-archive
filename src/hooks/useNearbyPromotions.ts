@@ -34,6 +34,7 @@ export function useNearbyPromotions(enabled: boolean = true) {
   const [isWatching, setIsWatching] = useState(false);
   const [routeSuggestion, setRouteSuggestion] = useState<RouteSuggestionCluster | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const isWatchingRef = useRef(false);
   const alertedPromotionsRef = useRef<Map<string, number>>(new Map());
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastRouteSuggestionRef = useRef<number>(0);
@@ -120,7 +121,6 @@ export function useNearbyPromotions(enabled: boolean = true) {
           center: { lat: latitude, lng: longitude },
         });
 
-        // Browser notification for route suggestion
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('🗺️ Route Opportunity!', {
             body: `You're near ${nearby.length} earning spots – start a route?`,
@@ -135,8 +135,9 @@ export function useNearbyPromotions(enabled: boolean = true) {
   }, [user?.id, toast]);
 
   const startWatching = useCallback(() => {
-    if (!enabled || !navigator.geolocation || isWatching) return;
+    if (!enabled || !navigator.geolocation || isWatchingRef.current) return;
 
+    isWatchingRef.current = true;
     setIsWatching(true);
 
     if ('Notification' in window && Notification.permission === 'default') {
@@ -160,17 +161,19 @@ export function useNearbyPromotions(enabled: boolean = true) {
       },
       (error) => {
         console.error('Geolocation error:', error);
+        isWatchingRef.current = false;
         setIsWatching(false);
       },
       { enableHighAccuracy: true, maximumAge: CHECK_INTERVAL, timeout: 10000 },
     );
-  }, [enabled, isWatching, checkNearbyPromotions]);
+  }, [enabled, checkNearbyPromotions]);
 
   const stopWatching = useCallback(() => {
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    isWatchingRef.current = false;
     setIsWatching(false);
   }, []);
 
@@ -179,7 +182,8 @@ export function useNearbyPromotions(enabled: boolean = true) {
       startWatching();
     }
     return () => stopWatching();
-  }, [enabled, user?.id, startWatching, stopWatching]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, user?.id]);
 
   return {
     nearbyPromotions,

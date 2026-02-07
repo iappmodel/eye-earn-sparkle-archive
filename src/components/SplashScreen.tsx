@@ -15,12 +15,14 @@ export const SplashScreen: React.FC = () => {
   });
   const [fadingOut, setFadingOut] = useState(false);
 
+  // Always remove the inline HTML splash placeholder on mount
   useEffect(() => {
-    if (!visible) return;
-
-    // Remove the inline HTML splash placeholder once React has mounted
     const inlineSplash = document.getElementById('splash');
     if (inlineSplash) inlineSplash.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
 
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 

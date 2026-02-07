@@ -14,6 +14,7 @@ import { OnboardingFlow } from '@/components/onboarding';
 import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
 import { ThemePresetsSheet } from '@/components/ThemePresetsSheet';
+import { RouteBuilder } from '@/components/RouteBuilder';
 import { GestureTutorial, useGestureTutorial } from '@/components/GestureTutorial';
 import { AttentionAchievementsPanel, AchievementUnlockNotification, useAttentionAchievements } from '@/components/AttentionAchievements';
 import { useMediaSettings } from '@/components/MediaSettings';
@@ -31,8 +32,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
+import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Route as RouteIcon } from 'lucide-react';
 
 // Auto-hide wrapper for the network status indicator
 const NetworkStatusAutoHide: React.FC = () => {
@@ -209,7 +212,10 @@ const Index = () => {
   const [swipeDirection, setSwipeDirection] = useState<'up' | 'down' | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
+  const [showRouteBuilderFromFeed, setShowRouteBuilderFromFeed] = useState(false);
   
+  // Route system - lifted to app level for sharing between feed and map
+  const promoRoute = usePromoRoute();
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
@@ -252,7 +258,7 @@ const Index = () => {
           />
         );
       case 'discovery':
-        return <DiscoveryMap isOpen={true} onClose={() => pageNavigate('down')} />;
+        return <DiscoveryMap isOpen={true} onClose={() => pageNavigate('down')} promoRoute={promoRoute} />;
       case 'rewards':
       case 'wallet':
         return <WalletScreen isOpen={true} onClose={() => pageNavigate('up')} vicoins={vicoins} icoins={icoins} />;
@@ -483,6 +489,35 @@ const Index = () => {
     setShowThemePresets(true);
   };
 
+  // Handle adding current promo content to route from the feed
+  const handleAddToRoute = useCallback(() => {
+    if (!currentMedia || currentMedia.type !== 'promo') return;
+    
+    if (!promoRoute.isBuilding) {
+      promoRoute.startRoute('Feed Route');
+    }
+    
+    const promoId = currentMedia.id;
+    if (promoRoute.isInRoute(promoId)) {
+      toast.info('Already in your route');
+      return;
+    }
+    
+    promoRoute.addStop({
+      id: `stop-${promoId}`,
+      promotionId: promoId,
+      businessName: currentMedia.creator?.displayName || currentMedia.title || 'Promo',
+      latitude: 40.7128 + (Math.random() - 0.5) * 0.1, // Mock location for demo
+      longitude: -74.006 + (Math.random() - 0.5) * 0.1,
+      category: 'Promotion',
+      rewardType: currentMedia.reward?.type || 'vicoin',
+      rewardAmount: currentMedia.reward?.amount || 0,
+      fromFeed: true,
+      contentId: currentMedia.id,
+    });
+    toast.success(`Added to route!`);
+  }, [currentMedia, promoRoute]);
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     // Close all modals first
@@ -560,14 +595,16 @@ const Index = () => {
                 onShareClick={handleShare}
                 onSettingsClick={handleSettings}
                 onAchievementsClick={() => setShowAchievementsPanel(true)}
+                onAddToRoute={handleAddToRoute}
                 isLiked={isLiked}
                 likeCount={1234}
                 commentCount={89}
                 showAchievements={isPromoContent && eyeTrackingEnabled}
                 achievementsCount={unlockedAchievements.size}
+                showRouteButton={isPromoContent}
+                isInRoute={isPromoContent && promoRoute.isInRoute(currentMedia.id)}
                 creatorInfo={currentMedia.creator}
                 onViewCreatorProfile={() => {
-                  // TODO: Navigate to creator's public profile
                   toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
                 }}
               />
@@ -622,6 +659,7 @@ const Index = () => {
         <DiscoveryMap
           isOpen={showMap}
           onClose={() => { setShowMap(false); setActiveTab('home'); }}
+          promoRoute={promoRoute}
         />
 
         {/* Personalized AI Feed */}
@@ -648,6 +686,43 @@ const Index = () => {
         <MessagesScreen
           isOpen={showMessages}
           onClose={() => { setShowMessages(false); setActiveTab('home'); }}
+        />
+
+        {/* Floating Route Banner - visible on feed when building a route */}
+        {isAtCenter && promoRoute.isBuilding && promoRoute.totalStops > 0 && (
+          <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-40">
+            <button
+              onClick={() => setShowRouteBuilderFromFeed(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-green-500 text-white font-medium shadow-lg shadow-green-500/30 hover:scale-105 transition-transform text-sm animate-slide-up"
+            >
+              <RouteIcon className="w-4 h-4" />
+              {promoRoute.totalStops} stops · {promoRoute.totalReward} coins
+            </button>
+          </div>
+        )}
+
+        {/* Route Builder from Feed */}
+        <RouteBuilder
+          open={showRouteBuilderFromFeed}
+          onOpenChange={setShowRouteBuilderFromFeed}
+          route={promoRoute.activeRoute}
+          savedRoutes={promoRoute.savedRoutes}
+          watchLater={promoRoute.watchLater}
+          onRemoveStop={promoRoute.removeStop}
+          onReorderStops={promoRoute.reorderStops}
+          onSetTransportMode={promoRoute.setTransportMode}
+          onSetFilters={promoRoute.setRouteFilters}
+          onRenameRoute={promoRoute.renameRoute}
+          onToggleCommute={promoRoute.toggleCommuteRoute}
+          onSaveRoute={promoRoute.saveRoute}
+          onDiscardRoute={promoRoute.discardRoute}
+          onOpenInGoogleMaps={promoRoute.openInGoogleMaps}
+          onSuggestRoute={() => {
+            toast.info('Open the Discovery Map to get route suggestions based on nearby promos');
+          }}
+          onLoadRoute={promoRoute.loadRoute}
+          onDeleteSavedRoute={promoRoute.deleteSavedRoute}
+          onRemoveFromWatchLater={promoRoute.removeFromWatchLater}
         />
 
         {/* Bottom Navigation - centered at bottom */}

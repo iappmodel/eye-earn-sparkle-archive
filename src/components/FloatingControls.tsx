@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet } from 'lucide-react';
+import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet, Route, Check } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -199,6 +199,7 @@ interface FloatingControlsProps {
   onReportClick?: () => void;
   onMuteClick?: () => void;
   onAchievementsClick?: () => void;
+  onAddToRoute?: () => void;
   isLiked?: boolean;
   isFollowing?: boolean;
   isSaved?: boolean;
@@ -207,6 +208,8 @@ interface FloatingControlsProps {
   creatorName?: string;
   showAchievements?: boolean;
   achievementsCount?: number;
+  showRouteButton?: boolean;
+  isInRoute?: boolean;
   /** Info about the content creator being viewed */
   creatorInfo?: CreatorInfo;
   onViewCreatorProfile?: () => void;
@@ -413,8 +416,11 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onSettingsClick,
   onTip,
   onAchievementsClick,
+  onAddToRoute,
   isLiked = false,
   likeCount = 0,
+  showRouteButton = false,
+  isInRoute = false,
   creatorInfo,
   onViewCreatorProfile,
 }) => {
@@ -479,7 +485,24 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           </NeuButton>
         </LongPressButtonWrapper>
 
-        {/* 6th from bottom: Share */}
+        {/* 6th from bottom: Route (only for promo content) */}
+        {showRouteButton && (
+          <LongPressButtonWrapper buttonId="route-button" buttonLabel="Add to Route">
+            <NeuButton 
+              onClick={onAddToRoute}
+              variant={isInRoute ? 'accent' : 'default'}
+              tooltip={isInRoute ? 'In Route' : 'Add to Route'}
+            >
+              {isInRoute ? (
+                <Check className="w-4 h-4 text-green-500" />
+              ) : (
+                <Route className="w-4 h-4" />
+              )}
+            </NeuButton>
+          </LongPressButtonWrapper>
+        )}
+
+        {/* 7th from bottom: Share */}
         <LongPressButtonWrapper buttonId="share-button" buttonLabel="Share">
           <NeuButton onClick={onShareClick} tooltip="Share">
             <Share2 className="w-4 h-4" />

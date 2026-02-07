@@ -9,7 +9,7 @@ import {
   Route, X, GripVertical, Trash2, Car, Footprints, Bus,
   Navigation, Sparkles, Save, MapPin, Coins, ExternalLink,
   Filter, Clock, CalendarCheck, ChevronDown, ChevronUp, Edit2,
-  Bookmark,
+  Bookmark, Zap, TrendingUp, Timer,
 } from 'lucide-react';
 import { CategoryIcon } from './PromotionCategories';
 import { RouteFilterSheet } from './RouteFilterSheet';
@@ -32,10 +32,11 @@ interface RouteBuilderProps {
   onSaveRoute: () => PromoRoute | null;
   onDiscardRoute: () => void;
   onOpenInGoogleMaps: (userLat?: number, userLng?: number) => void;
-  onSuggestRoute: () => void;
+  onSuggestRoute: (optimization?: string) => void;
   onLoadRoute: (routeId: string) => void;
   onDeleteSavedRoute: (routeId: string) => void;
   onRemoveFromWatchLater: (promotionId: string) => void;
+  onStartRoute?: () => void;
   userLocation?: { lat: number; lng: number } | null;
 }
 
@@ -64,6 +65,7 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   onLoadRoute,
   onDeleteSavedRoute,
   onRemoveFromWatchLater,
+  onStartRoute,
   userLocation,
 }) => {
   const [showFilters, setShowFilters] = useState(false);
@@ -188,11 +190,11 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={onSuggestRoute}
+                    onClick={() => onSuggestRoute()}
                     className="gap-2"
                   >
                     <Sparkles className="w-4 h-4" />
-                    Suggest Route
+                    Re-suggest
                   </Button>
                 </div>
               )}
@@ -297,12 +299,61 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                   <MapPin className="w-12 h-12 mx-auto mb-3 opacity-50" />
                   <p className="font-medium">No stops yet</p>
                   <p className="text-sm mt-1">Tap promotions on the map to add them</p>
-                  <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={onSuggestRoute}>
+                  <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={() => onSuggestRoute()}>
                     <Sparkles className="w-4 h-4" />
                     Generate Suggested Route
                   </Button>
                 </div>
               ) : null}
+
+              {/* Platform Suggested Route Card - when no route is active */}
+              {!route && (
+                <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">Platform Suggested Route</h3>
+                      <p className="text-xs text-muted-foreground">We'll find the best earning route near you</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => onSuggestRoute('more_earnings')}
+                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all"
+                    >
+                      <TrendingUp className="w-5 h-5 text-primary" />
+                      <span className="text-xs font-medium">Max Earnings</span>
+                    </button>
+                    <button
+                      onClick={() => onSuggestRoute('faster')}
+                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all"
+                    >
+                      <Timer className="w-5 h-5 text-primary" />
+                      <span className="text-xs font-medium">Fastest</span>
+                    </button>
+                    <button
+                      onClick={() => onSuggestRoute('effective')}
+                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all"
+                    >
+                      <Zap className="w-5 h-5 text-primary" />
+                      <span className="text-xs font-medium">Most Effective</span>
+                    </button>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => onStartRoute?.()}
+                  >
+                    <Route className="w-4 h-4" />
+                    Start New Route Manually
+                  </Button>
+                </div>
+              )}
 
               {/* Saved Routes Section */}
               {!route && (

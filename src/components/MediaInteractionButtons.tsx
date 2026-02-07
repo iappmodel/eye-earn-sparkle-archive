@@ -11,7 +11,9 @@ import {
   Play,
   Pause,
   X,
-  Trophy
+  Trophy,
+  Route,
+  Check,
 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -44,6 +46,7 @@ interface MediaInteractionButtonsProps {
   onTogglePlay?: () => void;
   onExitFullscreen?: () => void;
   onAchievements?: () => void;
+  onAddToRoute?: () => void;
   
   // Display options
   showVolumeControl?: boolean;
@@ -51,6 +54,8 @@ interface MediaInteractionButtonsProps {
   showFullscreenExit?: boolean;
   showAchievements?: boolean;
   achievementsCount?: number;
+  showRouteButton?: boolean;
+  isInRoute?: boolean;
   variant?: 'sidebar' | 'overlay';
   className?: string;
 }
@@ -77,11 +82,14 @@ export const MediaInteractionButtons: React.FC<MediaInteractionButtonsProps> = (
   onTogglePlay,
   onExitFullscreen,
   onAchievements,
+  onAddToRoute,
   showVolumeControl = true,
   showPlayControl = false,
   showFullscreenExit = false,
   showAchievements = false,
   achievementsCount = 0,
+  showRouteButton = false,
+  isInRoute = false,
   variant = 'sidebar',
   className,
 }) => {
@@ -173,6 +181,21 @@ export const MediaInteractionButtons: React.FC<MediaInteractionButtonsProps> = (
       >
         <Bookmark className={cn('w-6 h-6', isSaved && 'fill-current')} />
       </NeuButton>
+
+      {/* Add to Route - only for promo content */}
+      {showRouteButton && (
+        <NeuButton
+          onClick={onAddToRoute}
+          variant={isInRoute ? 'accent' : 'default'}
+          isPressed={isInRoute}
+        >
+          {isInRoute ? (
+            <Check className="w-6 h-6 text-green-500" />
+          ) : (
+            <Route className="w-6 h-6" />
+          )}
+        </NeuButton>
+      )}
 
       {/* Achievements */}
       {showAchievements && (

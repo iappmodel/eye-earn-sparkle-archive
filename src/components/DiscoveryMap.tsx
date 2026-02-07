@@ -15,6 +15,7 @@ import { CheckInHistory } from './CheckInHistory';
 import { RouteBuilder } from './RouteBuilder';
 import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
 import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
+import type { PromoRoute, RouteStop, TransportMode, RouteFilters } from '@/hooks/usePromoRoute';
 
 interface Promotion {
   id: string;
@@ -33,6 +34,33 @@ interface Promotion {
 interface DiscoveryMapProps {
   isOpen: boolean;
   onClose: () => void;
+  promoRoute?: {
+    activeRoute: PromoRoute | null;
+    savedRoutes: PromoRoute[];
+    isBuilding: boolean;
+    watchLater: RouteStop[];
+    totalStops: number;
+    totalReward: number;
+    startRoute: (name?: string) => PromoRoute;
+    addStop: (stop: Omit<RouteStop, 'order'>) => void;
+    removeStop: (stopId: string) => void;
+    reorderStops: (fromIndex: number, toIndex: number) => void;
+    isInRoute: (promotionId: string) => boolean;
+    setTransportMode: (mode: TransportMode) => void;
+    setRouteFilters: (filters: RouteFilters) => void;
+    toggleCommuteRoute: () => void;
+    renameRoute: (name: string) => void;
+    saveRoute: () => PromoRoute | null;
+    finishRoute: () => void;
+    discardRoute: () => void;
+    loadRoute: (routeId: string) => void;
+    deleteSavedRoute: (routeId: string) => void;
+    addToWatchLater: (stop: Omit<RouteStop, 'order'>) => void;
+    removeFromWatchLater: (promotionId: string) => void;
+    isInWatchLater: (promotionId: string) => boolean;
+    openInGoogleMaps: (userLat?: number, userLng?: number) => void;
+    suggestRoute: (...args: any[]) => PromoRoute;
+  };
 }
 
 // Generate local pins near a location (within ~10 miles / 16km)
@@ -161,7 +189,7 @@ const getCoinGlow = (rewardType: 'vicoin' | 'icoin' | 'both'): string => {
   }
 };
 
-export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) => {
+export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, promoRoute: externalPromoRoute }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -186,8 +214,9 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [showRouteBuilder, setShowRouteBuilder] = useState(false);
   const [showCheckInHistory, setShowCheckInHistory] = useState(false);
   
-  // Route system
-  const promoRoute = usePromoRoute();
+  // Route system - use external if provided, otherwise local
+  const localPromoRoute = usePromoRoute();
+  const promoRoute = externalPromoRoute || localPromoRoute;
   
   // Nearby promotion alerts
   const { nearbyPromotions, isWatching } = useNearbyPromotions(nearbyAlertsEnabled && isOpen);
@@ -240,8 +269,15 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   }, [promoRoute]);
 
   // Suggest route from current promotions
-  const handleSuggestRoute = useCallback(() => {
-    if (!userLocation) return;
+  const handleSuggestRoute = useCallback((optimization?: string) => {
+    if (!userLocation) {
+      toast.error('Location needed to suggest routes');
+      return;
+    }
+    const filters = { ...(promoRoute.activeRoute?.filters || defaultRouteFilters) };
+    if (optimization) {
+      filters.optimization = optimization as any;
+    }
     promoRoute.suggestRoute(
       promotions.map(p => ({
         id: p.id,
@@ -256,7 +292,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       })),
       userLocation.lat,
       userLocation.lng,
-      promoRoute.activeRoute?.filters || defaultRouteFilters,
+      filters,
     );
     toast.success('Route suggested based on nearby promos!');
   }, [promotions, userLocation, promoRoute]);
@@ -1091,6 +1127,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         onDeleteSavedRoute={promoRoute.deleteSavedRoute}
         onRemoveFromWatchLater={promoRoute.removeFromWatchLater}
         userLocation={userLocation}
+        onStartRoute={() => promoRoute.startRoute()}
       />
     </div>
   );

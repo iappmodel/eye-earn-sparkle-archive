@@ -212,6 +212,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
     isInRoute: boolean,
     isCompleted: boolean,
     isNearby: boolean,
+    hasActiveRoute: boolean,
   ) => {
     if (isCompleted) {
       return {
@@ -243,7 +244,18 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         animClass: '',
       };
     }
-    // Not in route – muted gray
+    // No active route – show original colorful reward gradients
+    if (!hasActiveRoute) {
+      return {
+        background: getRewardGradient(promo.reward_amount, promo.reward_type),
+        border: '2px solid rgba(255,255,255,0.2)',
+        glow: getCoinGlow(promo.reward_type),
+        opacity: '1',
+        badgeHTML: '',
+        animClass: '',
+      };
+    }
+    // Active route but NOT in it – muted gray
     return {
       background: '#3a3a4a',
       border: '1px solid rgba(255,255,255,0.1)',
@@ -559,6 +571,8 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       ? promotions 
       : promotions.filter(p => p.reward_type === filter || p.reward_type === 'both');
 
+    const hasActiveRoute = promoRoute.isBuilding && promoRoute.totalStops > 0;
+
     filteredPromos.forEach(promo => {
       const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★';
       const inRoute = promoRoute.isInRoute(promo.id);
@@ -567,7 +581,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         ? haversineMeters(userLocation.lat, userLocation.lng, promo.latitude, promo.longitude) <= 500
         : false;
       
-      const style = getMarkerStyle(promo, inRoute, isCompleted, isNearby);
+      const style = getMarkerStyle(promo, inRoute, isCompleted, isNearby, hasActiveRoute);
       
       const el = document.createElement('div');
       el.className = 'promo-marker-wrapper';

@@ -99,7 +99,7 @@ export const SplashScreen: React.FC = () => {
           opacity: 0,
         }}
       >
-        iView
+        i
       </span>
 
       {/* Inline keyframes */}

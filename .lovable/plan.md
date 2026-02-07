@@ -1,86 +1,108 @@
 
-# Smart Route Location Autocomplete
+# Swipe-Down to Dismiss All Card Overlays
 
 ## Overview
-Both the "Your Location" (origin) and "Set Destination" fields in the Smart Route builder will get live address autocomplete powered by Mapbox Geocoding API -- the same service already used for the Discovery Map search bar. As you type, location suggestions will appear in a dropdown, similar to Google Maps autocomplete.
+All full-screen card overlays in the app (Wallet, Settings, Profile, Notifications, Achievements, Tasks, etc.) currently only close via the X button in the header. This update adds swipe-down-to-dismiss behavior so users can drag/scroll the card downward to close it -- a natural mobile gesture similar to iOS/Android bottom sheets.
 
-## What will change
+## How it will work
+- When a user touches the top area (header/drag handle) of any overlay card and drags downward, the card will follow the finger
+- If the drag exceeds a threshold (roughly 30% of screen height or 150px), the card will animate out and close
+- If the drag doesn't exceed the threshold, the card snaps back to its original position
+- A subtle drag handle bar will be added at the top of each overlay for visual affordance
+- The existing X button remains as an alternative close method
+- Content scrolling inside the card still works normally -- only dragging from the top header area or when already scrolled to the top triggers the dismiss gesture
 
-### 1. New Reusable Component: LocationAutocomplete
-A new component (`src/components/LocationAutocomplete.tsx`) that provides a text input with:
-- Live address/place suggestions as you type (debounced 300ms)
-- Results powered by Mapbox Geocoding API (places, POIs, addresses)
-- Recent searches from local storage
-- Dropdown with place name + sub-address details
-- Clear button and loading indicator
-- Returns selected place name + coordinates (lat/lng)
+## What changes
 
-This component extracts the autocomplete logic already proven in the `MapSearchBar` component into a more compact, reusable form suitable for embedding inline within the Route Builder.
+### 1. New hook: `useSwipeToDismiss`
+A reusable hook (`src/hooks/useSwipeToDismiss.ts`) that handles:
+- Touch start/move/end tracking for vertical drag
+- Drag distance state for animating the card position
+- Threshold detection to decide close vs. snap-back
+- Only activates when the scrollable content is at scroll position 0 (top), preventing conflicts with normal scrolling
+- Returns: `dragOffset`, `isDragging`, event handler props to spread onto the container
 
-### 2. "Your Location" becomes editable
-Currently, "Your Location" is a static display block. It will become:
-- A tappable block that, when tapped, expands into the autocomplete input
-- Users can type a custom starting address and get suggestions
-- A "Use Current Location" quick-action button to revert to GPS
-- Once an origin is selected, its address is displayed with an edit button
-- The selected origin coordinates will be stored and passed to the route system
+### 2. New wrapper component: `SwipeDismissOverlay`
+A reusable wrapper component (`src/components/SwipeDismissOverlay.tsx`) that:
+- Wraps any overlay content with swipe-to-dismiss behavior
+- Applies `translateY` transform based on drag offset
+- Adds a drag handle indicator at the top
+- Handles the dismiss animation (slide down + fade out)
+- Accepts `isOpen`, `onClose`, and optional `className` props
+- Replaces the repeated `fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up` pattern
 
-### 3. "Set Destination" gets autocomplete
-Currently, destination is a plain text input with no suggestions. It will become:
-- Same autocomplete component with live suggestions
-- When a suggestion is selected, real coordinates (from Mapbox) are used instead of the current random mock coordinates
-- Properly sets the route destination with actual lat/lng
+### 3. Update all overlay screens
+The following screens will be updated to use `SwipeDismissOverlay` as their root wrapper instead of the raw `div` with fixed positioning:
 
-### 4. Pass Mapbox token to RouteBuilder
-The `mapboxToken` is already fetched in `DiscoveryMap`. It will be passed as a new prop to `RouteBuilder`, which passes it to the autocomplete components.
+- `WalletScreen` -- Wallet overview, transactions, subscriptions
+- `SettingsScreen` -- App settings and preferences
+- `ProfileScreen` -- User profile view
+- `NotificationCenter` -- Notifications list
+- `NotificationPreferences` -- Notification settings
+- `AchievementCenter` -- Achievements gallery
+- `TaskCenter` -- Tasks and rewards
+- `PremiumScreen` -- Premium/subscription plans
+- `ProfileEditScreen` -- Edit profile form
+- `ProfileQRCode` -- QR code display
+- `TwoFactorAuth` -- 2FA setup
+- `ActiveSessionsManager` -- Active sessions list
+- `BlockMuteManager` -- Blocked/muted users
+- `AccountActivityLog` -- Activity history
+- `ContentReportFlow` -- Report content flow
+- `PublicProfile` -- Public creator profile view
+- `AttentionAchievements` -- Attention tracking achievements
+
+Each screen update is minimal -- replacing the outer `div` with `SwipeDismissOverlay` and removing the now-redundant inline styles for positioning and animation.
+
+## User experience
+- A small horizontal bar appears at the top of each card as a drag affordance
+- Dragging downward moves the card with your finger, with slight opacity reduction
+- Releasing past the threshold slides the card off screen and calls `onClose`
+- Releasing before the threshold smoothly snaps the card back
+- Normal scrolling within the card content works unaffected
 
 ---
 
 ## Technical Details
 
-### Files to create:
-- `src/components/LocationAutocomplete.tsx` -- Reusable autocomplete input using Mapbox Geocoding API
+### `src/hooks/useSwipeToDismiss.ts` (new)
+- Tracks `touchstart` Y position, `touchmove` delta, and `touchend` threshold check
+- Uses `useRef` for start position and `useState` for current drag offset
+- Threshold: 150px downward drag to trigger dismiss
+- Returns `{ dragOffset, isDragging, handlers: { onTouchStart, onTouchMove, onTouchEnd } }`
+- Includes a `scrollRef` parameter -- only allows drag-to-dismiss when the scroll container is at `scrollTop === 0`
 
-### Files to modify:
+### `src/components/SwipeDismissOverlay.tsx` (new)
+- Props: `isOpen`, `onClose`, `children`, `className?`
+- Renders the `fixed inset-0 z-50` container with backdrop blur
+- Applies `transform: translateY(${dragOffset}px)` and `opacity: 1 - (dragOffset / 500)` during drag
+- On dismiss, plays a quick slide-down animation before calling `onClose`
+- Contains the drag handle bar (centered, 48px wide, rounded)
+- Early returns `null` when `!isOpen`
 
-**`src/components/RouteBuilder.tsx`**
-- Add `mapboxToken` prop to the interface
-- Add `onSetOrigin` callback prop for setting custom origin location
-- Replace the static "Your Location" block (lines 259-268) with an editable field using `LocationAutocomplete`
-- Add state for `showOriginEdit`, `originAddress`, and origin coordinates
-- Replace the plain destination `Input` (lines 271-283) with `LocationAutocomplete`
-- When a destination suggestion is selected, call `onSetDestination` with real coordinates from Mapbox instead of mock random offsets
-
-**`src/components/DiscoveryMap.tsx`**
-- Pass `mapboxToken` prop to the `RouteBuilder` component
-- Add `onSetOrigin` handler to manage custom origin location
-
-**`src/hooks/usePromoRoute.ts`**
-- Add optional `origin` field to the `PromoRoute` interface (address + lat/lng)
-- Add `setOrigin` callback to store a custom starting location
-- Update `openInGoogleMaps` to use the custom origin when set
-
-### API used:
-Mapbox Geocoding v5 (already in use):
-```
-GET https://api.mapbox.com/geocoding/v5/mapbox.places/{query}.json
-  ?access_token={token}
-  &types=place,poi,address
-  &limit=5
-```
-If user location is available, a `proximity` parameter will be added to bias results toward the user's area:
-```
-  &proximity={lng},{lat}
+### Per-screen changes (example for WalletScreen)
+Before:
+```tsx
+return (
+  <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up overflow-y-auto">
+    <div className="max-w-md mx-auto ...">
+      <NeuButton onClick={onClose}><X /></NeuButton>
+      ...
+    </div>
+  </div>
+);
 ```
 
-### Component flow:
-```text
-User taps "Your Location" or "Set Destination"
-  --> Inline autocomplete input appears
-  --> User types address
-  --> 300ms debounce fires Mapbox Geocoding request
-  --> Dropdown shows up to 5 suggestions
-  --> User taps a suggestion
-  --> Coordinates + address stored
-  --> Input collapses back to display mode
+After:
+```tsx
+return (
+  <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
+    <div className="max-w-md mx-auto ...">
+      <NeuButton onClick={onClose}><X /></NeuButton>
+      ...
+    </div>
+  </SwipeDismissOverlay>
+);
 ```
+
+The X button is kept as a secondary close method. The only change per file is swapping the outer `div` for `SwipeDismissOverlay`.

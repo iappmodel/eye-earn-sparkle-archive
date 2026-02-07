@@ -184,6 +184,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [mapFilters, setMapFilters] = useState<MapFilters>(defaultMapFilters);
   const [nearbyAlertsEnabled, setNearbyAlertsEnabled] = useState(true);
   const [showRouteBuilder, setShowRouteBuilder] = useState(false);
+  const [showCheckInHistory, setShowCheckInHistory] = useState(false);
   
   // Route system
   const promoRoute = usePromoRoute();
@@ -712,10 +713,13 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       `}</style>
 
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-background via-background/90 to-transparent">
+      <div 
+        className="absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-background via-background/90 to-transparent"
+        style={{ touchAction: 'auto', pointerEvents: 'auto' }}
+      >
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-xl font-bold">Discovery Map</h1>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 flex-shrink-0">
             {/* Route Builder Toggle */}
             <NeuButton 
               onClick={() => setShowRouteBuilder(true)} 
@@ -739,13 +743,10 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
             >
               {nearbyAlertsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
             </NeuButton>
-            <CheckInHistory
-              trigger={
-                <NeuButton size="sm">
-                  <History className="w-5 h-5" />
-                </NeuButton>
-              }
-            />
+            {/* Check-In History - controlled mode */}
+            <NeuButton onClick={() => setShowCheckInHistory(true)} size="sm">
+              <History className="w-5 h-5" />
+            </NeuButton>
             <NeuButton onClick={() => setShowFavorites(true)} size="sm">
               <Heart className="w-5 h-5" />
             </NeuButton>
@@ -1061,6 +1062,12 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
             });
           }
         }}
+      />
+
+      {/* Check-In History - controlled mode */}
+      <CheckInHistory
+        open={showCheckInHistory}
+        onOpenChange={setShowCheckInHistory}
       />
 
       {/* Route Builder */}

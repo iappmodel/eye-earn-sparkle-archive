@@ -33,6 +33,7 @@ import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
+import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Route as RouteIcon } from 'lucide-react';
@@ -216,6 +217,42 @@ const Index = () => {
   
   // Route system - lifted to app level for sharing between feed and map
   const promoRoute = usePromoRoute();
+  
+  // Nearby promotions with route suggestion detection
+  const { routeSuggestion, dismissRouteSuggestion } = useNearbyPromotions(true);
+  
+  // Show route suggestion toast when cluster detected
+  useEffect(() => {
+    if (routeSuggestion && routeSuggestion.promotions.length >= 3) {
+      toast(`🗺️ You're near ${routeSuggestion.promotions.length} earning spots!`, {
+        description: 'Tap to build a route and maximize your earnings',
+        action: {
+          label: 'Build Route',
+          onClick: () => {
+            // Auto-suggest a route from nearby promos
+            const promos = routeSuggestion.promotions.map(p => ({
+              id: p.id,
+              business_name: p.business_name,
+              latitude: p.latitude,
+              longitude: p.longitude,
+              category: p.category || undefined,
+              reward_type: p.reward_type as 'vicoin' | 'icoin' | 'both',
+              reward_amount: p.reward_amount,
+            }));
+            promoRoute.suggestRoute(
+              promos,
+              routeSuggestion.center.lat,
+              routeSuggestion.center.lng,
+              defaultRouteFilters,
+            );
+            setShowRouteBuilderFromFeed(true);
+          },
+        },
+        duration: 10000,
+      });
+      dismissRouteSuggestion();
+    }
+  }, [routeSuggestion, dismissRouteSuggestion, promoRoute]);
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
@@ -723,6 +760,20 @@ const Index = () => {
           onLoadRoute={promoRoute.loadRoute}
           onDeleteSavedRoute={promoRoute.deleteSavedRoute}
           onRemoveFromWatchLater={promoRoute.removeFromWatchLater}
+          onSetDestination={promoRoute.setDestination}
+          onSetSchedule={promoRoute.setSchedule}
+          onSetSegmentTransport={promoRoute.setSegmentTransport}
+          getSegmentTransport={promoRoute.getSegmentTransport}
+          onSuggestFromSaved={() => {
+            toast.info('Open the Discovery Map to build from saved promos with location data');
+          }}
+          onSuggestByInterests={() => {
+            toast.info('Open the Discovery Map for interest-based route suggestions');
+          }}
+          onSuggestSmartRoute={() => {
+            toast.info('Open the Discovery Map for smart route suggestions');
+          }}
+          onStartRoute={() => promoRoute.startRoute('Feed Route')}
         />
 
         {/* Bottom Navigation - centered at bottom */}

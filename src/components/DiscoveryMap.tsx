@@ -34,33 +34,7 @@ interface Promotion {
 interface DiscoveryMapProps {
   isOpen: boolean;
   onClose: () => void;
-  promoRoute?: {
-    activeRoute: PromoRoute | null;
-    savedRoutes: PromoRoute[];
-    isBuilding: boolean;
-    watchLater: RouteStop[];
-    totalStops: number;
-    totalReward: number;
-    startRoute: (name?: string) => PromoRoute;
-    addStop: (stop: Omit<RouteStop, 'order'>) => void;
-    removeStop: (stopId: string) => void;
-    reorderStops: (fromIndex: number, toIndex: number) => void;
-    isInRoute: (promotionId: string) => boolean;
-    setTransportMode: (mode: TransportMode) => void;
-    setRouteFilters: (filters: RouteFilters) => void;
-    toggleCommuteRoute: () => void;
-    renameRoute: (name: string) => void;
-    saveRoute: () => PromoRoute | null;
-    finishRoute: () => void;
-    discardRoute: () => void;
-    loadRoute: (routeId: string) => void;
-    deleteSavedRoute: (routeId: string) => void;
-    addToWatchLater: (stop: Omit<RouteStop, 'order'>) => void;
-    removeFromWatchLater: (promotionId: string) => void;
-    isInWatchLater: (promotionId: string) => boolean;
-    openInGoogleMaps: (userLat?: number, userLng?: number) => void;
-    suggestRoute: (...args: any[]) => PromoRoute;
-  };
+  promoRoute?: ReturnType<typeof import('@/hooks/usePromoRoute').usePromoRoute>;
 }
 
 // Generate local pins near a location (within ~10 miles / 16km)
@@ -1128,6 +1102,34 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         onRemoveFromWatchLater={promoRoute.removeFromWatchLater}
         userLocation={userLocation}
         onStartRoute={() => promoRoute.startRoute()}
+        onSetDestination={promoRoute.setDestination}
+        onSetSchedule={promoRoute.setSchedule}
+        onSetSegmentTransport={promoRoute.setSegmentTransport}
+        getSegmentTransport={promoRoute.getSegmentTransport}
+        onSuggestFromSaved={() => {
+          if (userLocation) {
+            promoRoute.suggestFromWatchLater(userLocation.lat, userLocation.lng);
+            toast.success('Route built from saved promos!');
+          } else { toast.error('Location needed'); }
+        }}
+        onSuggestByInterests={() => {
+          if (userLocation) {
+            promoRoute.suggestByInterests(
+              promotions.map(p => ({ id: p.id, business_name: p.business_name, latitude: p.latitude, longitude: p.longitude, address: p.address, category: p.category, reward_type: p.reward_type, reward_amount: p.reward_amount, required_action: p.required_action })),
+              userLocation.lat, userLocation.lng, ['Food & Drink', 'Shopping', 'Entertainment'],
+            );
+            toast.success('Route based on your interests!');
+          } else { toast.error('Location needed'); }
+        }}
+        onSuggestSmartRoute={() => {
+          if (userLocation) {
+            promoRoute.suggestSmartRoute(
+              promotions.map(p => ({ id: p.id, business_name: p.business_name, latitude: p.latitude, longitude: p.longitude, address: p.address, category: p.category, reward_type: p.reward_type, reward_amount: p.reward_amount, required_action: p.required_action })),
+              userLocation.lat, userLocation.lng,
+            );
+            toast.success('Smart route generated!');
+          } else { toast.error('Location needed'); }
+        }}
       />
     </div>
   );

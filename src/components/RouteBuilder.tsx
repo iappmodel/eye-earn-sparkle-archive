@@ -6,15 +6,16 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
-  Route, X, GripVertical, Trash2, Car, Footprints, Bus,
+  Route, X, GripVertical, Trash2, Car, Footprints, Bus, Bike, PersonStanding,
   Navigation, Sparkles, Save, MapPin, Coins, ExternalLink,
   Filter, Clock, CalendarCheck, ChevronDown, ChevronUp, Edit2,
-  Bookmark, Zap, TrendingUp, Timer,
+  Bookmark, Zap, TrendingUp, Timer, Brain, Heart, MapPinned,
 } from 'lucide-react';
 import { CategoryIcon } from './PromotionCategories';
 import { RouteFilterSheet } from './RouteFilterSheet';
-import type { PromoRoute, RouteStop, TransportMode, RouteFilters } from '@/hooks/usePromoRoute';
+import type { PromoRoute, RouteStop, TransportMode, RouteFilters, RouteDestination, RouteSchedule } from '@/hooks/usePromoRoute';
 import { defaultRouteFilters } from '@/hooks/usePromoRoute';
+import { useDragReorder } from '@/hooks/useDragReorder';
 import { toast } from 'sonner';
 
 interface RouteBuilderProps {
@@ -37,6 +38,13 @@ interface RouteBuilderProps {
   onDeleteSavedRoute: (routeId: string) => void;
   onRemoveFromWatchLater: (promotionId: string) => void;
   onStartRoute?: () => void;
+  onSetDestination?: (dest: RouteDestination | null) => void;
+  onSetSchedule?: (schedule: RouteSchedule | null) => void;
+  onSetSegmentTransport?: (fromIdx: number, toIdx: number, mode: TransportMode) => void;
+  onSuggestFromSaved?: () => void;
+  onSuggestByInterests?: () => void;
+  onSuggestSmartRoute?: () => void;
+  getSegmentTransport?: (fromIdx: number, toIdx: number) => TransportMode;
   userLocation?: { lat: number; lng: number } | null;
 }
 
@@ -44,7 +52,33 @@ const TRANSPORT_MODES: { id: TransportMode; label: string; icon: React.ElementTy
   { id: 'walking', label: 'Walk', icon: Footprints },
   { id: 'driving', label: 'Drive', icon: Car },
   { id: 'transit', label: 'Transit', icon: Bus },
+  { id: 'cycling', label: 'Cycle', icon: Bike },
+  { id: 'running', label: 'Run', icon: PersonStanding },
 ];
+
+const DAYS = [
+  { id: 'everyday', label: 'Every day' },
+  { id: 'mon', label: 'Mon' },
+  { id: 'tue', label: 'Tue' },
+  { id: 'wed', label: 'Wed' },
+  { id: 'thu', label: 'Thu' },
+  { id: 'fri', label: 'Fri' },
+  { id: 'sat', label: 'Sat' },
+  { id: 'sun', label: 'Sun' },
+];
+
+const getTransportIcon = (mode: TransportMode) => {
+  switch (mode) {
+    case 'walking': return Footprints;
+    case 'driving': return Car;
+    case 'transit': return Bus;
+    case 'cycling': return Bike;
+    case 'running': return PersonStanding;
+    default: return Footprints;
+  }
+};
+
+const SEGMENT_MODES: TransportMode[] = ['walking', 'driving', 'transit', 'cycling', 'running'];
 
 export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   open,
@@ -66,6 +100,13 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   onDeleteSavedRoute,
   onRemoveFromWatchLater,
   onStartRoute,
+  onSetDestination,
+  onSetSchedule,
+  onSetSegmentTransport,
+  onSuggestFromSaved,
+  onSuggestByInterests,
+  onSuggestSmartRoute,
+  getSegmentTransport,
   userLocation,
 }) => {
   const [showFilters, setShowFilters] = useState(false);
@@ -73,19 +114,23 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   const [showWatchLater, setShowWatchLater] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
+  const [showDestination, setShowDestination] = useState(false);
+  const [destAddress, setDestAddress] = useState('');
+  const [scheduleDay, setScheduleDay] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+
+  const { getDragHandlers, getItemStyle, isDragging } = useDragReorder(
+    route?.stops.length ?? 0,
+    onReorderStops,
+  );
 
   const handleSave = () => {
     const saved = onSaveRoute();
-    if (saved) {
-      toast.success('Route saved!');
-    } else {
-      toast.error('Add at least one stop to save');
-    }
+    if (saved) toast.success('Route saved!');
+    else toast.error('Add at least one stop to save');
   };
 
-  const handleOpenMaps = () => {
-    onOpenInGoogleMaps(userLocation?.lat, userLocation?.lng);
-  };
+  const handleOpenMaps = () => onOpenInGoogleMaps(userLocation?.lat, userLocation?.lng);
 
   const handleStartEdit = () => {
     setEditName(route?.name || '');
@@ -93,17 +138,40 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   };
 
   const handleFinishEdit = () => {
-    if (editName.trim()) {
-      onRenameRoute(editName.trim());
-    }
+    if (editName.trim()) onRenameRoute(editName.trim());
     setIsEditing(false);
   };
 
-  const moveStop = (index: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex >= 0 && newIndex < (route?.stops.length ?? 0)) {
-      onReorderStops(index, newIndex);
+  const handleSetDestination = () => {
+    if (!destAddress.trim()) {
+      onSetDestination?.(null);
+      setShowDestination(false);
+      return;
     }
+    // Mock geocoding – in production would hit a geocoding API
+    onSetDestination?.({
+      address: destAddress.trim(),
+      latitude: (userLocation?.lat || 40.7128) + (Math.random() - 0.5) * 0.1,
+      longitude: (userLocation?.lng || -74.006) + (Math.random() - 0.5) * 0.1,
+    });
+    setShowDestination(false);
+    toast.success('Destination set – suggestions will route toward it');
+  };
+
+  const handleSetSchedule = () => {
+    if (!scheduleDay && !scheduleTime) {
+      onSetSchedule?.(null);
+      return;
+    }
+    onSetSchedule?.({ day: scheduleDay || 'everyday', time: scheduleTime || '09:00' });
+    toast.success('Schedule saved');
+  };
+
+  const cycleSegmentTransport = (fromIdx: number, toIdx: number) => {
+    const current = getSegmentTransport?.(fromIdx, toIdx) || route?.transportMode || 'walking';
+    const idx = SEGMENT_MODES.indexOf(current);
+    const next = SEGMENT_MODES[(idx + 1) % SEGMENT_MODES.length];
+    onSetSegmentTransport?.(fromIdx, toIdx, next);
   };
 
   return (
@@ -135,16 +203,16 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
             </div>
             <SheetDescription>
               {route
-                ? `${route.stops.length} stops · ${route.totalReward} coins`
+                ? `${route.stops.length} stops · ${route.totalReward} coins${route.smartLabel ? ` · ${route.smartLabel}` : ''}`
                 : 'Plan your earning route'}
             </SheetDescription>
           </SheetHeader>
 
           <ScrollArea className="h-[calc(100%-8rem)] pb-4">
             <div className="space-y-4 pr-2">
-              {/* Transport Mode Selector */}
+              {/* Transport Mode Selector (5 modes) */}
               {route && (
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   {TRANSPORT_MODES.map((mode) => {
                     const Icon = mode.icon;
                     return (
@@ -152,14 +220,14 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                         key={mode.id}
                         onClick={() => onSetTransportMode(mode.id)}
                         className={cn(
-                          'flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all',
+                          'flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border-2 transition-all',
                           route.transportMode === mode.id
                             ? 'border-primary bg-primary/10 text-primary'
                             : 'border-border bg-muted/30 text-muted-foreground hover:border-primary/50'
                         )}
                       >
                         <Icon className="w-4 h-4" />
-                        <span className="text-sm font-medium">{mode.label}</span>
+                        <span className="text-[10px] font-medium">{mode.label}</span>
                       </button>
                     );
                   })}
@@ -169,40 +237,26 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
               {/* Quick Actions */}
               {route && (
                 <div className="flex gap-2 flex-wrap">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowFilters(true)}
-                    className="gap-2"
-                  >
-                    <Filter className="w-4 h-4" />
-                    Filters
+                  <Button variant="outline" size="sm" onClick={() => setShowFilters(true)} className="gap-2">
+                    <Filter className="w-4 h-4" /> Filters
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onToggleCommute}
+                    variant="outline" size="sm" onClick={onToggleCommute}
                     className={cn('gap-2', route.isCommuteRoute && 'border-primary text-primary bg-primary/5')}
                   >
                     <CalendarCheck className="w-4 h-4" />
-                    {route.isCommuteRoute ? 'Daily Commute ✓' : 'Set as Commute'}
+                    {route.isCommuteRoute ? 'Commute ✓' : 'Commute'}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onSuggestRoute()}
-                    className="gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Re-suggest
+                  <Button variant="outline" size="sm" onClick={() => onSuggestRoute()} className="gap-2">
+                    <Sparkles className="w-4 h-4" /> Re-suggest
                   </Button>
                 </div>
               )}
 
-              {/* Stops List */}
-              {route && route.stops.length > 0 ? (
-                <div className="space-y-1">
-                  {/* Start: User Location */}
+              {/* Destination & Schedule Section */}
+              {route && (
+                <div className="space-y-2">
+                  {/* Origin */}
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/20">
                     <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
                       <Navigation className="w-4 h-4 text-primary-foreground" />
@@ -213,30 +267,98 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     </div>
                   </div>
 
-                  {/* Connection line */}
-                  <div className="flex justify-center">
-                    <div className="w-0.5 h-4 bg-border" />
-                  </div>
+                  {/* Destination Input */}
+                  {showDestination ? (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Where are you heading?"
+                        value={destAddress}
+                        onChange={e => setDestAddress(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSetDestination()}
+                        autoFocus
+                        className="flex-1 h-9"
+                      />
+                      <Button size="sm" onClick={handleSetDestination}>Set</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setShowDestination(false)}><X className="w-4 h-4" /></Button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowDestination(true)}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-border hover:border-primary/50 transition-colors w-full"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <MapPinned className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="text-sm font-medium">
+                          {route.destination?.address || 'Set Destination'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {route.destination ? 'Tap to change' : 'Route suggestions will head this way'}
+                        </div>
+                      </div>
+                    </button>
+                  )}
 
-                  {/* Route Stops */}
+                  {/* Schedule Picker */}
+                  {route.isCommuteRoute && (
+                    <div className="p-3 rounded-xl border border-border/50 bg-card space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        Schedule
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {DAYS.map(d => (
+                          <button
+                            key={d.id}
+                            onClick={() => { setScheduleDay(d.id); handleSetSchedule(); }}
+                            className={cn(
+                              'px-2.5 py-1 rounded-full text-xs font-medium transition-all border',
+                              (route.schedule?.day === d.id || scheduleDay === d.id)
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border bg-muted/30 text-muted-foreground'
+                            )}
+                          >
+                            {d.label}
+                          </button>
+                        ))}
+                      </div>
+                      <Input
+                        type="time"
+                        value={route.schedule?.time || scheduleTime || '09:00'}
+                        onChange={e => { setScheduleTime(e.target.value); handleSetSchedule(); }}
+                        className="h-8 w-32"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Connection line before stops */}
+              {route && route.stops.length > 0 && (
+                <div className="flex justify-center">
+                  <div className="w-0.5 h-4 bg-border" />
+                </div>
+              )}
+
+              {/* Stops List with Drag & Drop */}
+              {route && route.stops.length > 0 ? (
+                <div className="space-y-0 relative">
                   {route.stops.map((stop, index) => (
                     <React.Fragment key={stop.id}>
-                      <div className="flex items-center gap-2 p-3 rounded-xl bg-card border border-border/50 group">
-                        <div className="flex flex-col gap-0.5">
-                          <button
-                            onClick={() => moveStop(index, 'up')}
-                            disabled={index === 0}
-                            className="p-0.5 rounded hover:bg-muted disabled:opacity-30"
-                          >
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => moveStop(index, 'down')}
-                            disabled={index === route.stops.length - 1}
-                            className="p-0.5 rounded hover:bg-muted disabled:opacity-30"
-                          >
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </button>
+                      <div
+                        className={cn(
+                          'flex items-center gap-2 p-3 rounded-xl bg-card border border-border/50 group relative',
+                          isDragging && 'select-none'
+                        )}
+                        style={getItemStyle(index)}
+                      >
+                        {/* Drag Handle */}
+                        <div
+                          className="cursor-grab active:cursor-grabbing touch-none p-1 -ml-1"
+                          {...getDragHandlers(index)}
+                        >
+                          <GripVertical className="w-4 h-4 text-muted-foreground" />
                         </div>
 
                         <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-bold shrink-0">
@@ -266,13 +388,47 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                         </div>
                       </div>
 
+                      {/* Segment Transport Selector */}
                       {index < route.stops.length - 1 && (
-                        <div className="flex justify-center">
-                          <div className="w-0.5 h-3 bg-border" />
+                        <div className="flex justify-center py-0.5">
+                          <button
+                            onClick={() => cycleSegmentTransport(index, index + 1)}
+                            className="flex items-center gap-1 px-2 py-1 rounded-full border border-border/50 bg-muted/30 hover:bg-primary/10 hover:border-primary/30 transition-all"
+                            title="Tap to change transport for this segment"
+                          >
+                            {(() => {
+                              const mode = getSegmentTransport?.(index, index + 1) || route.transportMode;
+                              const Icon = getTransportIcon(mode);
+                              return (
+                                <>
+                                  <Icon className="w-3 h-3 text-muted-foreground" />
+                                  <div className="w-0.5 h-3 bg-border" />
+                                </>
+                              );
+                            })()}
+                          </button>
                         </div>
                       )}
                     </React.Fragment>
                   ))}
+
+                  {/* Destination marker at end */}
+                  {route.destination && (
+                    <>
+                      <div className="flex justify-center py-0.5">
+                        <div className="w-0.5 h-3 bg-border" />
+                      </div>
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-accent/10 border border-accent/20">
+                        <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center">
+                          <MapPinned className="w-4 h-4 text-accent-foreground" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">{route.destination.address}</div>
+                          <div className="text-xs text-muted-foreground">Destination</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   {/* Route Summary */}
                   <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-primary/10 to-blue-500/10 border border-primary/20">
@@ -292,6 +448,11 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                         <div className="text-xs text-muted-foreground">Est. Time</div>
                       </div>
                     </div>
+                    {route.smartLabel && (
+                      <div className="mt-2 pt-2 border-t border-primary/10 text-center">
+                        <span className="text-xs text-muted-foreground">✨ {route.smartLabel}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : route ? (
@@ -300,57 +461,97 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                   <p className="font-medium">No stops yet</p>
                   <p className="text-sm mt-1">Tap promotions on the map to add them</p>
                   <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={() => onSuggestRoute()}>
-                    <Sparkles className="w-4 h-4" />
-                    Generate Suggested Route
+                    <Sparkles className="w-4 h-4" /> Generate Suggested Route
                   </Button>
                 </div>
               ) : null}
 
-              {/* Platform Suggested Route Card - when no route is active */}
+              {/* ─── Suggestion Cards (when no route is active) ─── */}
               {!route && (
-                <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-5 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-primary" />
+                <div className="space-y-3">
+                  {/* Smart Route – primary option */}
+                  <button
+                    onClick={() => onSuggestSmartRoute?.()}
+                    className="w-full rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-4 text-left hover:border-primary/40 transition-all"
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <Brain className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm">Smart Route</h3>
+                        <p className="text-xs text-muted-foreground">AI-designed route based on your behavior</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Platform Suggested Route</h3>
-                      <p className="text-xs text-muted-foreground">We'll find the best earning route near you</p>
+                    <p className="text-xs text-muted-foreground">
+                      Considers time of day, your interests, saved promos, and lifestyle patterns
+                    </p>
+                  </button>
+
+                  {/* Platform Suggested Route */}
+                  <div className="rounded-2xl border border-border/50 bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <Sparkles className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm">Platform Suggested</h3>
+                        <p className="text-xs text-muted-foreground">Choose an optimization strategy</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => onSuggestRoute('more_earnings')}
+                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                      >
+                        <TrendingUp className="w-5 h-5 text-primary" />
+                        <span className="text-xs font-medium">Max Earnings</span>
+                      </button>
+                      <button
+                        onClick={() => onSuggestRoute('faster')}
+                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                      >
+                        <Timer className="w-5 h-5 text-primary" />
+                        <span className="text-xs font-medium">Fastest</span>
+                      </button>
+                      <button
+                        onClick={() => onSuggestRoute('effective')}
+                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                      >
+                        <Zap className="w-5 h-5 text-primary" />
+                        <span className="text-xs font-medium">Most Effective</span>
+                      </button>
                     </div>
                   </div>
-                  
-                  <div className="grid grid-cols-3 gap-2">
+
+                  {/* Build from Saved / Interests */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {watchLater.length > 0 && (
+                      <button
+                        onClick={() => onSuggestFromSaved?.()}
+                        className="flex items-center gap-2 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 transition-all"
+                      >
+                        <Bookmark className="w-4 h-4 text-primary" />
+                        <div className="text-left">
+                          <div className="text-xs font-medium">From Saved</div>
+                          <div className="text-[10px] text-muted-foreground">{watchLater.length} items</div>
+                        </div>
+                      </button>
+                    )}
                     <button
-                      onClick={() => onSuggestRoute('more_earnings')}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all"
+                      onClick={() => onSuggestByInterests?.()}
+                      className="flex items-center gap-2 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 transition-all"
                     >
-                      <TrendingUp className="w-5 h-5 text-primary" />
-                      <span className="text-xs font-medium">Max Earnings</span>
-                    </button>
-                    <button
-                      onClick={() => onSuggestRoute('faster')}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all"
-                    >
-                      <Timer className="w-5 h-5 text-primary" />
-                      <span className="text-xs font-medium">Fastest</span>
-                    </button>
-                    <button
-                      onClick={() => onSuggestRoute('effective')}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 hover:bg-primary/5 transition-all"
-                    >
-                      <Zap className="w-5 h-5 text-primary" />
-                      <span className="text-xs font-medium">Most Effective</span>
+                      <Heart className="w-4 h-4 text-primary" />
+                      <div className="text-left">
+                        <div className="text-xs font-medium">By Interests</div>
+                        <div className="text-[10px] text-muted-foreground">Your favorites</div>
+                      </div>
                     </button>
                   </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-2"
-                    onClick={() => onStartRoute?.()}
-                  >
-                    <Route className="w-4 h-4" />
-                    Start New Route Manually
+                  <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => onStartRoute?.()}>
+                    <Route className="w-4 h-4" /> Start New Route Manually
                   </Button>
                 </div>
               )}
@@ -363,26 +564,21 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     className="flex items-center justify-between w-full text-left"
                   >
                     <span className="text-sm font-semibold flex items-center gap-2">
-                      <Save className="w-4 h-4" />
-                      Saved Routes ({savedRoutes.length})
+                      <Save className="w-4 h-4" /> Saved Routes ({savedRoutes.length})
                     </span>
                     {showSaved ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
                   {showSaved && savedRoutes.map((r) => (
-                    <div
-                      key={r.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card"
-                    >
+                    <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card">
                       <Route className="w-5 h-5 text-primary shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{r.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {r.stops.length} stops · {r.totalReward} coins
-                          {r.isCommuteRoute && ' · Daily'}
+                          {r.stops.length} stops · {r.totalReward} coins{r.isCommuteRoute && ' · Daily'}
                         </div>
                       </div>
                       <div className="flex gap-1.5">
-                        <Button size="sm" variant="ghost" onClick={() => { onLoadRoute(r.id); }}>
+                        <Button size="sm" variant="ghost" onClick={() => onLoadRoute(r.id)}>
                           <Edit2 className="w-4 h-4" />
                         </Button>
                         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => onDeleteSavedRoute(r.id)}>
@@ -404,22 +600,16 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                   className="flex items-center justify-between w-full text-left"
                 >
                   <span className="text-sm font-semibold flex items-center gap-2">
-                    <Bookmark className="w-4 h-4" />
-                    Watch Later ({watchLater.length})
+                    <Bookmark className="w-4 h-4" /> Watch Later ({watchLater.length})
                   </span>
                   {showWatchLater ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
                 {showWatchLater && watchLater.map((item) => (
-                  <div
-                    key={item.promotionId}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card"
-                  >
+                  <div key={item.promotionId} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card">
                     <CategoryIcon category={item.category || ''} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{item.businessName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        +{item.rewardAmount} {item.rewardType}
-                      </div>
+                      <div className="text-xs text-muted-foreground">+{item.rewardAmount} {item.rewardType}</div>
                     </div>
                     <Button size="sm" variant="ghost" onClick={() => onRemoveFromWatchLater(item.promotionId)}>
                       <X className="w-4 h-4" />
@@ -440,17 +630,10 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                 <Trash2 className="w-4 h-4" />
               </Button>
               <Button variant="outline" size="sm" onClick={handleSave} className="gap-1 flex-1">
-                <Save className="w-4 h-4" />
-                Save
+                <Save className="w-4 h-4" /> Save
               </Button>
-              <Button
-                size="sm"
-                onClick={handleOpenMaps}
-                disabled={route.stops.length === 0}
-                className="gap-1 flex-1"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open in Maps
+              <Button size="sm" onClick={handleOpenMaps} disabled={route.stops.length === 0} className="gap-1 flex-1">
+                <ExternalLink className="w-4 h-4" /> Open in Maps
               </Button>
             </div>
           )}

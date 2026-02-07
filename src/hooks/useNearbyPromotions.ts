@@ -15,40 +15,47 @@ interface NearbyPromotion {
   longitude: number;
 }
 
-const HIGH_VALUE_THRESHOLD = 50; // Minimum reward amount for high-value
-const ALERT_RADIUS_METERS = 500; // Alert when within 500m
-const CHECK_INTERVAL = 30000; // Check every 30 seconds
-const COOLDOWN_MINUTES = 30; // Don't re-alert for same promotion within 30 min
+export interface RouteSuggestionCluster {
+  promotions: NearbyPromotion[];
+  center: { lat: number; lng: number };
+}
+
+const HIGH_VALUE_THRESHOLD = 50;
+const ALERT_RADIUS_METERS = 500;
+const ROUTE_CLUSTER_THRESHOLD = 3; // minimum promos to suggest a route
+const CHECK_INTERVAL = 30000;
+const COOLDOWN_MINUTES = 30;
+const ROUTE_SUGGESTION_COOLDOWN = 10; // minutes
 
 export function useNearbyPromotions(enabled: boolean = true) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [nearbyPromotions, setNearbyPromotions] = useState<NearbyPromotion[]>([]);
   const [isWatching, setIsWatching] = useState(false);
+  const [routeSuggestion, setRouteSuggestion] = useState<RouteSuggestionCluster | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const alertedPromotionsRef = useRef<Map<string, number>>(new Map());
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastRouteSuggestionRef = useRef<number>(0);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371e3; // Earth's radius in meters
+    const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
     const Δφ = ((lat2 - lat1) * Math.PI) / 180;
     const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
+    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
+
+  const dismissRouteSuggestion = useCallback(() => {
+    setRouteSuggestion(null);
+  }, []);
 
   const checkNearbyPromotions = useCallback(async (latitude: number, longitude: number) => {
     if (!user?.id) return;
 
     try {
-      // Fetch active high-value promotions
       const { data: promotions, error } = await supabase
         .from('promotions')
         .select('*')
@@ -75,15 +82,11 @@ export function useNearbyPromotions(enabled: boolean = true) {
             longitude: promo.longitude,
           });
 
-          // Check if we should alert for this promotion
           const lastAlerted = alertedPromotionsRef.current.get(promo.id);
           const cooldownMs = COOLDOWN_MINUTES * 60 * 1000;
 
           if (!lastAlerted || now - lastAlerted > cooldownMs) {
-            // Show notification for high-value nearby promotion
             alertedPromotionsRef.current.set(promo.id, now);
-            
-            // Play notification sound
             notificationSoundService.playReward();
 
             toast({
@@ -92,7 +95,6 @@ export function useNearbyPromotions(enabled: boolean = true) {
               duration: 8000,
             });
 
-            // Request browser notification permission and send if granted
             if ('Notification' in window && Notification.permission === 'granted') {
               new Notification('Promotion Alert! 💰', {
                 body: `${promo.business_name}: ${promo.reward_amount} ${promo.reward_type} - ${Math.round(distance)}m away`,
@@ -105,6 +107,28 @@ export function useNearbyPromotions(enabled: boolean = true) {
       }
 
       setNearbyPromotions(nearby);
+
+      // Route cluster detection
+      const routeCooldownMs = ROUTE_SUGGESTION_COOLDOWN * 60 * 1000;
+      if (
+        nearby.length >= ROUTE_CLUSTER_THRESHOLD &&
+        now - lastRouteSuggestionRef.current > routeCooldownMs
+      ) {
+        lastRouteSuggestionRef.current = now;
+        setRouteSuggestion({
+          promotions: nearby,
+          center: { lat: latitude, lng: longitude },
+        });
+
+        // Browser notification for route suggestion
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('🗺️ Route Opportunity!', {
+            body: `You're near ${nearby.length} earning spots – start a route?`,
+            icon: '/pwa-192x192.png',
+            tag: 'route-suggestion',
+          });
+        }
+      }
     } catch (error) {
       console.error('Error checking nearby promotions:', error);
     }
@@ -115,7 +139,6 @@ export function useNearbyPromotions(enabled: boolean = true) {
 
     setIsWatching(true);
 
-    // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
@@ -124,13 +147,10 @@ export function useNearbyPromotions(enabled: boolean = true) {
       (position) => {
         const { latitude, longitude } = position.coords;
         
-        // Only check if position changed significantly (>50m)
         if (lastPositionRef.current) {
           const moved = calculateDistance(
-            lastPositionRef.current.lat,
-            lastPositionRef.current.lng,
-            latitude,
-            longitude
+            lastPositionRef.current.lat, lastPositionRef.current.lng,
+            latitude, longitude,
           );
           if (moved < 50) return;
         }
@@ -142,11 +162,7 @@ export function useNearbyPromotions(enabled: boolean = true) {
         console.error('Geolocation error:', error);
         setIsWatching(false);
       },
-      {
-        enableHighAccuracy: true,
-        maximumAge: CHECK_INTERVAL,
-        timeout: 10000,
-      }
+      { enableHighAccuracy: true, maximumAge: CHECK_INTERVAL, timeout: 10000 },
     );
   }, [enabled, isWatching, checkNearbyPromotions]);
 
@@ -162,10 +178,7 @@ export function useNearbyPromotions(enabled: boolean = true) {
     if (enabled && user?.id) {
       startWatching();
     }
-
-    return () => {
-      stopWatching();
-    };
+    return () => stopWatching();
   }, [enabled, user?.id, startWatching, stopWatching]);
 
   return {
@@ -173,5 +186,7 @@ export function useNearbyPromotions(enabled: boolean = true) {
     isWatching,
     startWatching,
     stopWatching,
+    routeSuggestion,
+    dismissRouteSuggestion,
   };
 }

@@ -293,11 +293,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         return;
       }
 
+      // Resolve the content ID, skip backend validation if it's not a valid UUID
+      const resolvedContentId = contentId || src;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(resolvedContentId)) {
+        console.log('[MediaCard] contentId is not a UUID, skipping backend validation:', resolvedContentId);
+        onComplete?.(isEligible);
+        return;
+      }
+
       // Validate with backend
       const { data, error } = await supabase.functions.invoke('validate-attention', {
         body: {
           userId: user.id,
-          contentId: contentId || src,
+          contentId: resolvedContentId,
           attentionScore: attentionResult.score,
           watchDuration,
           totalDuration: duration,

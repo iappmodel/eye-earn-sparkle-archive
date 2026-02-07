@@ -82,7 +82,7 @@ const ScreenIndicatorsAutoHide: React.FC<{
 // Mock data - more realistic content with video support
 const mockMedia = [
   {
-    id: '1',
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567801',
     type: 'promo' as const,
     src: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
@@ -101,7 +101,7 @@ const mockMedia = [
     },
   },
   {
-    id: '2',
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567802',
     type: 'video' as const,
     src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
@@ -119,7 +119,7 @@ const mockMedia = [
     },
   },
   {
-    id: '3',
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567803',
     type: 'promo' as const,
     src: 'https://images.unsplash.com/photo-1560472355-536de3962603?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
@@ -138,7 +138,7 @@ const mockMedia = [
     },
   },
   {
-    id: '4',
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567804',
     type: 'image' as const,
     src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
     title: 'Mountain View',
@@ -154,7 +154,7 @@ const mockMedia = [
     },
   },
   {
-    id: '5',
+    id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567805',
     type: 'promo' as const,
     src: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1920&h=1080&fit=crop',
     videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',

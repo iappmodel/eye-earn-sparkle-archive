@@ -21,6 +21,16 @@ export type ComboAction =
   | 'openSettings'
   | 'toggleMute'
   | 'save'
+  | 'openWallet'
+  | 'openProfile'
+  | 'openMap'
+  | 'openMessages'
+  | 'openAchievements'
+  | 'openRouteBuilder'
+  | 'openSavedVideos'
+  | 'toggleRemoteControl'
+  | 'checkIn'
+  | 'tipCreator'
   | 'none';
 
 export interface GestureCombo {
@@ -382,5 +392,15 @@ export const COMBO_ACTION_LABELS: Record<ComboAction, string> = {
   openSettings: 'Open Settings',
   toggleMute: 'Toggle Mute',
   save: 'Save Video',
+  openWallet: 'Open Wallet',
+  openProfile: 'Open Profile',
+  openMap: 'Open Map',
+  openMessages: 'Open Messages',
+  openAchievements: 'Achievements',
+  openRouteBuilder: 'Route Builder',
+  openSavedVideos: 'Saved Videos',
+  toggleRemoteControl: 'Toggle Remote',
+  checkIn: 'Check In',
+  tipCreator: 'Tip Creator',
   none: 'No Action',
 };

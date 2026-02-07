@@ -53,6 +53,16 @@ const ACTION_OPTIONS: { value: ComboAction; label: string }[] = [
   { value: 'openSettings', label: 'Open Settings' },
   { value: 'toggleMute', label: 'Toggle Mute' },
   { value: 'save', label: 'Save Video' },
+  { value: 'openWallet', label: 'Open Wallet' },
+  { value: 'openProfile', label: 'Open Profile' },
+  { value: 'openMap', label: 'Open Map' },
+  { value: 'openMessages', label: 'Open Messages' },
+  { value: 'openAchievements', label: 'Achievements' },
+  { value: 'openRouteBuilder', label: 'Route Builder' },
+  { value: 'openSavedVideos', label: 'Saved Videos' },
+  { value: 'toggleRemoteControl', label: 'Toggle Remote' },
+  { value: 'checkIn', label: 'Check In' },
+  { value: 'tipCreator', label: 'Tip Creator' },
 ];
 
 const StepIcon: React.FC<{ step: GestureStep }> = ({ step }) => {

@@ -1,108 +1,95 @@
 
-# Swipe-Down to Dismiss All Card Overlays
+# Fix Race Conditions in Balance Transfer Edge Functions
 
-## Overview
-All full-screen card overlays in the app (Wallet, Settings, Profile, Notifications, Achievements, Tasks, etc.) currently only close via the X button in the header. This update adds swipe-down-to-dismiss behavior so users can drag/scroll the card downward to close it -- a natural mobile gesture similar to iOS/Android bottom sheets.
+## The Problem
+Five edge functions handle coin balances using a vulnerable pattern:
+1. **Read** the current balance from the database
+2. **Calculate** the new balance in JavaScript
+3. **Write** the new balance back
 
-## How it will work
-- When a user touches the top area (header/drag handle) of any overlay card and drags downward, the card will follow the finger
-- If the drag exceeds a threshold (roughly 30% of screen height or 150px), the card will animate out and close
-- If the drag doesn't exceed the threshold, the card snaps back to its original position
-- A subtle drag handle bar will be added at the top of each overlay for visual affordance
-- The existing X button remains as an alternative close method
-- Content scrolling inside the card still works normally -- only dragging from the top header area or when already scrolled to the top triggers the dismiss gesture
+If two requests arrive simultaneously, both read the same balance (e.g., 1000 coins), both calculate independently (e.g., subtract 800), and both write their result (200). The user spent 1600 coins but only lost 800 from their balance -- classic double-spending.
 
-## What changes
+**Affected functions:**
+- `transfer-coins` -- Icoin-to-Vicoin conversion
+- `tip-creator` -- Sending tips between users
+- `request-payout` -- Withdrawing coins
+- `issue-reward` -- Earning rewards from content
+- `verify-checkin` -- Check-in location rewards
 
-### 1. New hook: `useSwipeToDismiss`
-A reusable hook (`src/hooks/useSwipeToDismiss.ts`) that handles:
-- Touch start/move/end tracking for vertical drag
-- Drag distance state for animating the card position
-- Threshold detection to decide close vs. snap-back
-- Only activates when the scrollable content is at scroll position 0 (top), preventing conflicts with normal scrolling
-- Returns: `dragOffset`, `isDragging`, event handler props to spread onto the container
+## The Solution
+Move all balance operations into **database-level stored procedures** that use PostgreSQL advisory locks (`pg_advisory_xact_lock`) to serialize access per user. Each procedure runs as a single atomic transaction -- if any step fails, everything rolls back automatically.
 
-### 2. New wrapper component: `SwipeDismissOverlay`
-A reusable wrapper component (`src/components/SwipeDismissOverlay.tsx`) that:
-- Wraps any overlay content with swipe-to-dismiss behavior
-- Applies `translateY` transform based on drag offset
-- Adds a drag handle indicator at the top
-- Handles the dismiss animation (slide down + fade out)
-- Accepts `isOpen`, `onClose`, and optional `className` props
-- Replaces the repeated `fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up` pattern
+This means the edge functions will call a single `supabase.rpc(...)` instead of performing multiple separate reads and writes.
 
-### 3. Update all overlay screens
-The following screens will be updated to use `SwipeDismissOverlay` as their root wrapper instead of the raw `div` with fixed positioning:
+## What Changes
 
-- `WalletScreen` -- Wallet overview, transactions, subscriptions
-- `SettingsScreen` -- App settings and preferences
-- `ProfileScreen` -- User profile view
-- `NotificationCenter` -- Notifications list
-- `NotificationPreferences` -- Notification settings
-- `AchievementCenter` -- Achievements gallery
-- `TaskCenter` -- Tasks and rewards
-- `PremiumScreen` -- Premium/subscription plans
-- `ProfileEditScreen` -- Edit profile form
-- `ProfileQRCode` -- QR code display
-- `TwoFactorAuth` -- 2FA setup
-- `ActiveSessionsManager` -- Active sessions list
-- `BlockMuteManager` -- Blocked/muted users
-- `AccountActivityLog` -- Activity history
-- `ContentReportFlow` -- Report content flow
-- `PublicProfile` -- Public creator profile view
-- `AttentionAchievements` -- Attention tracking achievements
+### 1. New Database Functions (via migration)
 
-Each screen update is minimal -- replacing the outer `div` with `SwipeDismissOverlay` and removing the now-redundant inline styles for positioning and animation.
+**`atomic_convert_coins(p_user_id, p_icoin_amount, p_exchange_rate)`**
+- Acquires an advisory lock on the user's balance
+- Validates the user has sufficient Icoin balance (using the live database value, not a stale read)
+- Deducts Icoins and adds Vicoins in a single UPDATE
+- Inserts both transaction records
+- Returns the new balances or raises an exception on failure
 
-## User experience
-- A small horizontal bar appears at the top of each card as a drag affordance
-- Dragging downward moves the card with your finger, with slight opacity reduction
-- Releasing past the threshold slides the card off screen and calls `onClose`
-- Releasing before the threshold smoothly snaps the card back
-- Normal scrolling within the card content works unaffected
+**`atomic_tip_creator(p_tipper_id, p_creator_id, p_amount, p_coin_type, p_content_id)`**
+- Acquires advisory locks on both the tipper and creator (ordered by user ID to prevent deadlocks)
+- Validates tipper has sufficient balance
+- Deducts from tipper and adds to creator in two atomic UPDATEs
+- Inserts transaction records and notification
+- Returns the tip ID and new tipper balance
+
+**`atomic_request_payout(p_user_id, p_amount, p_coin_type, p_method)`**
+- Acquires an advisory lock on the user's balance
+- Validates KYC status and sufficient balance
+- Deducts balance and creates the transaction record
+- Returns the transaction ID and new balance
+
+**`atomic_update_balance(p_user_id, p_amount, p_coin_type, p_description, p_reference_id)`**
+- A shared utility function used by `issue-reward` and `verify-checkin`
+- Acquires advisory lock, adds coins to the user's balance
+- Creates a transaction record
+- Returns the new balance
+
+### 2. Updated Edge Functions
+
+Each edge function keeps its existing authentication, input validation, and business logic checks, but replaces the multi-step read-calculate-write block with a single `supabase.rpc()` call:
+
+**`transfer-coins/index.ts`** -- Replace lines 65-127 (read balance, check, update, insert transactions) with a single `supabase.rpc('atomic_convert_coins', {...})` call.
+
+**`tip-creator/index.ts`** -- Replace lines 66-172 (read tipper, read creator, deduct, add, insert transactions, insert notification) with `supabase.rpc('atomic_tip_creator', {...})`.
+
+**`request-payout/index.ts`** -- Replace lines 83-151 (read profile, check KYC, deduct, insert transaction, rollback logic) with `supabase.rpc('atomic_request_payout', {...})`. KYC check moves into the stored procedure.
+
+**`issue-reward/index.ts`** -- Replace lines 220-245 (read balance, calculate, update) with `supabase.rpc('atomic_update_balance', {...})`.
+
+**`verify-checkin/index.ts`** -- Replace lines 218-232 (read balance, calculate, update) with `supabase.rpc('atomic_update_balance', {...})`.
+
+### 3. No UI Changes
+All changes are backend-only. The edge functions return the same response shapes, so no frontend code needs updating.
 
 ---
 
 ## Technical Details
 
-### `src/hooks/useSwipeToDismiss.ts` (new)
-- Tracks `touchstart` Y position, `touchmove` delta, and `touchend` threshold check
-- Uses `useRef` for start position and `useState` for current drag offset
-- Threshold: 150px downward drag to trigger dismiss
-- Returns `{ dragOffset, isDragging, handlers: { onTouchStart, onTouchMove, onTouchEnd } }`
-- Includes a `scrollRef` parameter -- only allows drag-to-dismiss when the scroll container is at `scrollTop === 0`
+### Advisory Lock Strategy
+Each function uses `pg_advisory_xact_lock(hashtext('balance_' || user_id::text))` to serialize access per user. The lock is automatically released when the transaction ends (commit or rollback). For tip-creator, both user locks are acquired in a deterministic order (sorted by UUID) to prevent deadlocks.
 
-### `src/components/SwipeDismissOverlay.tsx` (new)
-- Props: `isOpen`, `onClose`, `children`, `className?`
-- Renders the `fixed inset-0 z-50` container with backdrop blur
-- Applies `transform: translateY(${dragOffset}px)` and `opacity: 1 - (dragOffset / 500)` during drag
-- On dismiss, plays a quick slide-down animation before calling `onClose`
-- Contains the drag handle bar (centered, 48px wide, rounded)
-- Early returns `null` when `!isOpen`
+### Error Handling
+Database functions use `RAISE EXCEPTION` for business logic failures (insufficient balance, KYC not verified, etc.). The edge functions catch these in the RPC error response and return appropriate HTTP status codes.
 
-### Per-screen changes (example for WalletScreen)
-Before:
-```tsx
-return (
-  <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up overflow-y-auto">
-    <div className="max-w-md mx-auto ...">
-      <NeuButton onClick={onClose}><X /></NeuButton>
-      ...
-    </div>
-  </div>
-);
+### Migration SQL Structure
+```text
+-- 1. atomic_convert_coins: Lock user -> check balance -> deduct icoins + add vicoins -> log transactions
+-- 2. atomic_tip_creator: Lock both users -> check balance -> deduct from tipper + add to creator -> log + notify
+-- 3. atomic_request_payout: Lock user -> check KYC + balance -> deduct -> log transaction
+-- 4. atomic_update_balance: Lock user -> add coins -> log transaction (used by reward + checkin)
 ```
 
-After:
-```tsx
-return (
-  <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
-    <div className="max-w-md mx-auto ...">
-      <NeuButton onClick={onClose}><X /></NeuButton>
-      ...
-    </div>
-  </SwipeDismissOverlay>
-);
-```
-
-The X button is kept as a secondary close method. The only change per file is swapping the outer `div` for `SwipeDismissOverlay`.
+### Files to create/modify:
+- **Database migration**: 4 new stored procedures
+- `supabase/functions/transfer-coins/index.ts` -- Use `atomic_convert_coins` RPC
+- `supabase/functions/tip-creator/index.ts` -- Use `atomic_tip_creator` RPC
+- `supabase/functions/request-payout/index.ts` -- Use `atomic_request_payout` RPC
+- `supabase/functions/issue-reward/index.ts` -- Use `atomic_update_balance` RPC
+- `supabase/functions/verify-checkin/index.ts` -- Use `atomic_update_balance` RPC

@@ -1,83 +1,177 @@
 
-# Enhance Route Planner with Platform-Suggested Routes and Feed Integration
+# Enhanced Route Planner: Drag Reorder, Destination Input, Smart Suggestions, and Notifications
 
 ## Overview
 
-This plan upgrades the Route Planner with a dedicated "Suggest Route" button inside the Route Builder, smarter platform-based route suggestions using filters, and the ability to add promo content to the route directly from the main feed while watching videos.
-
-## Changes
-
-### 1. Enhanced "Suggest Route" in Route Builder
-
-Currently the "Suggest Route" button is a small action chip alongside "Filters" and "Set as Commute". It will be upgraded to a more prominent, dedicated section inside the Route Builder sheet:
-
-- Add a styled "Platform Suggested Route" card at the top of the Route Builder when no route is active, with a sparkle icon and description explaining it generates a route based on nearby promotions and the user's filters.
-- When a route IS active, the existing "Suggest Route" chip becomes a "Re-suggest" option that regenerates the route applying the current filters.
-- The suggestion logic in `usePromoRoute.suggestRoute()` already supports all filter types (Vicoins, Icoins, both, more earnings, faster, effective, balanced). No changes needed to the core algorithm.
-
-**File:** `src/components/RouteBuilder.tsx`
-
-### 2. Add "Add to Route" Button on the Main Feed
-
-When watching promo content in the main feed, users will see a new "Route" button in the right-side interaction buttons (the sidebar with Like, Comment, Share, Bookmark, etc.). Tapping it adds the current promo's location to the active route (or starts a new one).
-
-- Add a `Route` icon button to `MediaInteractionButtons.tsx` (sidebar variant), visible only for promo-type content.
-- Wire the new button through `FloatingControls.tsx` to `Index.tsx`, which will call `promoRoute.addStop()`.
-- The `usePromoRoute` hook will be lifted to `Index.tsx` level so it persists across the feed and Discovery Map views. Currently it lives inside `DiscoveryMap` -- it will be moved up and passed down.
-
-**Files:** `src/components/MediaInteractionButtons.tsx`, `src/components/FloatingControls.tsx`, `src/pages/Index.tsx`, `src/components/DiscoveryMap.tsx`
-
-### 3. Lift Route State to App Level
-
-The `usePromoRoute` hook currently lives inside `DiscoveryMap.tsx`. To enable adding stops from the feed, it needs to be shared between `Index.tsx` (main feed) and `DiscoveryMap`. The hook will be called in `Index.tsx` and the route state/methods passed down as props to `DiscoveryMap`.
-
-**Files:** `src/pages/Index.tsx`, `src/components/DiscoveryMap.tsx`
-
-### 4. Route Builder Accessible from Feed
-
-A floating Route indicator/button will appear at the bottom of the main feed when there is an active route being built (similar to the green banner on the Discovery Map). Tapping it opens the Route Builder sheet directly from the feed context.
-
-**File:** `src/pages/Index.tsx`
+This plan covers all 7 enhancements to the Route Planner, focusing on practical, implementable features that work within the existing architecture.
 
 ---
 
-## Technical Details
+## 1. Drag-and-Drop Stop Reordering
 
-### File: `src/hooks/usePromoRoute.ts`
-- No changes needed -- the hook already supports all required functionality.
+Replace the current up/down chevron buttons with touch-friendly drag-and-drop reordering in the Route Builder.
 
-### File: `src/pages/Index.tsx`
-- Import and call `usePromoRoute()` at the top level.
-- Pass route state/methods as new props to `DiscoveryMap`.
-- Add a new `onAddToRoute` callback for `FloatingControls`.
-- Add a floating route banner when `promoRoute.isBuilding && promoRoute.totalStops > 0` visible on the main feed.
-- Import and render `RouteBuilder` sheet from Index level as well, controlled by a new `showRouteBuilderFromFeed` state.
-- Map `currentMedia` (promo content) to route stop data when user clicks "Add to Route" from the feed.
+**How it works:**
+- Each stop gets a drag handle (grip icon) on the left side
+- Users press and hold the grip, then drag the stop to a new position
+- A visual placeholder shows where the stop will be placed
+- On release, the route recalculates order and updates
+- Implementation uses native pointer events (no extra library needed) with a custom `useDragReorder` hook
 
-### File: `src/components/DiscoveryMap.tsx`
-- Remove internal `usePromoRoute()` call.
-- Accept route state and methods as props instead.
-- Remove the `handleSuggestRoute` wrapper (will receive it as a prop).
-- All existing route integrations (add to route, watch later, route builder, markers) continue to work unchanged -- they just use props instead of the local hook.
+**File:** `src/components/RouteBuilder.tsx`
+- Replace the `ChevronUp`/`ChevronDown` buttons with a `GripVertical` drag handle
+- Add drag state tracking (dragging item, hover target) with pointer events
+- Animate displacement of other stops during drag
+- Call `onReorderStops` on drop
 
-### File: `src/components/FloatingControls.tsx`
-- Add `onAddToRoute` optional callback prop.
-- Add `isInRoute` optional boolean prop to show active state.
-- Add `showRouteButton` optional boolean prop (only for promo content).
-- Pass these through to `MediaInteractionButtons`.
+---
 
-### File: `src/components/MediaInteractionButtons.tsx`
-- Add a new `Route` icon button in the sidebar variant, positioned after the Bookmark button.
-- Shows a green checkmark state when the current content is already in the route.
-- Only visible when `showRouteButton` is true (promo content).
+## 2. Destination Input + Day/Time Planning
 
-### File: `src/components/RouteBuilder.tsx`
-- When no active route exists, show a prominent "Get a Suggested Route" card with:
-  - Sparkles icon and title "Platform Suggested Route"
-  - Brief description: "We'll find the best earning route near you"
-  - Three quick-pick buttons for optimization: "Max Earnings", "Fastest", "Most Effective"
-  - Tapping any of them calls `onSuggestRoute` with the chosen optimization preset.
-- When an active route exists, keep the existing "Suggest Route" chip but rename to "Re-suggest" for clarity.
-- Add a "Start New Route" button alongside the suggestion card for users who want to build manually.
+Transform the static "Your Location" label at the top of the route into an interactive destination planner.
+
+**How it works:**
+- The "Your Location" card becomes tappable, opening a destination input form
+- Users can type a destination address (where they're heading)
+- The platform then suggests earning stops along the way
+- A new "Schedule" section lets users pick day of week and departure time, enabling commute route planning
+- When a destination is set, the route optimization factors in the direction of travel
+
+**File:** `src/hooks/usePromoRoute.ts`
+- Add `destination` field to `PromoRoute` interface (address, lat, lng)
+- Add `scheduledDay` and `scheduledTime` optional fields
+- Add `setDestination` and `setSchedule` methods
+- Enhance `suggestRoute` to factor in destination direction when available
+
+**File:** `src/components/RouteBuilder.tsx`
+- Replace the static "Your Location" card with an interactive origin/destination section
+- Add destination input field with autocomplete (reuses MapSearchBar pattern)
+- Add day-of-week selector (Mon-Sun chips) and time picker
+- When destination is set, show it as the endpoint in the route visualization
+
+---
+
+## 3. Routes Suggested from Saved Promos (Watch Later)
+
+Add a "Suggest from Saved" option that builds a route using items from the Watch Later list.
+
+**How it works:**
+- New button in the Route Builder: "Build from Saved" (next to "Platform Suggested Route")
+- Takes all Watch Later items, applies current filters, and creates an optimized route from them
+- Users can then edit the result before saving
+
+**File:** `src/hooks/usePromoRoute.ts`
+- Add `suggestFromWatchLater` method that takes the watchLater array and creates a route from those stops, applying optimization sorting
+
+**File:** `src/components/RouteBuilder.tsx`
+- Add "Build from Saved" button in the suggestion card (only visible when Watch Later has items)
+
+---
+
+## 4. Routes Suggested from User Interests
+
+Add interest-based route suggestions using the user's interaction history (liked categories, frequently visited types).
+
+**How it works:**
+- Track which promotion categories the user interacts with most
+- New "Based on Your Interests" suggestion preset
+- Prioritizes categories the user has engaged with (liked, bookmarked, checked in)
+- Uses mock interest scoring for now (can connect to real analytics later)
+
+**File:** `src/hooks/usePromoRoute.ts`
+- Add `suggestByInterests` method that accepts user interest categories and weights promotions matching those interests higher
+
+**File:** `src/components/RouteBuilder.tsx`
+- Add "Based on Your Interests" preset button with a sparkle/heart icon
+- Shows the top categories it's optimizing for
+
+---
+
+## 5. Multi-Modal Transport (Mixed Dislocation Types)
+
+Allow users to set different transport modes per segment of the route, not just one mode for the entire route.
+
+**How it works:**
+- Each segment between stops can have its own transport mode
+- Transport mode selector appears between stops (walking icon between stop 1-2, bus icon between stop 2-3, etc.)
+- Tapping the segment icon cycles through: walking, driving, transit
+- An "Activity" mode is added for fitness-oriented users (running, cycling)
+- The overall route transport mode becomes a "default" that new segments inherit
+
+**File:** `src/hooks/usePromoRoute.ts`
+- Extend `TransportMode` type to include `'cycling' | 'running'`
+- Add optional `segmentTransport` map to `PromoRoute` (keyed by "fromIndex-toIndex")
+- Add `setSegmentTransport` method
+
+**File:** `src/components/RouteBuilder.tsx`
+- Between each stop connection line, render a small transport mode icon button
+- Tapping it cycles through available modes for that segment
+- Add cycling and running icons to the transport options
+
+---
+
+## 6. Location-Based Route Notifications
+
+Leverage the existing `useNearbyPromotions` infrastructure to suggest routes based on the user's current location.
+
+**How it works:**
+- When the user is near a cluster of promotions, the app suggests "You're near 5 earning spots -- start a route?"
+- The notification appears as an in-app toast and (if permitted) a browser/push notification
+- Tapping the notification opens the Route Builder with a pre-suggested route from nearby promos
+- Integrates with the existing geolocation watcher and notification system
+
+**File:** `src/hooks/useNearbyPromotions.ts`
+- Add route suggestion logic: when 3+ promos are within the alert radius, trigger a "route suggestion" notification
+- Add a `suggestedRouteStops` output that the parent can use to auto-build a route
+
+**File:** `src/pages/Index.tsx`
+- Listen for route suggestions from `useNearbyPromotions` and show an actionable toast
+- Toast action opens the Route Builder with pre-populated stops
+
+---
+
+## 7. AI-Designed Routes Based on User Behavior
+
+Add a "Smart Route" feature that uses platform heuristics (and future AI) to design personalized routes.
+
+**How it works:**
+- A prominent "Smart Route" card in the Route Builder with a brain/sparkle icon
+- Considers multiple signals:
+  - Time of day (morning commute vs evening leisure)
+  - Day of week (weekday efficiency vs weekend exploration)
+  - Past check-in history (preferred categories)
+  - Average session length (short trips vs long routes)
+  - Transport preferences (inferred from past routes)
+- For now, implemented as a heuristic engine; can be upgraded to use AI later
+- Shows a brief explanation: "Designed for your Wednesday morning commute" or "Weekend exploration route based on your interests"
+
+**File:** `src/hooks/usePromoRoute.ts`
+- Add `suggestSmartRoute` method with heuristic logic based on:
+  - Current time/day
+  - User's saved routes patterns
+  - Watch later items
+  - Default optimization that varies by context
+
+**File:** `src/components/RouteBuilder.tsx`
+- Add "Smart Route" card with brain icon in the suggestion section
+- Shows a contextual label explaining why this route was designed
+- Positioned as the primary suggestion option
+
+---
+
+## Technical Summary
+
+### Files to modify:
+
+| File | Changes |
+|------|---------|
+| `src/hooks/usePromoRoute.ts` | Add destination, schedule, segment transport, suggestFromWatchLater, suggestByInterests, suggestSmartRoute |
+| `src/components/RouteBuilder.tsx` | Drag-and-drop, destination input, schedule picker, multi-modal segments, new suggestion cards |
+| `src/components/RouteFilterSheet.tsx` | Add transport mode filter for multi-modal routes |
+| `src/hooks/useNearbyPromotions.ts` | Add route cluster detection and suggestion output |
+| `src/pages/Index.tsx` | Wire nearby route suggestions to actionable toasts |
+| `src/components/DiscoveryMap.tsx` | Pass new props for destination and smart route |
 
 ### No database changes or new dependencies required.
+
+All features work with the existing mock data system and can be connected to real backend data when available.

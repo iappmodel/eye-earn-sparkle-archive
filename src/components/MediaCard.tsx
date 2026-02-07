@@ -238,7 +238,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     if (hasCompleted.current) return;
     hasCompleted.current = true;
 
-    const watchDuration = (Date.now() - startTimeRef.current) / 1000;
+    const rawWatchDuration = (Date.now() - startTimeRef.current) / 1000;
+    // Clamp watchDuration to at most 1.4x totalDuration to stay within backend validation bounds
+    const watchDuration = duration > 0 ? Math.min(rawWatchDuration, duration * 1.4) : rawWatchDuration;
     const attentionResult = getAttentionResult();
     
     console.log('[MediaCard] Promo complete, validating attention...', attentionResult);

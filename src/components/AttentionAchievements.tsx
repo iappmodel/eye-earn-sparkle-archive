@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { cn } from '@/lib/utils';
 import { Trophy, Star, Flame, Eye, Target, Zap, Crown, Award } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -184,8 +185,6 @@ export const AttentionAchievementsPanel: React.FC<AttentionAchievementsPanelProp
   stats,
   unlockedAchievements,
 }) => {
-  if (!isVisible) return null;
-
   const getProgress = (achievement: typeof ATTENTION_ACHIEVEMENTS[number]): number => {
     switch (achievement.requirement.type) {
       case 'perfect_videos':
@@ -197,7 +196,7 @@ export const AttentionAchievementsPanel: React.FC<AttentionAchievementsPanelProp
       case 'daily_perfect':
         return stats.dailyPerfectCount;
       case 'long_focus':
-        return 0; // This is checked per-video
+        return 0;
       default:
         return 0;
     }
@@ -207,7 +206,7 @@ export const AttentionAchievementsPanel: React.FC<AttentionAchievementsPanelProp
   const totalCount = ATTENTION_ACHIEVEMENTS.length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-md animate-fade-in overflow-y-auto">
+    <SwipeDismissOverlay isOpen={isVisible} onClose={onClose}>
       <div className="min-h-full p-4 pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -253,7 +252,7 @@ export const AttentionAchievementsPanel: React.FC<AttentionAchievementsPanelProp
           ))}
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };
 

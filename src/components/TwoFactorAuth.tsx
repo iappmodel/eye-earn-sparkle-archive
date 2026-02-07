@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { 
   X, Shield, Smartphone, Key, Copy, Check, 
   Loader2, QrCode, AlertTriangle, CheckCircle2
@@ -39,8 +40,6 @@ export const TwoFactorAuth: React.FC<TwoFactorAuthProps> = ({
     'q7r8s9t0',
     'u1v2w3x4',
   ];
-
-  if (!isOpen) return null;
 
   const handleCopySecret = () => {
     navigator.clipboard.writeText(mockSecret);
@@ -317,7 +316,7 @@ export const TwoFactorAuth: React.FC<TwoFactorAuthProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -356,6 +355,6 @@ export const TwoFactorAuth: React.FC<TwoFactorAuthProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

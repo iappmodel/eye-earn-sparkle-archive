@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe, Crown, Gift, QrCode, UserX, History } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
@@ -60,8 +61,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { t, localeConfig } = useLocalization();
   const { tier, tierName, rewardMultiplier } = useSubscription();
 
-  if (!isOpen) return null;
-
   const handleSignOut = async () => {
     await signOut();
     onClose();
@@ -77,7 +76,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const kycStatus = (profile?.kyc_status as 'pending' | 'submitted' | 'verified' | 'rejected') || 'pending';
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col p-4 sm:p-6 overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -323,6 +322,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         isOpen={showActivityLog}
         onClose={() => setShowActivityLog(false)}
       />
-    </div>
+    </SwipeDismissOverlay>
   );
 };

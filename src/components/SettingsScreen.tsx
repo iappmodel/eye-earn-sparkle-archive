@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2, MessageCircle, Crown } from 'lucide-react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
 import { MediaSettings } from './MediaSettings';
@@ -82,8 +83,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const toggleDarkMode = () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
@@ -146,7 +145,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className={cn(
         "max-w-md mx-auto h-full flex flex-col p-6 overflow-y-auto pb-24",
         isRTL && "rtl"
@@ -647,7 +646,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };
 

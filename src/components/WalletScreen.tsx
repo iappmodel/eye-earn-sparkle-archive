@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, ArrowUpRight, ArrowDownLeft, CreditCard, Building2, TrendingUp, RefreshCw, Wallet, Crown, Zap } from 'lucide-react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { cn } from '@/lib/utils';
@@ -125,8 +126,6 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   const getTransactionIcon = (type: WalletTransaction['type']) => {
     switch (type) {
       case 'earned':
@@ -147,8 +146,8 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up overflow-y-auto">
-      <div className="max-w-md mx-auto min-h-full flex flex-col p-4 sm:p-6" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
+      <div className="max-w-md mx-auto min-h-full flex flex-col p-4 sm:p-6 overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="font-display text-2xl font-bold">Wallet</h1>
@@ -449,6 +448,6 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
           </>
         )}
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

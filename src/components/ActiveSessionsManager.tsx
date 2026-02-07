@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { 
   X, Smartphone, Monitor, Tablet, MapPin, 
   Loader2, Trash2, Shield, CheckCircle2, AlertTriangle
@@ -161,10 +162,8 @@ export const ActiveSessionsManager: React.FC<ActiveSessionsManagerProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -310,6 +309,6 @@ export const ActiveSessionsManager: React.FC<ActiveSessionsManagerProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

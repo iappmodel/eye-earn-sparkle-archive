@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Camera, Upload, Instagram, Twitter, Link2, Check, Loader2 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { Button } from './ui/button';
@@ -39,9 +40,6 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
   
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
-
-  if (!isOpen) return null;
-
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -107,7 +105,7 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
   const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${username || 'user'}`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -282,6 +280,6 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

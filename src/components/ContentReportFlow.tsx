@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { 
   X, Flag, AlertTriangle, MessageSquare, User, 
   Image, Video, Loader2, CheckCircle2, ChevronRight
@@ -97,8 +98,6 @@ export const ContentReportFlow: React.FC<ContentReportFlowProps> = ({
   const [selectedReason, setSelectedReason] = useState<ReportReason | null>(null);
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleSelectReason = (reason: ReportReason) => {
     setSelectedReason(reason);
@@ -269,7 +268,7 @@ export const ContentReportFlow: React.FC<ContentReportFlowProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={handleClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -306,6 +305,6 @@ export const ContentReportFlow: React.FC<ContentReportFlowProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

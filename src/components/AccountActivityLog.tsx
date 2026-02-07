@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { 
   X, LogIn, LogOut, Key, User, Smartphone, Shield, 
   MapPin, Check, AlertTriangle, Loader2, RefreshCw,
@@ -103,8 +104,6 @@ export const AccountActivityLog: React.FC<AccountActivityLogProps> = ({
     return 'Unknown device';
   };
 
-  if (!isOpen) return null;
-
   // Group activities by date
   const groupedActivities = activities.reduce((groups, activity) => {
     const date = format(new Date(activity.created_at), 'yyyy-MM-dd');
@@ -116,7 +115,7 @@ export const AccountActivityLog: React.FC<AccountActivityLogProps> = ({
   }, {} as Record<string, ActivityLog[]>);
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -269,6 +268,6 @@ export const AccountActivityLog: React.FC<AccountActivityLogProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

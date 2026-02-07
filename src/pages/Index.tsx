@@ -222,6 +222,7 @@ const Index = () => {
   const { routeSuggestion, dismissRouteSuggestion } = useNearbyPromotions(true);
   
   // Show route suggestion toast when cluster detected
+  const { suggestRoute } = promoRoute;
   useEffect(() => {
     if (routeSuggestion && routeSuggestion.promotions.length >= 3) {
       toast(`🗺️ You're near ${routeSuggestion.promotions.length} earning spots!`, {
@@ -239,7 +240,7 @@ const Index = () => {
               reward_type: p.reward_type as 'vicoin' | 'icoin' | 'both',
               reward_amount: p.reward_amount,
             }));
-            promoRoute.suggestRoute(
+            suggestRoute(
               promos,
               routeSuggestion.center.lat,
               routeSuggestion.center.lng,
@@ -252,7 +253,7 @@ const Index = () => {
       });
       dismissRouteSuggestion();
     }
-  }, [routeSuggestion, dismissRouteSuggestion, promoRoute]);
+  }, [routeSuggestion, dismissRouteSuggestion, suggestRoute]);
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);

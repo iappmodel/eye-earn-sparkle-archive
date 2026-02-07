@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Download, Share2, Copy, Check } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { Button } from './ui/button';
@@ -27,8 +28,6 @@ export const ProfileQRCode: React.FC<ProfileQRCodeProps> = ({
     const encoded = encodeURIComponent(profileUrl);
     return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encoded}&bgcolor=transparent&color=currentColor&format=svg`;
   }, [profileUrl]);
-
-  if (!isOpen) return null;
 
   const handleCopy = async () => {
     try {
@@ -81,7 +80,7 @@ export const ProfileQRCode: React.FC<ProfileQRCodeProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up flex items-center justify-center p-6">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose} className="flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -150,6 +149,6 @@ export const ProfileQRCode: React.FC<ProfileQRCodeProps> = ({
           </Button>
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

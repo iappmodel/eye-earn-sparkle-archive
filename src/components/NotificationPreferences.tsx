@@ -1,4 +1,5 @@
 import React from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Bell, Mail, Smartphone, DollarSign, Shield, Heart, Gift } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -48,8 +49,6 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
 }) => {
   const { preferences, updatePreferences, isLoading } = useNotifications();
 
-  if (!isOpen) return null;
-
   const toggleChannel = (channel: 'push_enabled' | 'email_enabled' | 'in_app_enabled') => {
     if (!preferences) return;
     updatePreferences({ [channel]: !preferences[channel] });
@@ -65,7 +64,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col p-6 overflow-y-auto pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -200,6 +199,6 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
           </>
         )}
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

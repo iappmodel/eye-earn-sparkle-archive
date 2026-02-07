@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Crown, Gift, CreditCard } from 'lucide-react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { NeuButton } from './NeuButton';
 import { SubscriptionPlans } from './SubscriptionPlans';
 import { ReferralPanel } from './ReferralPanel';
@@ -20,15 +21,13 @@ export const PremiumScreen: React.FC<PremiumScreenProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
-  if (!isOpen) return null;
-
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'plans', label: 'Subscription', icon: <Crown className="w-4 h-4" /> },
     { id: 'referral', label: 'Referral', icon: <Gift className="w-4 h-4" /> },
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col p-6 overflow-y-auto pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -64,7 +63,7 @@ export const PremiumScreen: React.FC<PremiumScreenProps> = ({
         {activeTab === 'plans' && <SubscriptionPlans />}
         {activeTab === 'referral' && <ReferralPanel />}
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };
 

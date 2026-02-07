@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Ban, VolumeX, Trash2, Search, UserX, AlertCircle, Loader2 } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { Button } from './ui/button';
@@ -117,8 +118,6 @@ export const BlockMuteManager: React.FC<BlockMuteManagerProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   const filteredUsers = blockedUsers.filter(b => {
     if (filter === 'blocked' && b.block_type !== 'block') return false;
     if (filter === 'muted' && b.block_type !== 'mute') return false;
@@ -134,7 +133,7 @@ export const BlockMuteManager: React.FC<BlockMuteManagerProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border/50">
@@ -286,7 +285,7 @@ export const BlockMuteManager: React.FC<BlockMuteManagerProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SwipeDismissOverlay>
   );
 };
 

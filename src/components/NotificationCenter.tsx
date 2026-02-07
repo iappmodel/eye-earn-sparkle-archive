@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Bell, BellOff, Check, CheckCheck, Gift, MessageCircle, Settings, ChevronDown, ChevronUp } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
@@ -123,10 +124,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     [notifications]
   );
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -197,6 +196,6 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           </Button>
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

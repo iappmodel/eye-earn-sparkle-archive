@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, MessageCircle, UserPlus, UserMinus, Share2, MoreHorizontal, MapPin, Calendar, LinkIcon } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
@@ -121,8 +122,6 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
     toast.info('Report functionality coming soon');
   };
 
-  if (!isOpen) return null;
-
   const displayName = profile?.display_name || profile?.username || 'User';
   const username = profile?.username || 'user';
   const avatarUrl = profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
@@ -131,7 +130,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   const role = userRole?.role || 'user';
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="relative">
@@ -305,6 +304,6 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

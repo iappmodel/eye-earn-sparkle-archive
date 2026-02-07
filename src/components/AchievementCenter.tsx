@@ -1,4 +1,5 @@
 import React from 'react';
+import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { X, Trophy, Star, Medal, Crown, Flame, Zap, CheckSquare, Coins, Gem, Footprints, Lock } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { useTasks, Achievement, UserAchievement } from '@/hooks/useTasks';
@@ -80,8 +81,6 @@ export const AchievementCenter: React.FC<AchievementCenterProps> = ({
 }) => {
   const { achievements, userAchievements, isLoading } = useTasks();
 
-  if (!isOpen) return null;
-
   const unlockedCount = userAchievements.length;
   const totalCount = achievements.length;
 
@@ -93,7 +92,7 @@ export const AchievementCenter: React.FC<AchievementCenterProps> = ({
   })).filter(g => g.items.length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
+    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-border">
@@ -151,6 +150,6 @@ export const AchievementCenter: React.FC<AchievementCenterProps> = ({
           )}
         </ScrollArea>
       </div>
-    </div>
+    </SwipeDismissOverlay>
   );
 };

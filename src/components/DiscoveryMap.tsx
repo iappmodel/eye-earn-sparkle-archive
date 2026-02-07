@@ -1004,7 +1004,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       {/* Selected Promotion Card */}
       {selectedPromo && (
         <div className="absolute bottom-20 left-4 right-4 z-20">
-          <div className="neu-card rounded-3xl p-5 animate-slide-up border border-border/50">
+          <div className="neu-card rounded-3xl p-5 animate-slide-up border border-border/50 overflow-hidden">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div 
@@ -1044,7 +1044,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
               📋 {selectedPromo.required_action}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <CheckInButton
                 promotion={{
                   id: selectedPromo.id,
@@ -1054,7 +1054,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
                   reward_amount: selectedPromo.reward_amount,
                   reward_type: selectedPromo.reward_type,
                 }}
-                className="flex-1"
+                className="flex-1 min-w-0"
                 onSuccess={() => {
                   setCompletedStops(prev => new Set([...prev, selectedPromo.id]));
                   setSelectedPromo(null);
@@ -1064,21 +1064,21 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
               <button
                 onClick={() => handleAddToRoute(selectedPromo)}
                 className={cn(
-                  "py-3 px-4 rounded-xl neu-button flex items-center gap-1.5 text-sm",
+                  "py-3 px-4 rounded-xl neu-button flex items-center gap-1.5 text-sm min-w-0 flex-shrink",
                   promoRoute.isInRoute(selectedPromo.id) && "text-green-500 border-green-500/30"
                 )}
               >
                 {promoRoute.isInRoute(selectedPromo.id) ? (
                   <>✓ In Route</>
                 ) : (
-                  <><Plus className="w-4 h-4" /> Route</>
+                  <><Plus className="w-4 h-4 flex-shrink-0" /> Route</>
                 )}
               </button>
               {/* Watch Later */}
               <button 
                 onClick={() => handleAddToWatchLater(selectedPromo)}
                 className={cn(
-                  "py-3 px-3 rounded-xl neu-button",
+                  "py-3 px-3 rounded-xl neu-button flex-shrink-0",
                   promoRoute.isInWatchLater(selectedPromo.id) && "text-primary"
                 )}
               >
@@ -1094,7 +1094,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
                   category: selectedPromo.category,
                 })}
                 className={cn(
-                  "py-3 px-3 rounded-xl neu-button",
+                  "py-3 px-3 rounded-xl neu-button flex-shrink-0",
                   isFavorite(selectedPromo.id) && "text-red-500"
                 )}
               >
@@ -1102,7 +1102,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
               </button>
               <button 
                 onClick={() => openDirections(selectedPromo.latitude, selectedPromo.longitude, selectedPromo.business_name)}
-                className="py-3 px-3 rounded-xl neu-button"
+                className="py-3 px-3 rounded-xl neu-button flex-shrink-0"
               >
                 <ExternalLink className="w-5 h-5" />
               </button>

@@ -24,13 +24,20 @@ interface CheckIn {
 
 interface CheckInHistoryProps {
   trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function CheckInHistory({ trigger }: CheckInHistoryProps) {
+export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CheckInHistoryProps) {
   const { user } = useAuth();
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // Support both controlled and uncontrolled modes
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? (controlledOnOpenChange || (() => {})) : setInternalOpen;
 
   useEffect(() => {
     if (open && user?.id) {
@@ -94,107 +101,122 @@ export function CheckInHistory({ trigger }: CheckInHistoryProps) {
     </Button>
   );
 
+  // In controlled mode without a trigger, render just the Sheet (no SheetTrigger)
+  const sheetContent = (
+    <SheetContent side="bottom" className="h-[85vh]">
+      <SheetHeader className="pb-4">
+        <SheetTitle className="flex items-center gap-2">
+          <History className="h-5 w-5" />
+          Check-In History
+        </SheetTitle>
+      </SheetHeader>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="bg-muted/50 rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold">{checkIns.length}</div>
+          <div className="text-xs text-muted-foreground">Total Check-ins</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-green-500">
+            {checkIns.filter(c => c.status === 'verified').length}
+          </div>
+          <div className="text-xs text-muted-foreground">Verified</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-primary flex items-center justify-center gap-1">
+            <Coins className="h-4 w-4" />
+            {totalEarned}
+          </div>
+          <div className="text-xs text-muted-foreground">Coins Earned</div>
+        </div>
+      </div>
+
+      <ScrollArea className="h-[calc(85vh-200px)]">
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex gap-3 p-3 border rounded-lg">
+                <Skeleton className="h-12 w-12 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : checkIns.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <MapPin className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="font-semibold mb-1">No Check-ins Yet</h3>
+            <p className="text-sm text-muted-foreground max-w-[250px]">
+              Visit promotion locations and check in to start earning rewards!
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {checkIns.map((checkIn) => (
+              <div
+                key={checkIn.id}
+                className="flex gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors"
+              >
+                <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                  {getStatusIcon(checkIn.status)}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="font-medium truncate">{checkIn.business_name}</h4>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <Clock className="h-3 w-3" />
+                        {format(new Date(checkIn.checked_in_at), 'MMM d, yyyy • h:mm a')}
+                      </div>
+                    </div>
+                    {getStatusBadge(checkIn.status, checkIn.reward_claimed)}
+                  </div>
+                  
+                  <div className="flex items-center gap-3 mt-2 text-sm">
+                    {checkIn.reward_claimed && checkIn.reward_amount ? (
+                      <span className="text-green-600 font-medium flex items-center gap-1">
+                        <Coins className="h-3.5 w-3.5" />
+                        +{checkIn.reward_amount} {checkIn.reward_type}
+                      </span>
+                    ) : checkIn.status === 'verified' ? (
+                      <span className="text-muted-foreground">Reward pending</span>
+                    ) : null}
+                    <span className="text-muted-foreground">
+                      <MapPin className="h-3 w-3 inline mr-1" />
+                      {Math.round(checkIn.distance_meters)}m away
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </SheetContent>
+  );
+
+  // Controlled mode: no trigger needed
+  if (isControlled) {
+    return (
+      <Sheet open={open} onOpenChange={setOpen}>
+        {sheetContent}
+      </Sheet>
+    );
+  }
+
+  // Uncontrolled mode: use trigger
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         {trigger || defaultTrigger}
       </SheetTrigger>
-      <SheetContent side="bottom" className="h-[85vh]">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Check-In History
-          </SheetTitle>
-        </SheetHeader>
-
-        {/* Summary Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-muted/50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold">{checkIns.length}</div>
-            <div className="text-xs text-muted-foreground">Total Check-ins</div>
-          </div>
-          <div className="bg-muted/50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-green-500">
-              {checkIns.filter(c => c.status === 'verified').length}
-            </div>
-            <div className="text-xs text-muted-foreground">Verified</div>
-          </div>
-          <div className="bg-muted/50 rounded-lg p-3 text-center">
-            <div className="text-2xl font-bold text-primary flex items-center justify-center gap-1">
-              <Coins className="h-4 w-4" />
-              {totalEarned}
-            </div>
-            <div className="text-xs text-muted-foreground">Coins Earned</div>
-          </div>
-        </div>
-
-        <ScrollArea className="h-[calc(85vh-200px)]">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex gap-3 p-3 border rounded-lg">
-                  <Skeleton className="h-12 w-12 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : checkIns.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                <MapPin className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="font-semibold mb-1">No Check-ins Yet</h3>
-              <p className="text-sm text-muted-foreground max-w-[250px]">
-                Visit promotion locations and check in to start earning rewards!
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {checkIns.map((checkIn) => (
-                <div
-                  key={checkIn.id}
-                  className="flex gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors"
-                >
-                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                    {getStatusIcon(checkIn.status)}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h4 className="font-medium truncate">{checkIn.business_name}</h4>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                          <Clock className="h-3 w-3" />
-                          {format(new Date(checkIn.checked_in_at), 'MMM d, yyyy • h:mm a')}
-                        </div>
-                      </div>
-                      {getStatusBadge(checkIn.status, checkIn.reward_claimed)}
-                    </div>
-                    
-                    <div className="flex items-center gap-3 mt-2 text-sm">
-                      {checkIn.reward_claimed && checkIn.reward_amount ? (
-                        <span className="text-green-600 font-medium flex items-center gap-1">
-                          <Coins className="h-3.5 w-3.5" />
-                          +{checkIn.reward_amount} {checkIn.reward_type}
-                        </span>
-                      ) : checkIn.status === 'verified' ? (
-                        <span className="text-muted-foreground">Reward pending</span>
-                      ) : null}
-                      <span className="text-muted-foreground">
-                        <MapPin className="h-3 w-3 inline mr-1" />
-                        {Math.round(checkIn.distance_meters)}m away
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-      </SheetContent>
+      {sheetContent}
     </Sheet>
   );
 }

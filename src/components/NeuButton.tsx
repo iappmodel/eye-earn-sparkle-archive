@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
 interface NeuButtonProps {
   children: React.ReactNode;
-  onClick?: () => void;
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   size?: 'sm' | 'md' | 'lg';
   variant?: 'default' | 'accent' | 'gold';
@@ -26,7 +26,7 @@ const iconSizeClasses = {
   lg: '[&>svg]:w-5 [&>svg]:h-5',
 };
 
-export const NeuButton: React.FC<NeuButtonProps> = ({
+export const NeuButton = forwardRef<HTMLButtonElement, NeuButtonProps>(({
   children,
   onClick,
   className,
@@ -37,27 +37,31 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
   showTooltipOnHover = true,
   badge,
   disabled = false,
-}) => {
+}, ref) => {
   const [pressed, setPressed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const handlePress = useCallback(() => {
+  const handlePressStart = useCallback(() => {
+    if (disabled) return;
     setPressed(true);
-    // Haptic feedback
     if (navigator.vibrate) {
       navigator.vibrate(10);
     }
-  }, []);
+  }, [disabled]);
 
-  const handleRelease = useCallback(() => {
+  const handlePressEnd = useCallback(() => {
     setPressed(false);
-    onClick?.();
-  }, [onClick]);
+  }, []);
 
   const handleMouseLeave = useCallback(() => {
     setPressed(false);
     setIsHovered(false);
   }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    onClick?.(e);
+  }, [disabled, onClick]);
 
   const accentStyles = variant === 'accent' 
     ? 'text-primary border border-primary/30 shadow-primary/20' 
@@ -74,7 +78,9 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
   return (
     <div className="relative group">
       <button
+        ref={ref}
         disabled={disabled}
+        onClick={handleClick}
         className={cn(
           // Base styles
           'rounded-2xl flex items-center justify-center',
@@ -99,12 +105,12 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
           disabled && 'opacity-50 cursor-not-allowed',
           className
         )}
-        onMouseDown={disabled ? undefined : handlePress}
-        onMouseUp={disabled ? undefined : handleRelease}
+        onMouseDown={handlePressStart}
+        onMouseUp={handlePressEnd}
         onMouseLeave={handleMouseLeave}
         onMouseEnter={() => setIsHovered(true)}
-        onTouchStart={disabled ? undefined : handlePress}
-        onTouchEnd={disabled ? undefined : handleRelease}
+        onTouchStart={handlePressStart}
+        onTouchEnd={handlePressEnd}
       >
         {/* Inner glow effect for accent variants */}
         {(variant === 'accent' || variant === 'gold') && (
@@ -154,4 +160,6 @@ export const NeuButton: React.FC<NeuButtonProps> = ({
       )}
     </div>
   );
-};
+});
+
+NeuButton.displayName = 'NeuButton';

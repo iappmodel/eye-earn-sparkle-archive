@@ -795,6 +795,8 @@ const Index = () => {
             toast.info('Open the Discovery Map for smart route suggestions');
           }}
           onStartRoute={() => promoRoute.startRoute('Feed Route')}
+          onDuplicateRoute={promoRoute.duplicateRoute}
+          onOpenSavedRouteInMaps={(routeId) => promoRoute.openSavedRouteInMaps(routeId)}
         />
 
         {/* Bottom Navigation - centered at bottom */}

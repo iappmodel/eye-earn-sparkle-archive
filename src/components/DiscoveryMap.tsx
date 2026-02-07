@@ -1237,6 +1237,8 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
             toast.success('Smart route generated!');
           } else { toast.error('Location needed'); }
         }}
+        onDuplicateRoute={promoRoute.duplicateRoute}
+        onOpenSavedRouteInMaps={(routeId) => promoRoute.openSavedRouteInMaps(routeId, userLocation?.lat, userLocation?.lng)}
       />
     </div>
   );

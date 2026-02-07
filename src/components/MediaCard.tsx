@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Play, Pause, Volume2, VolumeX, SkipForward, Eye, Clock, Award, XCircle } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Eye, Clock, Award, XCircle } from 'lucide-react';
 import { RewardBadge } from './RewardBadge';
 import { EyeTrackingIndicator } from './EyeTrackingIndicator';
 import { AttentionProgressBar } from './AttentionProgressBar';
@@ -456,10 +456,6 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     resetControlsTimeout();
   }, [resetControlsTimeout]);
 
-  const handleSkipClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onSkip?.();
-  }, [onSkip]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -661,20 +657,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       {/* Tap-to-reveal playback controls - centered on screen */}
       {showControls && type !== 'image' && (
         <div className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in">
-          <div className="flex items-center gap-6">
-            {/* Play/Pause - large center button */}
-            <button
-              onClick={togglePlayPause}
-              className="w-16 h-16 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-xl"
-            >
-              {isPlaying ? (
-                <Pause className="w-7 h-7 text-foreground" />
-              ) : (
-                <Play className="w-7 h-7 text-foreground ml-1" />
-              )}
-            </button>
-
-            {/* Volume */}
+          <div className="flex flex-col items-center gap-4">
+            {/* Mute - top */}
             <button
               onClick={toggleMute}
               className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-lg"
@@ -686,12 +670,16 @@ export const MediaCard: React.FC<MediaCardProps> = ({
               )}
             </button>
 
-            {/* Skip/Next */}
+            {/* Play/Pause - bottom, larger */}
             <button
-              onClick={handleSkipClick}
-              className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-lg"
+              onClick={togglePlayPause}
+              className="w-16 h-16 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-xl"
             >
-              <SkipForward className="w-5 h-5 text-foreground" />
+              {isPlaying ? (
+                <Pause className="w-7 h-7 text-foreground" />
+              ) : (
+                <Play className="w-7 h-7 text-foreground ml-1" />
+              )}
             </button>
           </div>
         </div>

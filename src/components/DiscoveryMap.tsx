@@ -1206,7 +1206,9 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         onDeleteSavedRoute={promoRoute.deleteSavedRoute}
         onRemoveFromWatchLater={promoRoute.removeFromWatchLater}
         userLocation={userLocation}
+        mapboxToken={mapboxToken}
         onStartRoute={() => promoRoute.startRoute()}
+        onSetOrigin={promoRoute.setOrigin}
         onSetDestination={promoRoute.setDestination}
         onSetSchedule={promoRoute.setSchedule}
         onSetSegmentTransport={promoRoute.setSegmentTransport}

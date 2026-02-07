@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
-import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink, Bell, BellOff, History } from 'lucide-react';
+import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink, Bell, BellOff, History, Route, Plus, Bookmark } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -12,7 +12,9 @@ import { FavoriteLocations, useFavoriteLocation } from './FavoriteLocations';
 import { CategoryIcon, getCategoryInfo } from './PromotionCategories';
 import { CheckInButton } from './CheckInButton';
 import { CheckInHistory } from './CheckInHistory';
+import { RouteBuilder } from './RouteBuilder';
 import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
+import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
 
 interface Promotion {
   id: string;
@@ -50,12 +52,11 @@ const generateLocalPromotions = (centerLat: number, centerLng: number, count: nu
   const rewardTypes: ('vicoin' | 'icoin' | 'both')[] = ['vicoin', 'icoin', 'both'];
   const promotions: Promotion[] = [];
   
-  // 10 miles ≈ 0.145 degrees latitude, varies for longitude
   const radiusDegrees = 0.145;
   
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * 2 * Math.PI;
-    const distance = Math.sqrt(Math.random()) * radiusDegrees; // sqrt for uniform distribution
+    const distance = Math.sqrt(Math.random()) * radiusDegrees;
     const lat = centerLat + distance * Math.cos(angle);
     const lng = centerLng + distance * Math.sin(angle) / Math.cos(centerLat * Math.PI / 180);
     
@@ -78,7 +79,7 @@ const generateLocalPromotions = (centerLat: number, centerLng: number, count: nu
   return promotions;
 };
 
-// Generate global mock promotions for demo - creates clusters around major cities
+// Generate global mock promotions
 const generateGlobalPromotions = (): Promotion[] => {
   const cities = [
     { name: 'New York', lat: 40.7128, lng: -74.006 },
@@ -126,7 +127,6 @@ const generateGlobalPromotions = (): Promotion[] => {
   let promotions: Promotion[] = [];
   let idCounter = 0;
   
-  // Generate 50 pins per city (hundreds within 10-mile radius each)
   cities.forEach((city) => {
     const cityPromos = generateLocalPromotions(city.lat, city.lng, 50, idCounter);
     promotions = [...promotions, ...cityPromos];
@@ -136,7 +136,7 @@ const generateGlobalPromotions = (): Promotion[] => {
   return promotions;
 };
 
-// Get gradient color based on reward amount (green = low, red = high)
+// Get gradient color based on reward amount
 const getRewardGradient = (amount: number, rewardType: 'vicoin' | 'icoin' | 'both'): string => {
   const normalized = Math.min(amount / 500, 1);
   const hue = 120 - (normalized * 120);
@@ -178,15 +178,88 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions());
   const [localPromos, setLocalPromos] = useState<Promotion[]>([]);
   
-  // New state for enhanced features
+  // Enhanced features state
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [mapFilters, setMapFilters] = useState<MapFilters>(defaultMapFilters);
   const [nearbyAlertsEnabled, setNearbyAlertsEnabled] = useState(true);
+  const [showRouteBuilder, setShowRouteBuilder] = useState(false);
+  
+  // Route system
+  const promoRoute = usePromoRoute();
   
   // Nearby promotion alerts
   const { nearbyPromotions, isWatching } = useNearbyPromotions(nearbyAlertsEnabled && isOpen);
   const { toggleFavorite, isFavorite } = useFavoriteLocation();
+
+  // Add promotion to route
+  const handleAddToRoute = useCallback((promo: Promotion) => {
+    if (!promoRoute.isBuilding) {
+      promoRoute.startRoute();
+    }
+    if (promoRoute.isInRoute(promo.id)) {
+      toast.info('Already in your route');
+      return;
+    }
+    promoRoute.addStop({
+      id: `stop-${promo.id}`,
+      promotionId: promo.id,
+      businessName: promo.business_name,
+      latitude: promo.latitude,
+      longitude: promo.longitude,
+      address: promo.address,
+      category: promo.category,
+      rewardType: promo.reward_type,
+      rewardAmount: promo.reward_amount,
+      requiredAction: promo.required_action,
+    });
+    toast.success(`Added ${promo.business_name} to route`);
+  }, [promoRoute]);
+
+  // Add to watch later
+  const handleAddToWatchLater = useCallback((promo: Promotion) => {
+    if (promoRoute.isInWatchLater(promo.id)) {
+      promoRoute.removeFromWatchLater(promo.id);
+      toast.info('Removed from Watch Later');
+    } else {
+      promoRoute.addToWatchLater({
+        id: `wl-${promo.id}`,
+        promotionId: promo.id,
+        businessName: promo.business_name,
+        latitude: promo.latitude,
+        longitude: promo.longitude,
+        address: promo.address,
+        category: promo.category,
+        rewardType: promo.reward_type,
+        rewardAmount: promo.reward_amount,
+        requiredAction: promo.required_action,
+      });
+      toast.success('Added to Watch Later');
+    }
+  }, [promoRoute]);
+
+  // Suggest route from current promotions
+  const handleSuggestRoute = useCallback(() => {
+    if (!userLocation) return;
+    promoRoute.suggestRoute(
+      promotions.map(p => ({
+        id: p.id,
+        business_name: p.business_name,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        address: p.address,
+        category: p.category,
+        reward_type: p.reward_type,
+        reward_amount: p.reward_amount,
+        required_action: p.required_action,
+      })),
+      userLocation.lat,
+      userLocation.lng,
+      promoRoute.activeRoute?.filters || defaultRouteFilters,
+    );
+    toast.success('Route suggested based on nearby promos!');
+  }, [promotions, userLocation, promoRoute]);
+
   // Create popup HTML for a promotion
   const createPopupHTML = useCallback((promo: Promotion): string => {
     const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : 'V+I';
@@ -327,7 +400,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
             lng: position.coords.longitude,
           };
           setUserLocation(loc);
-          // Generate 200 local pins within 10 miles of user
           setLocalPromos(generateLocalPromotions(loc.lat, loc.lng, 200, 10000));
         },
         (error) => {
@@ -355,13 +427,11 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       pitch: 45,
     });
 
-    // Add navigation controls
     map.current.addControl(
       new mapboxgl.NavigationControl({ visualizePitch: true }),
       'top-right'
     );
 
-    // Add user location marker
     const userMarkerEl = document.createElement('div');
     userMarkerEl.innerHTML = `
       <div style="
@@ -378,7 +448,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       .setLngLat([userLocation.lng, userLocation.lat])
       .addTo(map.current);
 
-    // Track map movement for "Search Here" button
     map.current.on('moveend', () => {
       if (!map.current) return;
       const center = map.current.getCenter();
@@ -386,7 +455,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       
       setMapCenter({ lat: center.lat, lng: center.lng });
       
-      // Show "Search Here" if map moved significantly
       if (userLocation) {
         const distance = Math.sqrt(
           Math.pow(center.lat - userLocation.lat, 2) + 
@@ -396,7 +464,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       }
     });
 
-    // Fetch promotions
     fetchPromotions();
 
     return () => {
@@ -410,24 +477,21 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
   useEffect(() => {
     if (!map.current) return;
 
-    // Clear existing markers and popups
     markersRef.current.forEach(marker => marker.remove());
     popupsRef.current.forEach(popup => popup.remove());
     markersRef.current = [];
     popupsRef.current = [];
 
-    // Filter promotions based on selected filter
     const filteredPromos = filter === 'all' 
       ? promotions 
       : promotions.filter(p => p.reward_type === filter || p.reward_type === 'both');
 
-    // Add new markers with gradient colors
     filteredPromos.forEach(promo => {
       const gradient = getRewardGradient(promo.reward_amount, promo.reward_type);
       const glow = getCoinGlow(promo.reward_type);
       const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★';
+      const inRoute = promoRoute.isInRoute(promo.id);
       
-      // Create marker element
       const el = document.createElement('div');
       el.className = 'promo-marker-wrapper';
       el.innerHTML = `
@@ -445,16 +509,16 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
           cursor: pointer;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), ${glow};
-          border: 2px solid rgba(255, 255, 255, 0.2);
+          border: ${inRoute ? '3px solid #22c55e' : '2px solid rgba(255, 255, 255, 0.2)'};
+          position: relative;
         ">
           ${coinIcon}
+          ${inRoute ? '<div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#22c55e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;">✓</div>' : ''}
         </div>
       `;
 
-      // Add hover effects
       const markerDiv = el.querySelector('.promo-marker') as HTMLElement;
       
-      // Create popup for this marker
       const popup = new mapboxgl.Popup({
         closeButton: false,
         closeOnClick: false,
@@ -494,7 +558,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       markersRef.current.push(marker);
       popupsRef.current.push(popup);
     });
-  }, [promotions, filter, createPopupHTML]);
+  }, [promotions, filter, createPopupHTML, promoRoute.activeRoute?.stops]);
 
   const fetchPromotions = async (searchCenter?: { lat: number; lng: number }) => {
     const center = searchCenter || userLocation;
@@ -515,20 +579,17 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
 
       if (error) throw error;
       
-      // Combine DB promos with local + global mock promos
       const dbPromos = data?.promotions || [];
       const zoom = map.current?.getZoom() || 14;
       const allMockPromos = [...localPromos, ...globalPromos];
       
       if (zoom < 6) {
-        // Show all global promos when zoomed out far
         const visiblePromos = allMockPromos.filter(p => {
           if (filter === 'all') return true;
           return p.reward_type === filter || p.reward_type === 'both';
         });
         setPromotions([...dbPromos, ...visiblePromos]);
       } else if (zoom < 10) {
-        // Show promos within a wider range
         const visiblePromos = allMockPromos.filter(p => {
           const distance = Math.sqrt(
             Math.pow(p.latitude - center.lat, 2) + 
@@ -540,7 +601,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         });
         setPromotions([...dbPromos, ...visiblePromos]);
       } else {
-        // Show nearby promos when zoomed in
         const nearbyPromos = allMockPromos.filter(p => {
           const distance = Math.sqrt(
             Math.pow(p.latitude - center.lat, 2) + 
@@ -556,15 +616,16 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
       toast.success(`Found ${dbPromos.length + allMockPromos.length} promotions nearby`);
     } catch (error) {
       console.error('[DiscoveryMap] Fetch error:', error);
-      // Fallback to mock promos only
       const zoom = map.current?.getZoom() || 14;
       const allMockPromos = [...localPromos, ...globalPromos];
       const visiblePromos = allMockPromos.filter(p => {
         if (filter !== 'all' && p.reward_type !== filter && p.reward_type !== 'both') return false;
         if (zoom >= 6) {
+          const center2 = searchCenter || userLocation;
+          if (!center2) return true;
           const distance = Math.sqrt(
-            Math.pow(p.latitude - center.lat, 2) + 
-            Math.pow(p.longitude - center.lng, 2)
+            Math.pow(p.latitude - center2.lat, 2) + 
+            Math.pow(p.longitude - center2.lng, 2)
           );
           return distance < (zoom < 10 ? 3 : 0.5);
         }
@@ -593,7 +654,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
     }
   };
 
-  // Navigate to searched location
   const handleSearchLocation = (lng: number, lat: number, placeName: string) => {
     if (map.current) {
       map.current.flyTo({
@@ -606,32 +666,24 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
     }
   };
 
-  // Open directions in external map app
   const openDirections = (lat: number, lng: number, name: string) => {
-    // Check if on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    
     if (isIOS) {
-      // Try Apple Maps first
       window.open(`maps://maps.apple.com/?daddr=${lat},${lng}&q=${encodeURIComponent(name)}`, '_blank');
     } else {
-      // Use Google Maps for Android/web
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&destination_place_id=${encodeURIComponent(name)}`, '_blank');
     }
   };
 
-  // Apply filters
   const applyFilters = () => {
     fetchPromotions();
     toast.success('Filters applied');
   };
 
-  // Reset filters
   const resetFilters = () => {
     setMapFilters(defaultMapFilters);
   };
 
-  // Count active filters
   const activeFilterCount = 
     (mapFilters.rewardTypes.length < 3 ? 1 : 0) +
     (mapFilters.categories.length > 0 ? 1 : 0) +
@@ -664,6 +716,21 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         <div className="flex items-center justify-between mb-3">
           <h1 className="font-display text-xl font-bold">Discovery Map</h1>
           <div className="flex gap-2">
+            {/* Route Builder Toggle */}
+            <NeuButton 
+              onClick={() => setShowRouteBuilder(true)} 
+              size="sm"
+              className={cn(
+                promoRoute.isBuilding && 'text-green-500 ring-1 ring-green-500/30'
+              )}
+            >
+              <Route className="w-5 h-5" />
+              {promoRoute.totalStops > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {promoRoute.totalStops}
+                </span>
+              )}
+            </NeuButton>
             {/* Nearby Alerts Toggle */}
             <NeuButton 
               onClick={() => setNearbyAlertsEnabled(!nearbyAlertsEnabled)} 
@@ -672,7 +739,6 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
             >
               {nearbyAlertsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
             </NeuButton>
-            {/* Check-in History */}
             <CheckInHistory
               trigger={
                 <NeuButton size="sm">
@@ -797,7 +863,20 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
         </div>
       )}
 
-      {/* Promotion Count Badge with Legend */}
+      {/* Route Active Banner */}
+      {promoRoute.isBuilding && promoRoute.totalStops > 0 && (
+        <div className="absolute top-32 left-1/2 transform -translate-x-1/2 z-20">
+          <button
+            onClick={() => setShowRouteBuilder(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white font-medium shadow-lg shadow-green-500/30 hover:scale-105 transition-transform text-sm"
+          >
+            <Route className="w-4 h-4" />
+            {promoRoute.totalStops} stops · {promoRoute.totalReward} coins
+          </button>
+        </div>
+      )}
+
+      {/* Promotion Count Badge */}
       <div className="absolute left-4 bottom-24 bg-background/90 backdrop-blur-sm rounded-2xl px-4 py-3 neu-card">
         <span className="text-sm font-medium block mb-2">{promotions.length} promos nearby</span>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -852,7 +931,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
               📋 {selectedPromo.required_action}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <CheckInButton
                 promotion={{
                   id: selectedPromo.id,
@@ -865,6 +944,30 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
                 className="flex-1"
                 onSuccess={() => setSelectedPromo(null)}
               />
+              {/* Add to Route button */}
+              <button
+                onClick={() => handleAddToRoute(selectedPromo)}
+                className={cn(
+                  "py-3 px-4 rounded-xl neu-button flex items-center gap-1.5 text-sm",
+                  promoRoute.isInRoute(selectedPromo.id) && "text-green-500 border-green-500/30"
+                )}
+              >
+                {promoRoute.isInRoute(selectedPromo.id) ? (
+                  <>✓ In Route</>
+                ) : (
+                  <><Plus className="w-4 h-4" /> Route</>
+                )}
+              </button>
+              {/* Watch Later */}
+              <button 
+                onClick={() => handleAddToWatchLater(selectedPromo)}
+                className={cn(
+                  "py-3 px-3 rounded-xl neu-button",
+                  promoRoute.isInWatchLater(selectedPromo.id) && "text-primary"
+                )}
+              >
+                <Bookmark className={cn("w-5 h-5", promoRoute.isInWatchLater(selectedPromo.id) && "fill-current")} />
+              </button>
               <button 
                 onClick={() => toggleFavorite({
                   id: selectedPromo.id,
@@ -875,7 +978,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
                   category: selectedPromo.category,
                 })}
                 className={cn(
-                  "py-3 px-4 rounded-xl neu-button",
+                  "py-3 px-3 rounded-xl neu-button",
                   isFavorite(selectedPromo.id) && "text-red-500"
                 )}
               >
@@ -883,7 +986,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
               </button>
               <button 
                 onClick={() => openDirections(selectedPromo.latitude, selectedPromo.longitude, selectedPromo.business_name)}
-                className="py-3 px-4 rounded-xl neu-button"
+                className="py-3 px-3 rounded-xl neu-button"
               >
                 <ExternalLink className="w-5 h-5" />
               </button>
@@ -958,6 +1061,29 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose }) =
             });
           }
         }}
+      />
+
+      {/* Route Builder */}
+      <RouteBuilder
+        open={showRouteBuilder}
+        onOpenChange={setShowRouteBuilder}
+        route={promoRoute.activeRoute}
+        savedRoutes={promoRoute.savedRoutes}
+        watchLater={promoRoute.watchLater}
+        onRemoveStop={promoRoute.removeStop}
+        onReorderStops={promoRoute.reorderStops}
+        onSetTransportMode={promoRoute.setTransportMode}
+        onSetFilters={promoRoute.setRouteFilters}
+        onRenameRoute={promoRoute.renameRoute}
+        onToggleCommute={promoRoute.toggleCommuteRoute}
+        onSaveRoute={promoRoute.saveRoute}
+        onDiscardRoute={promoRoute.discardRoute}
+        onOpenInGoogleMaps={promoRoute.openInGoogleMaps}
+        onSuggestRoute={handleSuggestRoute}
+        onLoadRoute={promoRoute.loadRoute}
+        onDeleteSavedRoute={promoRoute.deleteSavedRoute}
+        onRemoveFromWatchLater={promoRoute.removeFromWatchLater}
+        userLocation={userLocation}
       />
     </div>
   );

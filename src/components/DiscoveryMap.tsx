@@ -188,9 +188,71 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
   const [showRouteBuilder, setShowRouteBuilder] = useState(false);
   const [showCheckInHistory, setShowCheckInHistory] = useState(false);
   
+  // Completed check-in stops
+  const [completedStops, setCompletedStops] = useState<Set<string>>(new Set());
+
   // Route system - use external if provided, otherwise local
   const localPromoRoute = usePromoRoute();
   const promoRoute = externalPromoRoute || localPromoRoute;
+
+  // Haversine distance in meters between two lat/lng points
+  const haversineMeters = useCallback((lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371000; // Earth radius in meters
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }, []);
+
+  // Determine marker visual state
+  const getMarkerStyle = useCallback((
+    promo: Promotion,
+    isInRoute: boolean,
+    isCompleted: boolean,
+    isNearby: boolean,
+  ) => {
+    if (isCompleted) {
+      return {
+        background: '#22c55e',
+        border: '2px solid white',
+        glow: '0 0 12px rgba(34, 197, 94, 0.5)',
+        opacity: '1',
+        badgeHTML: '<div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#22c55e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;color:white;border:1px solid white;">✓</div>',
+        animClass: '',
+      };
+    }
+    if (isNearby && isInRoute) {
+      return {
+        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+        border: '2px solid #fbbf24',
+        glow: '0 0 14px rgba(245, 158, 11, 0.5)',
+        opacity: '1',
+        badgeHTML: '',
+        animClass: 'promo-marker-nearby-pulse',
+      };
+    }
+    if (isInRoute) {
+      return {
+        background: getRewardGradient(promo.reward_amount, promo.reward_type),
+        border: '2px solid white',
+        glow: '0 0 12px rgba(96, 165, 250, 0.5)',
+        opacity: '1',
+        badgeHTML: '',
+        animClass: '',
+      };
+    }
+    // Not in route – muted gray
+    return {
+      background: '#3a3a4a',
+      border: '1px solid rgba(255,255,255,0.1)',
+      glow: 'none',
+      opacity: '0.6',
+      badgeHTML: '',
+      animClass: '',
+    };
+  }, []);
   
   // Nearby promotion alerts
   const { nearbyPromotions, isWatching } = useNearbyPromotions(nearbyAlertsEnabled && isOpen);
@@ -498,19 +560,23 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       : promotions.filter(p => p.reward_type === filter || p.reward_type === 'both');
 
     filteredPromos.forEach(promo => {
-      const gradient = getRewardGradient(promo.reward_amount, promo.reward_type);
-      const glow = getCoinGlow(promo.reward_type);
       const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★';
       const inRoute = promoRoute.isInRoute(promo.id);
+      const isCompleted = completedStops.has(promo.id);
+      const isNearby = inRoute && !isCompleted && userLocation
+        ? haversineMeters(userLocation.lat, userLocation.lng, promo.latitude, promo.longitude) <= 500
+        : false;
+      
+      const style = getMarkerStyle(promo, inRoute, isCompleted, isNearby);
       
       const el = document.createElement('div');
       el.className = 'promo-marker-wrapper';
       el.innerHTML = `
-        <div class="promo-marker" style="
+        <div class="promo-marker ${style.animClass}" style="
           width: 44px;
           height: 44px;
           border-radius: 50%;
-          background: ${gradient};
+          background: ${style.background};
           display: flex;
           align-items: center;
           justify-content: center;
@@ -519,12 +585,13 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
           font-size: 16px;
           cursor: pointer;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), ${glow};
-          border: ${inRoute ? '3px solid #22c55e' : '2px solid rgba(255, 255, 255, 0.2)'};
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3)${style.glow !== 'none' ? ', ' + style.glow : ''};
+          border: ${style.border};
+          opacity: ${style.opacity};
           position: relative;
         ">
-          ${coinIcon}
-          ${inRoute ? '<div style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#22c55e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;">✓</div>' : ''}
+          ${isCompleted ? '✓' : coinIcon}
+          ${style.badgeHTML}
         </div>
       `;
 
@@ -541,7 +608,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       el.addEventListener('mouseenter', () => {
         if (markerDiv) {
           markerDiv.style.transform = 'scale(1.2)';
-          markerDiv.style.boxShadow = `0 8px 25px rgba(0, 0, 0, 0.4), ${glow}`;
+          markerDiv.style.boxShadow = `0 8px 25px rgba(0, 0, 0, 0.4)${style.glow !== 'none' ? ', ' + style.glow : ''}`;
         }
         popup.setLngLat([promo.longitude, promo.latitude]).addTo(map.current!);
       });
@@ -549,7 +616,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       el.addEventListener('mouseleave', () => {
         if (markerDiv) {
           markerDiv.style.transform = 'scale(1)';
-          markerDiv.style.boxShadow = `0 4px 15px rgba(0, 0, 0, 0.3), ${glow}`;
+          markerDiv.style.boxShadow = `0 4px 15px rgba(0, 0, 0, 0.3)${style.glow !== 'none' ? ', ' + style.glow : ''}`;
         }
         popup.remove();
       });
@@ -569,7 +636,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       markersRef.current.push(marker);
       popupsRef.current.push(popup);
     });
-  }, [promotions, filter, createPopupHTML, promoRoute.activeRoute?.stops]);
+  }, [promotions, filter, createPopupHTML, promoRoute.activeRoute?.stops, completedStops, userLocation, haversineMeters, getMarkerStyle]);
 
   const fetchPromotions = async (searchCenter?: { lat: number; lng: number }) => {
     const center = searchCenter || userLocation;
@@ -719,6 +786,17 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         @keyframes pulse {
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.1); opacity: 0.8; }
+        }
+      `}</style>
+
+      {/* Nearby pulse animation for amber markers */}
+      <style>{`
+        @keyframes nearby-pulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 4px 15px rgba(0,0,0,0.3), 0 0 14px rgba(245,158,11,0.5); }
+          50% { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0,0,0,0.3), 0 0 22px rgba(245,158,11,0.7); }
+        }
+        .promo-marker-nearby-pulse {
+          animation: nearby-pulse 1.5s ease-in-out infinite;
         }
       `}</style>
 
@@ -963,7 +1041,10 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
                   reward_type: selectedPromo.reward_type,
                 }}
                 className="flex-1"
-                onSuccess={() => setSelectedPromo(null)}
+                onSuccess={() => {
+                  setCompletedStops(prev => new Set([...prev, selectedPromo.id]));
+                  setSelectedPromo(null);
+                }}
               />
               {/* Add to Route button */}
               <button

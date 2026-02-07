@@ -513,7 +513,7 @@ const Index = () => {
               <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
 
               {/* Feed toggle */}
-              <div className="absolute top-16 left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50">
+              <div className="absolute top-[env(safe-area-inset-top,16px)] left-4 z-20 flex items-center gap-2 bg-background/80 backdrop-blur-sm rounded-full px-3 py-1.5 border border-border/50 mt-14">
                 <Label htmlFor="unified-feed" className="text-xs font-medium cursor-pointer">
                   Unified Feed
                 </Label>
@@ -672,7 +672,7 @@ const Index = () => {
         />
 
         {/* Network Status Indicator */}
-        <div className="fixed top-4 right-4 z-50">
+        <div className="fixed top-2 left-4 z-50">
           <NetworkStatusIndicator variant="badge" />
         </div>
 

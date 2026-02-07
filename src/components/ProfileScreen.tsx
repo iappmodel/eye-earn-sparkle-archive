@@ -78,7 +78,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-lg animate-slide-up">
-      <div className="max-w-md mx-auto h-full flex flex-col p-6 overflow-y-auto pb-24">
+      <div className="max-w-md mx-auto h-full flex flex-col p-4 sm:p-6 overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">

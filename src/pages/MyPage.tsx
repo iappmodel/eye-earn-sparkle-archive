@@ -152,7 +152,7 @@ const MyPage: React.FC = () => {
       </div>
 
       {/* Content Grid */}
-      <div className="p-2 pb-24">
+      <div className="p-2" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
         {activeTab === 'rewards' ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -219,7 +219,8 @@ const MyPage: React.FC = () => {
       {/* Floating Logo Button - Right Bottom */}
       <button
         onClick={() => navigate('/')}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full glass-neon flex items-center justify-center shadow-xl hover:scale-110 transition-transform"
+        className="fixed right-4 z-50 w-14 h-14 rounded-full glass-neon flex items-center justify-center shadow-xl hover:scale-110 transition-transform"
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <AppLogo size="md" animated={false} />
       </button>

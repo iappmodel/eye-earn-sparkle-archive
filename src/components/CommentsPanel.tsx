@@ -138,7 +138,7 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="bottom" className="h-[70vh] rounded-t-3xl">
+      <SheetContent side="bottom" className="h-[25vh] rounded-t-3xl">
         <SheetHeader className="pb-4 border-b border-border">
           <div className="w-12 h-1 bg-muted rounded-full mx-auto mb-2" />
           <SheetTitle className="text-center">
@@ -192,7 +192,7 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
           </div>
         </ScrollArea>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-background">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border bg-background pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8">
               <AvatarImage src={user?.user_metadata?.avatar_url} />

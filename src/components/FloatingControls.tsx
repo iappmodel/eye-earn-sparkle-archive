@@ -449,7 +449,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           'transition-all duration-500 ease-out',
           isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12 pointer-events-none'
         )}
-        style={{ bottom: '100px' }}
+        style={{ bottom: 'calc(100px + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* 1st from bottom: Like (Heart) with MorphingLikeButton */}
         <LongPressButtonWrapper buttonId="like-button" buttonLabel="Like">
@@ -497,7 +497,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
               </LongPressButtonWrapper>
             </div>
           </SheetTrigger>
-          <SheetContent side="bottom" className="h-[50vh] rounded-t-3xl">
+          <SheetContent side="bottom" className="h-[25vh] rounded-t-3xl pb-[env(safe-area-inset-bottom,0px)]">
             <ProfilePreviewSheet 
               onFullProfileClick={handleFullProfileClick}
               onAchievementsClick={() => {

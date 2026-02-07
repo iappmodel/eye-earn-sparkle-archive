@@ -34,6 +34,8 @@ import { rewardsService } from '@/services/rewards.service';
 import { supabase } from '@/integrations/supabase/client';
 import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
 import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
+import { useSavedVideos } from '@/hooks/useSavedVideos';
+import { SavedVideosGallery } from '@/components/SavedVideosGallery';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Route as RouteIcon } from 'lucide-react';
@@ -214,9 +216,11 @@ const Index = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [showRouteBuilderFromFeed, setShowRouteBuilderFromFeed] = useState(false);
+  const [showSavedGallery, setShowSavedGallery] = useState(false);
   
   // Route system - lifted to app level for sharing between feed and map
   const promoRoute = usePromoRoute();
+  const savedVideos = useSavedVideos();
   
   // Nearby promotions with route suggestion detection
   const { routeSuggestion, dismissRouteSuggestion } = useNearbyPromotions(true);
@@ -527,34 +531,51 @@ const Index = () => {
     setShowThemePresets(true);
   };
 
-  // Handle adding current promo content to route from the feed
-  const handleAddToRoute = useCallback(() => {
-    if (!currentMedia || currentMedia.type !== 'promo') return;
-    
+  // Handle saving video for watch later
+  const handleSaveVideo = useCallback(() => {
+    if (!currentMedia) return;
+    const wasSaved = savedVideos.toggleSave({
+      id: `saved-${currentMedia.id}`,
+      contentId: currentMedia.id,
+      title: currentMedia.title || 'Untitled',
+      thumbnail: currentMedia.src,
+      type: currentMedia.type as 'promo' | 'video' | 'image',
+      creator: currentMedia.creator,
+      reward: currentMedia.reward,
+      duration: currentMedia.duration,
+      requiresPhysicalAction: currentMedia.type === 'promo',
+    });
+    toast.success(wasSaved ? 'Saved for later' : 'Removed from saved');
+  }, [currentMedia, savedVideos]);
+
+  const handleSaveLongPress = useCallback(() => {
+    setShowSavedGallery(true);
+  }, []);
+
+  // Handle adding a saved video to route from the gallery
+  const handleAddSavedToRoute = useCallback((video: import('@/hooks/useSavedVideos').SavedVideo) => {
     if (!promoRoute.isBuilding) {
-      promoRoute.startRoute('Feed Route');
+      promoRoute.startRoute('Saved Route');
     }
-    
-    const promoId = currentMedia.id;
-    if (promoRoute.isInRoute(promoId)) {
+    if (promoRoute.isInRoute(video.contentId)) {
       toast.info('Already in your route');
       return;
     }
-    
     promoRoute.addStop({
-      id: `stop-${promoId}`,
-      promotionId: promoId,
-      businessName: currentMedia.creator?.displayName || currentMedia.title || 'Promo',
-      latitude: 40.7128 + (Math.random() - 0.5) * 0.1, // Mock location for demo
+      id: `stop-${video.contentId}`,
+      promotionId: video.contentId,
+      businessName: video.creator?.displayName || video.title || 'Promo',
+      latitude: 40.7128 + (Math.random() - 0.5) * 0.1,
       longitude: -74.006 + (Math.random() - 0.5) * 0.1,
       category: 'Promotion',
-      rewardType: currentMedia.reward?.type || 'vicoin',
-      rewardAmount: currentMedia.reward?.amount || 0,
+      rewardType: video.reward?.type || 'vicoin',
+      rewardAmount: video.reward?.amount || 0,
       fromFeed: true,
-      contentId: currentMedia.id,
+      contentId: video.contentId,
     });
-    toast.success(`Added to route!`);
-  }, [currentMedia, promoRoute]);
+    savedVideos.markAddedToRoute(video.contentId);
+    toast.success('Added to route!');
+  }, [promoRoute, savedVideos]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -633,14 +654,11 @@ const Index = () => {
                 onShareClick={handleShare}
                 onSettingsClick={handleSettings}
                 onAchievementsClick={() => setShowAchievementsPanel(true)}
-                onAddToRoute={handleAddToRoute}
+                onSaveVideo={handleSaveVideo}
+                onSaveLongPress={handleSaveLongPress}
                 isLiked={isLiked}
                 likeCount={1234}
-                commentCount={89}
-                showAchievements={isPromoContent && eyeTrackingEnabled}
-                achievementsCount={unlockedAchievements.size}
-                showRouteButton={isPromoContent}
-                isInRoute={isPromoContent && promoRoute.isInRoute(currentMedia.id)}
+                isVideoSaved={savedVideos.isSaved(currentMedia.id)}
                 creatorInfo={currentMedia.creator}
                 onViewCreatorProfile={() => {
                   toast.info(`Viewing ${currentMedia.creator?.displayName}'s profile`);
@@ -796,6 +814,14 @@ const Index = () => {
           onClose={() => setShowThemePresets(false)}
         />
 
+        {/* Saved Videos Gallery */}
+        <SavedVideosGallery
+          isOpen={showSavedGallery}
+          onClose={() => setShowSavedGallery(false)}
+          savedVideos={savedVideos.savedVideos}
+          onUnsave={savedVideos.unsaveVideo}
+          onAddToRoute={handleAddSavedToRoute}
+        />
 
         {/* Comments Panel */}
         <CommentsPanel

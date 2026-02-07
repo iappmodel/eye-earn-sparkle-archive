@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet, Route, Check } from 'lucide-react';
+import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet, Bookmark, Check } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
@@ -199,17 +199,17 @@ interface FloatingControlsProps {
   onReportClick?: () => void;
   onMuteClick?: () => void;
   onAchievementsClick?: () => void;
-  onAddToRoute?: () => void;
+  onSaveVideo?: () => void;
+  onSaveLongPress?: () => void;
   isLiked?: boolean;
   isFollowing?: boolean;
   isSaved?: boolean;
+  isVideoSaved?: boolean;
   likeCount?: number;
   commentCount?: number;
   creatorName?: string;
   showAchievements?: boolean;
   achievementsCount?: number;
-  showRouteButton?: boolean;
-  isInRoute?: boolean;
   /** Info about the content creator being viewed */
   creatorInfo?: CreatorInfo;
   onViewCreatorProfile?: () => void;
@@ -416,11 +416,11 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onSettingsClick,
   onTip,
   onAchievementsClick,
-  onAddToRoute,
+  onSaveVideo,
+  onSaveLongPress,
   isLiked = false,
   likeCount = 0,
-  showRouteButton = false,
-  isInRoute = false,
+  isVideoSaved = false,
   creatorInfo,
   onViewCreatorProfile,
 }) => {
@@ -429,10 +429,10 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   const [remoteControlEnabled, setRemoteControlEnabled] = useState(false);
   const [showRemoteSettings, setShowRemoteSettings] = useState(false);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const saveLongPressTimer = useRef<NodeJS.Timeout | null>(null);
   
   const handleFullProfileClick = () => {
     setProfileSheetOpen(false);
-    // If there's a creator-specific handler, use it; otherwise fall back to profile click
     if (onViewCreatorProfile) {
       onViewCreatorProfile();
     } else {
@@ -441,9 +441,32 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   };
   
   const handleRemoteControlToggle = () => {
-    medium(); // Haptic feedback
+    medium();
     setRemoteControlEnabled(!remoteControlEnabled);
   };
+
+  const handleSaveTouchStart = useCallback(() => {
+    saveLongPressTimer.current = setTimeout(() => {
+      saveLongPressTimer.current = null;
+      medium();
+      onSaveLongPress?.();
+    }, 1500);
+  }, [medium, onSaveLongPress]);
+
+  const handleSaveTouchEnd = useCallback(() => {
+    if (saveLongPressTimer.current) {
+      clearTimeout(saveLongPressTimer.current);
+      saveLongPressTimer.current = null;
+      // Short tap – toggle save
+      onSaveVideo?.();
+    }
+  }, [onSaveVideo]);
+
+  useEffect(() => {
+    return () => {
+      if (saveLongPressTimer.current) clearTimeout(saveLongPressTimer.current);
+    };
+  }, []);
 
   return (
     <>
@@ -485,22 +508,26 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
           </NeuButton>
         </LongPressButtonWrapper>
 
-        {/* 6th from bottom: Route (only for promo content) */}
-        {showRouteButton && (
-          <LongPressButtonWrapper buttonId="route-button" buttonLabel="Add to Route">
-            <NeuButton 
-              onClick={onAddToRoute}
-              variant={isInRoute ? 'accent' : 'default'}
-              tooltip={isInRoute ? 'In Route' : 'Add to Route'}
-            >
-              {isInRoute ? (
-                <Check className="w-4 h-4 text-green-500" />
-              ) : (
-                <Route className="w-4 h-4" />
-              )}
-            </NeuButton>
-          </LongPressButtonWrapper>
-        )}
+        {/* 6th from bottom: Save / Watch Later (tap=save, long-press=gallery) */}
+        <div
+          onTouchStart={handleSaveTouchStart}
+          onTouchEnd={handleSaveTouchEnd}
+          onMouseDown={handleSaveTouchStart}
+          onMouseUp={handleSaveTouchEnd}
+          onMouseLeave={() => {
+            if (saveLongPressTimer.current) {
+              clearTimeout(saveLongPressTimer.current);
+              saveLongPressTimer.current = null;
+            }
+          }}
+        >
+          <NeuButton
+            variant={isVideoSaved ? 'accent' : 'default'}
+            tooltip={isVideoSaved ? 'Saved' : 'Save'}
+          >
+            <Bookmark className={cn('w-4 h-4', isVideoSaved && 'fill-current text-primary')} />
+          </NeuButton>
+        </div>
 
         {/* 7th from bottom: Share */}
         <LongPressButtonWrapper buttonId="share-button" buttonLabel="Share">

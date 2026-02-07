@@ -1,66 +1,86 @@
 
+# Smart Route Location Autocomplete
 
-# Fix: Map Pins All Gray When No Route Is Active
+## Overview
+Both the "Your Location" (origin) and "Set Destination" fields in the Smart Route builder will get live address autocomplete powered by Mapbox Geocoding API -- the same service already used for the Discovery Map search bar. As you type, location suggestions will appear in a dropdown, similar to Google Maps autocomplete.
 
-## Problem
+## What will change
 
-After implementing the 4-state dynamic pin system, **all map pins appear as muted gray circles** when the user hasn't started building a route. This happens because the current logic treats every pin as "not in route" by default, applying gray styling with 60% opacity -- making the map look broken and lifeless.
+### 1. New Reusable Component: LocationAutocomplete
+A new component (`src/components/LocationAutocomplete.tsx`) that provides a text input with:
+- Live address/place suggestions as you type (debounced 300ms)
+- Results powered by Mapbox Geocoding API (places, POIs, addresses)
+- Recent searches from local storage
+- Dropdown with place name + sub-address details
+- Clear button and loading indicator
+- Returns selected place name + coordinates (lat/lng)
 
-Previously, pins displayed colorful gradients based on reward amount (green to red), which made the map visually engaging. That visual richness was lost.
+This component extracts the autocomplete logic already proven in the `MapSearchBar` component into a more compact, reusable form suitable for embedding inline within the Route Builder.
 
-## Solution
+### 2. "Your Location" becomes editable
+Currently, "Your Location" is a static display block. It will become:
+- A tappable block that, when tapped, expands into the autocomplete input
+- Users can type a custom starting address and get suggestions
+- A "Use Current Location" quick-action button to revert to GPS
+- Once an origin is selected, its address is displayed with an edit button
+- The selected origin coordinates will be stored and passed to the route system
 
-Change the pin logic so that the gray muting only kicks in **when a route is actively being built**. When no route exists, all pins keep their original colorful reward gradients.
+### 3. "Set Destination" gets autocomplete
+Currently, destination is a plain text input with no suggestions. It will become:
+- Same autocomplete component with live suggestions
+- When a suggestion is selected, real coordinates (from Mapbox) are used instead of the current random mock coordinates
+- Properly sets the route destination with actual lat/lng
 
-```text
-+----------------------------+------------------------------+
-| Scenario                   | Pin Appearance               |
-+----------------------------+------------------------------+
-| No route active            | Colorful reward gradients    |
-|                            | (original look for ALL pins) |
-+----------------------------+------------------------------+
-| Route active, NOT in route | Muted gray, 60% opacity     |
-+----------------------------+------------------------------+
-| Route active, IN route     | White border + cyan glow     |
-|   (queued)                 |                              |
-+----------------------------+------------------------------+
-| Route active, IN route     | Amber/yellow pulsing glow   |
-|   (nearby, within 500m)    |                              |
-+----------------------------+------------------------------+
-| Completed (checked in)     | Solid green + checkmark      |
-+----------------------------+------------------------------+
+### 4. Pass Mapbox token to RouteBuilder
+The `mapboxToken` is already fetched in `DiscoveryMap`. It will be passed as a new prop to `RouteBuilder`, which passes it to the autocomplete components.
+
+---
+
+## Technical Details
+
+### Files to create:
+- `src/components/LocationAutocomplete.tsx` -- Reusable autocomplete input using Mapbox Geocoding API
+
+### Files to modify:
+
+**`src/components/RouteBuilder.tsx`**
+- Add `mapboxToken` prop to the interface
+- Add `onSetOrigin` callback prop for setting custom origin location
+- Replace the static "Your Location" block (lines 259-268) with an editable field using `LocationAutocomplete`
+- Add state for `showOriginEdit`, `originAddress`, and origin coordinates
+- Replace the plain destination `Input` (lines 271-283) with `LocationAutocomplete`
+- When a destination suggestion is selected, call `onSetDestination` with real coordinates from Mapbox instead of mock random offsets
+
+**`src/components/DiscoveryMap.tsx`**
+- Pass `mapboxToken` prop to the `RouteBuilder` component
+- Add `onSetOrigin` handler to manage custom origin location
+
+**`src/hooks/usePromoRoute.ts`**
+- Add optional `origin` field to the `PromoRoute` interface (address + lat/lng)
+- Add `setOrigin` callback to store a custom starting location
+- Update `openInGoogleMaps` to use the custom origin when set
+
+### API used:
+Mapbox Geocoding v5 (already in use):
+```
+GET https://api.mapbox.com/geocoding/v5/mapbox.places/{query}.json
+  ?access_token={token}
+  &types=place,poi,address
+  &limit=5
+```
+If user location is available, a `proximity` parameter will be added to bias results toward the user's area:
+```
+  &proximity={lng},{lat}
 ```
 
-## Technical Changes
-
-### File: `src/components/DiscoveryMap.tsx`
-
-**1. Update `getMarkerStyle` to accept a `hasActiveRoute` flag**
-
-Add a 5th parameter `hasActiveRoute: boolean`. When `hasActiveRoute` is false and the pin is not completed, return the original colorful reward gradient instead of gray.
-
-The logic becomes:
-- Completed? -> Green checkmark (always, regardless of route)
-- Nearby + in route? -> Amber pulse
-- In route (queued)? -> Reward gradient + white border + cyan glow
-- Has active route but NOT in it? -> Muted gray (dimmed)
-- No active route at all? -> Original colorful reward gradient (the default look)
-
-**2. Pass route-active status into getMarkerStyle**
-
-In the marker rendering loop (around line 570), determine whether a route is active using `promoRoute.isBuilding && promoRoute.totalStops > 0`, and pass that boolean to `getMarkerStyle`.
-
-**3. Default style (no route active)**
-
-When no route is active, pins will use:
-- `background`: reward gradient from `getRewardGradient()`
-- `border`: `2px solid rgba(255,255,255,0.2)`
-- `glow`: coin-type glow from `getCoinGlow()`
-- `opacity`: `1`
-- No badge, no animation
-
-This restores the original vibrant map appearance while preserving all 4 route-aware states when a route is being built.
-
-### No other files change
-
-All modifications are contained within the `getMarkerStyle` function and its call site in `DiscoveryMap.tsx`.
+### Component flow:
+```text
+User taps "Your Location" or "Set Destination"
+  --> Inline autocomplete input appears
+  --> User types address
+  --> 300ms debounce fires Mapbox Geocoding request
+  --> Dropdown shows up to 5 suggestions
+  --> User taps a suggestion
+  --> Coordinates + address stored
+  --> Input collapses back to display mode
+```

@@ -6,6 +6,10 @@ export interface SavedVideo {
   title: string;
   thumbnail: string;
   type: 'promo' | 'video' | 'image';
+  /** Actual video source URL for playback */
+  videoSrc?: string;
+  /** Image / poster source URL */
+  src?: string;
   creator?: {
     id?: string;
     username?: string;

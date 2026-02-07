@@ -1,10 +1,26 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const TrackInteractionSchema = z.object({
+  contentId: z.string().uuid('Invalid content ID'),
+  contentType: z.enum(['video', 'image', 'reel', 'story']).default('video'),
+  watchDuration: z.number().min(0).max(86400).default(0), // max 24h in seconds
+  totalDuration: z.number().min(0).max(86400).default(0),
+  attentionScore: z.number().min(0).max(100).default(0),
+  liked: z.boolean().default(false),
+  shared: z.boolean().default(false),
+  skipped: z.boolean().default(false),
+  tags: z.array(z.string().max(50)).max(20).default([]),
+  category: z.string().max(100).nullable().default(null),
+  action: z.enum(['update', 'like', 'unlike', 'share', 'feedback']).default('update'),
+  feedback: z.enum(['more', 'less']).nullable().default(null),
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -35,20 +51,21 @@ serve(async (req) => {
       );
     }
 
+    // Validate input with zod
+    const parseResult = TrackInteractionSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[TrackInteraction] Validation failed:', parseResult.error.flatten());
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const {
-      contentId,
-      contentType = 'video',
-      watchDuration = 0,
-      totalDuration = 0,
-      attentionScore = 0,
-      liked = false,
-      shared = false,
-      skipped = false,
-      tags = [],
-      category = null,
-      action = 'update', // 'update', 'like', 'unlike', 'share', 'feedback'
-      feedback = null, // 'more' or 'less'
-    } = await req.json();
+      contentId, contentType, watchDuration, totalDuration,
+      attentionScore, liked, shared, skipped, tags, category,
+      action, feedback,
+    } = parseResult.data;
 
     console.log('[TrackInteraction] Request:', { userId: user.id, contentId, action });
 
@@ -139,22 +156,16 @@ serve(async (req) => {
         const preferredCategories = prefs.preferred_categories || [];
 
         if (feedback === 'more') {
-          // Add to liked tags
           const newLiked = [...new Set([...likedTags, ...tags, category])];
           updates.liked_tags = newLiked;
-          // Remove from disliked if present
           updates.disliked_tags = dislikedTags.filter((t: string) => !tags.includes(t) && t !== category);
-          // Add to preferred categories
           if (!preferredCategories.includes(category)) {
             updates.preferred_categories = [...preferredCategories, category];
           }
         } else if (feedback === 'less') {
-          // Add to disliked tags
           const newDisliked = [...new Set([...dislikedTags, ...tags, category])];
           updates.disliked_tags = newDisliked;
-          // Remove from liked if present
           updates.liked_tags = likedTags.filter((t: string) => !tags.includes(t) && t !== category);
-          // Remove from preferred categories
           updates.preferred_categories = preferredCategories.filter((c: string) => c !== category);
         }
       }

@@ -1,17 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface TipRequest {
-  contentId: string;
-  creatorId: string;
-  amount: number;
-  coinType: 'vicoin' | 'icoin';
-}
+const TipCreatorSchema = z.object({
+  contentId: z.string().uuid('Invalid content ID'),
+  creatorId: z.string().uuid('Invalid creator ID'),
+  amount: z.number().int().min(1).max(10000),
+  coinType: z.enum(['vicoin', 'icoin']),
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -42,23 +43,18 @@ serve(async (req) => {
       );
     }
 
-    const { contentId, creatorId, amount, coinType }: TipRequest = await req.json();
+    // Validate input with zod
+    const parseResult = TipCreatorSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[TipCreator] Validation failed:', parseResult.error.flatten());
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors, success: false }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { contentId, creatorId, amount, coinType } = parseResult.data;
     console.log('[TipCreator] Request:', { userId: user.id, contentId, creatorId, amount, coinType });
-
-    // Validate request
-    if (!contentId || !creatorId || !amount || !coinType) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields', success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (amount < 1) {
-      return new Response(
-        JSON.stringify({ error: 'Minimum tip is 1 coin', success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     if (user.id === creatorId) {
       return new Response(

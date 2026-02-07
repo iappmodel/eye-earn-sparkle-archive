@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,16 @@ const REWARD_AMOUNTS = {
   milestone: { amount: 20, coinType: 'vicoin' },
   daily_bonus: { min: 1, max: 5, coinType: 'icoin' },
 };
+
+const VALID_REWARD_TYPES = Object.keys(REWARD_AMOUNTS) as [string, ...string[]];
+
+const IssueRewardSchema = z.object({
+  rewardType: z.enum(VALID_REWARD_TYPES as [string, ...string[]]),
+  contentId: z.string().uuid('Invalid content ID'),
+  amount: z.number().int().min(1).max(1000).optional(),
+  attentionScore: z.number().min(0).max(100).optional(),
+  coinType: z.enum(['vicoin', 'icoin']).optional(),
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -52,16 +63,18 @@ serve(async (req) => {
       );
     }
 
-    const { rewardType, contentId, amount, attentionScore, coinType } = await req.json();
-    console.log('[IssueReward] Request:', { userId: user.id, rewardType, contentId, amount, attentionScore, coinType });
-
-    // Validate reward type
-    if (!Object.keys(REWARD_AMOUNTS).includes(rewardType)) {
+    // Validate input with zod
+    const parseResult = IssueRewardSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[IssueReward] Validation failed:', parseResult.error.flatten());
       return new Response(
-        JSON.stringify({ error: 'Invalid reward type' }),
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const { rewardType, contentId, amount, attentionScore, coinType } = parseResult.data;
+    console.log('[IssueReward] Request:', { userId: user.id, rewardType, contentId, amount, attentionScore, coinType });
 
     // Check for replay attack - has this content already been rewarded?
     const { data: existingReward, error: checkError } = await supabase
@@ -79,9 +92,6 @@ serve(async (req) => {
 
     if (existingReward) {
       console.log('[IssueReward] Duplicate reward attempt blocked');
-
-      // This is an expected anti-cheat outcome, not a system failure.
-      // Return 200 so clients can handle it via `success: false` without treating it as a runtime error.
       return new Response(
         JSON.stringify({
           success: false,
@@ -129,13 +139,12 @@ serve(async (req) => {
       if ('amount' in rewardConfig) {
         finalAmount = rewardConfig.amount;
       } else {
-        // Random amount within range
         finalAmount = Math.floor(Math.random() * (rewardConfig.max - rewardConfig.min + 1)) + rewardConfig.min;
       }
     }
 
     // Apply attention score modifier (85-100% = full, below reduces proportionally)
-    if (attentionScore && attentionScore < 100) {
+    if (attentionScore !== undefined && attentionScore < 100) {
       const modifier = Math.max(0.5, attentionScore / 100);
       finalAmount = Math.max(1, Math.floor(finalAmount * modifier));
     }
@@ -183,7 +192,7 @@ serve(async (req) => {
         reward_type: rewardType,
         coin_type: finalCoinType,
         amount: finalAmount,
-        attention_score: attentionScore || null,
+        attention_score: attentionScore ?? null,
       });
 
     if (logError) {

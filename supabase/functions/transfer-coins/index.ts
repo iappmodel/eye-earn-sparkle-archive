@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +10,16 @@ const corsHeaders = {
 // Exchange rates (Icoins to Vicoins)
 const EXCHANGE_RATE = 10; // 10 Icoins = 1 Vicoin
 const MIN_ICOIN_TRANSFER = 100;
+const MAX_ICOIN_TRANSFER = 100000;
+
+const TransferCoinsSchema = z.object({
+  icoinAmount: z.number().int('Amount must be a whole number')
+    .min(MIN_ICOIN_TRANSFER, `Minimum transfer is ${MIN_ICOIN_TRANSFER} Icoins`)
+    .max(MAX_ICOIN_TRANSFER, `Maximum transfer is ${MAX_ICOIN_TRANSFER} Icoins`)
+    .refine(val => val % EXCHANGE_RATE === 0, {
+      message: `Amount must be divisible by ${EXCHANGE_RATE}`,
+    }),
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -38,30 +49,18 @@ serve(async (req) => {
       );
     }
 
-    const { icoinAmount } = await req.json();
+    // Validate input with zod
+    const parseResult = TransferCoinsSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[TransferCoins] Validation failed:', parseResult.error.flatten());
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { icoinAmount } = parseResult.data;
     console.log('[TransferCoins] Request:', { userId: user.id, icoinAmount });
-
-    // Validate amount
-    if (!icoinAmount || icoinAmount < MIN_ICOIN_TRANSFER) {
-      return new Response(
-        JSON.stringify({ 
-          error: `Minimum transfer is ${MIN_ICOIN_TRANSFER} Icoins`,
-          minimum: MIN_ICOIN_TRANSFER 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Must be divisible by exchange rate
-    if (icoinAmount % EXCHANGE_RATE !== 0) {
-      return new Response(
-        JSON.stringify({ 
-          error: `Amount must be divisible by ${EXCHANGE_RATE}`,
-          exchange_rate: EXCHANGE_RATE 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Get current balances
     const { data: profile, error: profileError } = await supabase

@@ -1,22 +1,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface AttentionValidationRequest {
-  userId: string;
-  contentId: string;
-  promoId?: string;
-  attentionScore: number;
-  watchDuration: number;
-  totalDuration: number;
-  framesDetected: number;
-  totalFrames: number;
-  deviceFingerprint?: string;
-}
+const AttentionValidationSchema = z.object({
+  userId: z.string().uuid('Invalid user ID'),
+  contentId: z.string().uuid('Invalid content ID'),
+  promoId: z.string().uuid('Invalid promo ID').optional(),
+  attentionScore: z.number().min(0).max(100),
+  watchDuration: z.number().min(0).max(86400), // max 24h
+  totalDuration: z.number().min(0.01).max(86400), // must be > 0 to avoid division by zero
+  framesDetected: z.number().int().min(0).max(100000),
+  totalFrames: z.number().int().min(0).max(100000),
+  deviceFingerprint: z.string().max(255).optional(),
+});
 
 interface ValidationCheck {
   name: string;
@@ -55,8 +56,33 @@ serve(async (req) => {
       );
     }
 
-    const body: AttentionValidationRequest = await req.json();
+    // Validate input with zod
+    const parseResult = AttentionValidationSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[ValidateAttention] Validation failed:', parseResult.error.flatten());
+      return new Response(
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const body = parseResult.data;
     console.log('[ValidateAttention] Request:', { userId: user.id, contentId: body.contentId });
+
+    // Additional cross-field validation
+    if (body.framesDetected > body.totalFrames) {
+      return new Response(
+        JSON.stringify({ error: 'framesDetected cannot exceed totalFrames' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (body.watchDuration > body.totalDuration * 1.5) {
+      return new Response(
+        JSON.stringify({ error: 'watchDuration exceeds reasonable bounds relative to totalDuration' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const checks: ValidationCheck[] = [];
     let totalScore = 0;

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,14 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+const NearbyPromotionsSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusKm: z.number().min(0.1).max(100).default(10),
+  category: z.string().max(100).optional(),
+  rewardType: z.string().max(50).optional(),
+});
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -29,15 +38,18 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    const { latitude, longitude, radiusKm = 10, category, rewardType } = await req.json();
-    console.log('[GetNearbyPromos] Request:', { latitude, longitude, radiusKm, category, rewardType });
-
-    if (!latitude || !longitude) {
+    // Validate input with zod
+    const parseResult = NearbyPromotionsSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[GetNearbyPromos] Validation failed:', parseResult.error.flatten());
       return new Response(
-        JSON.stringify({ error: 'Latitude and longitude are required' }),
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const { latitude, longitude, radiusKm, category, rewardType } = parseResult.data;
+    console.log('[GetNearbyPromos] Request:', { latitude, longitude, radiusKm, category, rewardType });
 
     // Fetch all active promotions
     let query = supabase

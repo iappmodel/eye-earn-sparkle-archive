@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,6 +40,18 @@ function getStreakBonus(streakDays: number): number {
   return bonus;
 }
 
+const VerifyCheckinSchema = z.object({
+  promotionId: z.string().uuid('Invalid promotion ID').optional(),
+  businessName: z.string().max(255).optional(),
+  promotionLat: z.number().min(-90).max(90),
+  promotionLng: z.number().min(-180).max(180),
+  userLat: z.number().min(-90).max(90),
+  userLng: z.number().min(-180).max(180),
+  rewardAmount: z.number().int().min(0).max(10000).optional(),
+  rewardType: z.enum(['vicoin', 'icoin']).optional(),
+  maxDistanceMeters: z.number().int().min(10).max(5000).default(100),
+});
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -72,37 +85,25 @@ serve(async (req) => {
       );
     }
 
-    const body = await req.json();
-    const { 
-      promotionId, 
-      businessName,
-      promotionLat, 
-      promotionLng, 
-      userLat, 
-      userLng,
-      rewardAmount,
-      rewardType,
-      maxDistanceMeters = 100 // Default 100 meter radius for check-in
-    } = body;
-
-    console.log('[verify-checkin] Request:', { 
-      userId: user.id, 
-      promotionId, 
-      businessName,
-      promotionLat, 
-      promotionLng, 
-      userLat, 
-      userLng 
-    });
-
-    // Validate required fields
-    if (!promotionLat || !promotionLng || !userLat || !userLng) {
-      console.error('[verify-checkin] Missing coordinates');
+    // Validate input with zod
+    const parseResult = VerifyCheckinSchema.safeParse(await req.json());
+    if (!parseResult.success) {
+      console.warn('[verify-checkin] Validation failed:', parseResult.error.flatten());
       return new Response(
-        JSON.stringify({ error: 'Missing location coordinates', success: false }),
+        JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors, success: false }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const { 
+      promotionId, businessName, promotionLat, promotionLng,
+      userLat, userLng, rewardAmount, rewardType, maxDistanceMeters 
+    } = parseResult.data;
+
+    console.log('[verify-checkin] Request:', { 
+      userId: user.id, promotionId, businessName,
+      promotionLat, promotionLng, userLat, userLng 
+    });
 
     // Calculate distance between user and promotion
     const distance = calculateDistance(userLat, userLng, promotionLat, promotionLng);
@@ -142,7 +143,6 @@ serve(async (req) => {
       .single();
 
     if (!userLevel) {
-      // Create user_levels record if doesn't exist
       const { data: newLevel } = await supabase
         .from('user_levels')
         .insert({ user_id: user.id, streak_days: 0, longest_streak: 0, level: 1, current_xp: 0, total_xp: 0 })
@@ -163,13 +163,10 @@ serve(async (req) => {
       const diffDays = Math.floor((todayDate.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
 
       if (diffDays === 1) {
-        // Consecutive day - increment streak
         newStreakDays = (userLevel?.streak_days || 0) + 1;
       } else if (diffDays === 0) {
-        // Same day - keep current streak
         newStreakDays = userLevel?.streak_days || 1;
       }
-      // If more than 1 day gap, streak resets to 1
     }
 
     if (newStreakDays > newLongestStreak) {
@@ -182,11 +179,7 @@ serve(async (req) => {
     const totalReward = (rewardAmount || 0) + bonusAmount;
 
     console.log('[verify-checkin] Streak info:', { 
-      newStreakDays, 
-      newLongestStreak, 
-      streakBonus, 
-      bonusAmount,
-      totalReward 
+      newStreakDays, newLongestStreak, streakBonus, bonusAmount, totalReward 
     });
 
     // Create check-in record with streak info
@@ -222,7 +215,6 @@ serve(async (req) => {
     if (isWithinRange && totalReward && rewardType) {
       const balanceField = rewardType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
       
-      // Get current balance
       const { data: profile } = await supabase
         .from('profiles')
         .select('vicoin_balance, icoin_balance')
@@ -267,11 +259,8 @@ serve(async (req) => {
     }
 
     console.log('[verify-checkin] Success:', { 
-      status, 
-      distance: Math.round(distance), 
-      isWithinRange,
-      streak: newStreakDays,
-      bonusAmount,
+      status, distance: Math.round(distance), isWithinRange,
+      streak: newStreakDays, bonusAmount,
     });
 
     return new Response(

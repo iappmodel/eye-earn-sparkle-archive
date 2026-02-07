@@ -1,21 +1,44 @@
 
-# Add Haptic Feedback to Bottom Navigation Taps
 
-## What changes
-Two tap handlers in `BottomNavigation.tsx` currently have no haptic feedback:
-- **`handleClick`** (tapping Home, Discover, Messages, Profile) -- no vibration
-- **`handleLogoClick`** (tapping the center logo to go to Create) -- no vibration
+# Fix: Splash Screen Blocking App Content
 
-The long-press and shortcut handlers already use haptic feedback correctly, so this is just filling in the gap for regular taps.
+## Problem
+The app shows a blank black screen because the inline HTML `#splash` div (added to `index.html` to prevent white flash) is never removed after the first splash display.
 
-## Technical Details
+The removal logic is inside a `useEffect` that only runs when `visible` is `true`. On subsequent loads in the same session, `visible` starts as `false` (due to `sessionStorage`), so the cleanup code never executes -- leaving a solid black `z-index: 200` div covering the entire app.
 
-**File: `src/components/BottomNavigation.tsx`**
+## Fix
 
-1. **`handleClick` (line 100)**: Add `haptic.light()` at the start of the function (after the long-press guard check on line 103). This gives a subtle vibration when switching between tabs -- light intensity so it feels responsive without being intrusive.
+**File: `src/components/SplashScreen.tsx`**
 
-2. **`handleLogoClick` (line 74)**: Add `haptic.light()` before `navigate('/create')` so the center logo button also provides tactile feedback.
+Move the inline `#splash` div removal out of the visibility guard so it always runs on mount, regardless of whether the splash animation plays:
 
-Both use the `light` haptic (10ms vibration) since tab switching should feel snappy and subtle, consistent with the existing shortcut selection feedback. The `haptic` object from `useHapticFeedback` is already available in the component scope.
+```text
+Current (broken):
+  useEffect(() => {
+    if (!visible) return;          // <-- exits early, skips removal
+    const inlineSplash = document.getElementById('splash');
+    if (inlineSplash) inlineSplash.remove();
+    ...
+  }, [visible]);
 
-No new files or dependencies needed -- this is a two-line addition to an existing file.
+Fixed:
+  // Always remove the HTML placeholder on mount
+  useEffect(() => {
+    const inlineSplash = document.getElementById('splash');
+    if (inlineSplash) inlineSplash.remove();
+  }, []);
+
+  // Existing animation timer effect (separate)
+  useEffect(() => {
+    if (!visible) return;
+    ...
+  }, [visible]);
+```
+
+This splits the logic into two effects:
+1. A one-time mount effect that always cleans up the inline HTML div
+2. The existing animation timer effect that handles fade-out timing
+
+No other files need changes.
+

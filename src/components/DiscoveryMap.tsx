@@ -722,9 +722,19 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         }
       `}</style>
 
+      {/* Suppress Mapbox control z-index conflicts */}
+      <style>{`
+        .mapboxgl-ctrl-top-right,
+        .mapboxgl-ctrl-top-left,
+        .mapboxgl-ctrl-bottom-right,
+        .mapboxgl-ctrl-bottom-left {
+          z-index: 1 !important;
+        }
+      `}</style>
+
       {/* Header */}
       <div 
-        className="absolute top-0 left-0 right-0 z-10 p-4 bg-gradient-to-b from-background via-background/90 to-transparent"
+        className="absolute top-0 left-0 right-0 z-20 p-4 bg-gradient-to-b from-background via-background/90 to-transparent"
         style={{ touchAction: 'auto', pointerEvents: 'auto' }}
       >
         <div className="flex items-center justify-between mb-3">
@@ -829,7 +839,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       </div>
 
       {/* Map Container */}
-      <div ref={mapContainer} className="absolute inset-0" />
+      <div ref={mapContainer} className="absolute inset-0 z-0" />
 
       {/* Loading Overlay */}
       {(!mapboxToken || !userLocation || isLoading) && (
@@ -844,7 +854,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       )}
 
       {/* Floating Action Buttons */}
-      <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex flex-col gap-3">
+      <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex flex-col gap-3 z-20">
         <button
           onClick={handleCenterOnUser}
           className="w-12 h-12 rounded-full neu-button flex items-center justify-center"
@@ -901,7 +911,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
 
       {/* Selected Promotion Card */}
       {selectedPromo && (
-        <div className="absolute bottom-20 left-4 right-4 z-10">
+        <div className="absolute bottom-20 left-4 right-4 z-20">
           <div className="neu-card rounded-3xl p-5 animate-slide-up border border-border/50">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
@@ -1008,7 +1018,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
 
       {/* Bottom Promo List */}
       {!selectedPromo && promotions.length > 0 && (
-        <div className="absolute bottom-20 left-0 right-0 z-10 px-4">
+        <div className="absolute bottom-20 left-0 right-0 z-20 px-4">
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
             {promotions.slice(0, 5).map((promo) => (
               <button

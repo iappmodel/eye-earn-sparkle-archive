@@ -93,26 +93,11 @@ export const SplashScreen: React.FC = () => {
         />
       </div>
 
-      {/* App name */}
-      <span
-        className="relative mt-4 font-display font-bold text-3xl gradient-text"
-        style={{
-          animation: 'splash-text-in 300ms ease-out 200ms forwards',
-          opacity: 0,
-        }}
-      >
-        i
-      </span>
-
       {/* Inline keyframes */}
       <style>{`
         @keyframes splash-scale-in {
           0% { transform: scale(0.8); opacity: 0; }
           100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes splash-text-in {
-          0% { opacity: 0; transform: translateY(8px); }
-          100% { opacity: 1; transform: translateY(0); }
         }
         @keyframes splash-glow-pulse {
           0%, 100% { opacity: 0.6; }

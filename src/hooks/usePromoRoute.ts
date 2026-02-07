@@ -41,6 +41,12 @@ export interface RouteSchedule {
   time: string; // HH:mm format
 }
 
+export interface RouteOrigin {
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface PromoRoute {
   id: string;
   name: string;
@@ -58,6 +64,8 @@ export interface PromoRoute {
   segmentTransport?: Record<string, TransportMode>;
   /** Label explaining why this route was suggested */
   smartLabel?: string;
+  /** Custom starting location (defaults to user GPS if null) */
+  origin?: RouteOrigin | null;
 }
 
 export const defaultRouteFilters: RouteFilters = {
@@ -103,10 +111,15 @@ export function usePromoRoute() {
       destination: null,
       schedule: null,
       segmentTransport: {},
+      origin: null,
     };
     setActiveRoute(newRoute);
     setIsBuilding(true);
     return newRoute;
+  }, []);
+
+  const setOrigin = useCallback((origin: RouteOrigin | null) => {
+    setActiveRoute(prev => (prev ? { ...prev, origin } : prev));
   }, []);
 
   const addStop = useCallback((stop: Omit<RouteStop, 'order'>) => {
@@ -254,15 +267,19 @@ export function usePromoRoute() {
     (userLat?: number, userLng?: number) => {
       if (!activeRoute || activeRoute.stops.length === 0) return;
       const stops = activeRoute.stops;
-      const origin =
-        userLat && userLng ? `${userLat},${userLng}` : `${stops[0].latitude},${stops[0].longitude}`;
+      // Use custom origin if set, otherwise GPS, otherwise first stop
+      const origin = activeRoute.origin
+        ? `${activeRoute.origin.latitude},${activeRoute.origin.longitude}`
+        : userLat && userLng
+          ? `${userLat},${userLng}`
+          : `${stops[0].latitude},${stops[0].longitude}`;
       const dest = activeRoute.destination
         ? `${activeRoute.destination.latitude},${activeRoute.destination.longitude}`
         : `${stops[stops.length - 1].latitude},${stops[stops.length - 1].longitude}`;
       const waypoints =
         stops.length > 2
           ? stops.slice(1, -1).map(s => `${s.latitude},${s.longitude}`).join('|')
-          : stops.length === 2 && userLat
+          : stops.length === 2 && (activeRoute.origin || userLat)
             ? `${stops[0].latitude},${stops[0].longitude}`
             : '';
       const travelMode =
@@ -361,6 +378,7 @@ export function usePromoRoute() {
         schedule: null,
         segmentTransport: {},
         smartLabel: label,
+        origin: null,
       };
       setActiveRoute(route);
       setIsBuilding(true);
@@ -528,6 +546,7 @@ export function usePromoRoute() {
     setRouteFilters,
     toggleCommuteRoute,
     renameRoute,
+    setOrigin,
     setDestination,
     setSchedule,
     setSegmentTransport,

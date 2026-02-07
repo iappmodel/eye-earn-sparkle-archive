@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { LocationAutocomplete, type LocationSelection } from './LocationAutocomplete';
 import {
   Route, X, GripVertical, Trash2, Car, Footprints, Bus, Bike, PersonStanding,
   Navigation, Sparkles, Save, MapPin, Coins, ExternalLink,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react';
 import { CategoryIcon } from './PromotionCategories';
 import { RouteFilterSheet } from './RouteFilterSheet';
-import type { PromoRoute, RouteStop, TransportMode, RouteFilters, RouteDestination, RouteSchedule } from '@/hooks/usePromoRoute';
+import type { PromoRoute, RouteStop, TransportMode, RouteFilters, RouteDestination, RouteSchedule, RouteOrigin } from '@/hooks/usePromoRoute';
 import { defaultRouteFilters } from '@/hooks/usePromoRoute';
 import { useDragReorder } from '@/hooks/useDragReorder';
 import { toast } from 'sonner';
@@ -41,11 +42,13 @@ interface RouteBuilderProps {
   onSetDestination?: (dest: RouteDestination | null) => void;
   onSetSchedule?: (schedule: RouteSchedule | null) => void;
   onSetSegmentTransport?: (fromIdx: number, toIdx: number, mode: TransportMode) => void;
+  onSetOrigin?: (origin: RouteOrigin | null) => void;
   onSuggestFromSaved?: () => void;
   onSuggestByInterests?: () => void;
   onSuggestSmartRoute?: () => void;
   getSegmentTransport?: (fromIdx: number, toIdx: number) => TransportMode;
   userLocation?: { lat: number; lng: number } | null;
+  mapboxToken?: string | null;
 }
 
 const TRANSPORT_MODES: { id: TransportMode; label: string; icon: React.ElementType }[] = [
@@ -103,19 +106,21 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   onSetDestination,
   onSetSchedule,
   onSetSegmentTransport,
+  onSetOrigin,
   onSuggestFromSaved,
   onSuggestByInterests,
   onSuggestSmartRoute,
   getSegmentTransport,
   userLocation,
+  mapboxToken,
 }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showWatchLater, setShowWatchLater] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
+  const [showOriginEdit, setShowOriginEdit] = useState(false);
   const [showDestination, setShowDestination] = useState(false);
-  const [destAddress, setDestAddress] = useState('');
   const [scheduleDay, setScheduleDay] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
 
@@ -142,18 +147,20 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
     setIsEditing(false);
   };
 
-  const handleSetDestination = () => {
-    if (!destAddress.trim()) {
-      onSetDestination?.(null);
-      setShowDestination(false);
-      return;
-    }
-    // Mock geocoding – in production would hit a geocoding API
-    onSetDestination?.({
-      address: destAddress.trim(),
-      latitude: (userLocation?.lat || 40.7128) + (Math.random() - 0.5) * 0.1,
-      longitude: (userLocation?.lng || -74.006) + (Math.random() - 0.5) * 0.1,
-    });
+  const handleOriginSelect = (loc: LocationSelection) => {
+    onSetOrigin?.({ address: loc.address, latitude: loc.latitude, longitude: loc.longitude });
+    setShowOriginEdit(false);
+    toast.success('Starting location set');
+  };
+
+  const handleUseCurrentLocation = () => {
+    onSetOrigin?.(null);
+    setShowOriginEdit(false);
+    toast.success('Using current GPS location');
+  };
+
+  const handleDestinationSelect = (loc: LocationSelection) => {
+    onSetDestination?.({ address: loc.address, latitude: loc.latitude, longitude: loc.longitude });
     setShowDestination(false);
     toast.success('Destination set – suggestions will route toward it');
   };
@@ -256,30 +263,66 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
               {/* Destination & Schedule Section */}
               {route && (
                 <div className="space-y-2">
-                  {/* Origin */}
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/20">
-                    <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-                      <Navigation className="w-4 h-4 text-primary-foreground" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">Your Location</div>
-                      <div className="text-xs text-muted-foreground">Starting point</div>
-                    </div>
-                  </div>
-
-                  {/* Destination Input */}
-                  {showDestination ? (
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Where are you heading?"
-                        value={destAddress}
-                        onChange={e => setDestAddress(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleSetDestination()}
+                  {/* Origin – editable with autocomplete */}
+                  {showOriginEdit && mapboxToken ? (
+                    <div className="space-y-2 p-3 rounded-xl bg-primary/5 border border-primary/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">Starting Point</span>
+                        <button onClick={() => setShowOriginEdit(false)} className="p-1 hover:bg-muted rounded-full">
+                          <X className="w-3.5 h-3.5 text-muted-foreground" />
+                        </button>
+                      </div>
+                      <LocationAutocomplete
+                        mapboxToken={mapboxToken}
+                        placeholder="Search starting address..."
+                        value={route.origin?.address?.split(',')[0] || ''}
+                        proximity={userLocation}
+                        onSelect={handleOriginSelect}
+                        showCurrentLocation
+                        onUseCurrentLocation={handleUseCurrentLocation}
+                        storageKey="route-origin-recent"
                         autoFocus
-                        className="flex-1 h-9"
                       />
-                      <Button size="sm" onClick={handleSetDestination}>Set</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setShowDestination(false)}><X className="w-4 h-4" /></Button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowOriginEdit(true)}
+                      className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/20 w-full text-left hover:border-primary/40 transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                        <Navigation className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">
+                          {route.origin?.address?.split(',')[0] || 'Your Location'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {route.origin ? 'Tap to change' : 'Tap to set custom start'}
+                        </div>
+                      </div>
+                      <Edit2 className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  )}
+
+                  {/* Destination – autocomplete */}
+                  {showDestination && mapboxToken ? (
+                    <div className="space-y-2 p-3 rounded-xl border border-dashed border-border">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">Destination</span>
+                        <button onClick={() => { setShowDestination(false); }} className="p-1 hover:bg-muted rounded-full">
+                          <X className="w-3.5 h-3.5 text-muted-foreground" />
+                        </button>
+                      </div>
+                      <LocationAutocomplete
+                        mapboxToken={mapboxToken}
+                        placeholder="Where are you heading?"
+                        value={route.destination?.address?.split(',')[0] || ''}
+                        proximity={userLocation}
+                        onSelect={handleDestinationSelect}
+                        onClear={() => onSetDestination?.(null)}
+                        storageKey="route-dest-recent"
+                        autoFocus
+                      />
                     </div>
                   ) : (
                     <button
@@ -291,7 +334,7 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                       </div>
                       <div className="flex-1 text-left">
                         <div className="text-sm font-medium">
-                          {route.destination?.address || 'Set Destination'}
+                          {route.destination?.address?.split(',')[0] || 'Set Destination'}
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {route.destination ? 'Tap to change' : 'Route suggestions will head this way'}

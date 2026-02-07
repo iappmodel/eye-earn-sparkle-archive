@@ -217,32 +217,21 @@ serve(async (req) => {
       throw txError;
     }
 
-    // Update user's balance
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('icoin_balance, vicoin_balance')
-      .eq('user_id', user.id)
-      .single();
+    // Update user's balance atomically — prevents race conditions with advisory lock
+    const { data: balanceResult, error: balanceError } = await supabase.rpc('atomic_update_balance', {
+      p_user_id: user.id,
+      p_amount: finalAmount,
+      p_coin_type: finalCoinType,
+      p_description: `Earned from ${rewardType.replace('_', ' ')}`,
+      p_reference_id: contentId,
+    });
 
-    if (profileError) {
-      console.error('[IssueReward] Profile fetch error:', profileError);
-      throw profileError;
+    if (balanceError) {
+      console.error('[IssueReward] Atomic balance update error:', balanceError);
+      throw balanceError;
     }
 
-    const currentBalance = finalCoinType === 'icoin' 
-      ? (profile.icoin_balance || 0) 
-      : (profile.vicoin_balance || 0);
-    
-    const balanceColumn = finalCoinType === 'icoin' ? 'icoin_balance' : 'vicoin_balance';
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ [balanceColumn]: currentBalance + finalAmount })
-      .eq('user_id', user.id);
-
-    if (updateError) {
-      console.error('[IssueReward] Balance update error:', updateError);
-      throw updateError;
-    }
+    const newBalance = balanceResult?.new_balance ?? 0;
 
     // Update daily caps
     const capUpdates: Record<string, number> = {
@@ -268,7 +257,7 @@ serve(async (req) => {
       userId: user.id, 
       amount: finalAmount, 
       coinType: finalCoinType,
-      newBalance: currentBalance + finalAmount
+      newBalance
     });
 
     return new Response(
@@ -276,7 +265,7 @@ serve(async (req) => {
         success: true,
         amount: finalAmount,
         coinType: finalCoinType,
-        newBalance: currentBalance + finalAmount,
+        newBalance,
         dailyRemaining: {
           icoin: DAILY_LIMITS.icoin - (finalCoinType === 'icoin' ? dailyCap.icoin_earned + finalAmount : dailyCap.icoin_earned),
           vicoin: DAILY_LIMITS.vicoin - (finalCoinType === 'vicoin' ? dailyCap.vicoin_earned + finalAmount : dailyCap.vicoin_earned),

@@ -62,82 +62,41 @@ serve(async (req) => {
     const { icoinAmount } = parseResult.data;
     console.log('[TransferCoins] Request:', { userId: user.id, icoinAmount });
 
-    // Get current balances
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('icoin_balance, vicoin_balance')
-      .eq('user_id', user.id)
-      .single();
-
-    if (profileError) {
-      console.error('[TransferCoins] Profile error:', profileError);
-      throw profileError;
-    }
-
-    // Check sufficient Icoin balance
-    if (profile.icoin_balance < icoinAmount) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Insufficient Icoin balance',
-          current_balance: profile.icoin_balance,
-          requested: icoinAmount 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const vicoinAmount = Math.floor(icoinAmount / EXCHANGE_RATE);
-    const newIcoinBalance = profile.icoin_balance - icoinAmount;
-    const newVicoinBalance = profile.vicoin_balance + vicoinAmount;
-
-    // Update balances
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ 
-        icoin_balance: newIcoinBalance,
-        vicoin_balance: newVicoinBalance,
-      })
-      .eq('user_id', user.id);
-
-    if (updateError) {
-      console.error('[TransferCoins] Update error:', updateError);
-      throw updateError;
-    }
-
-    // Create transaction records
-    const transferId = `transfer_${Date.now()}`;
-    
-    await supabase.from('transactions').insert([
-      {
-        user_id: user.id,
-        type: 'spent',
-        coin_type: 'icoin',
-        amount: icoinAmount,
-        description: `Converted to ${vicoinAmount} Vicoins`,
-        reference_id: transferId,
-      },
-      {
-        user_id: user.id,
-        type: 'earned',
-        coin_type: 'vicoin',
-        amount: vicoinAmount,
-        description: `Converted from ${icoinAmount} Icoins`,
-        reference_id: transferId,
-      },
-    ]);
-
-    console.log('[TransferCoins] Success:', { 
-      icoinSpent: icoinAmount, 
-      vicoinReceived: vicoinAmount 
+    // Call atomic stored procedure — handles locking, balance check, update, and transaction logging
+    const { data, error: rpcError } = await supabase.rpc('atomic_convert_coins', {
+      p_user_id: user.id,
+      p_icoin_amount: icoinAmount,
+      p_exchange_rate: EXCHANGE_RATE,
     });
+
+    if (rpcError) {
+      console.error('[TransferCoins] RPC error:', rpcError);
+      const msg = rpcError.message || '';
+
+      if (msg.includes('INSUFFICIENT_BALANCE')) {
+        return new Response(
+          JSON.stringify({ error: 'Insufficient Icoin balance', success: false }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (msg.includes('PROFILE_NOT_FOUND')) {
+        return new Response(
+          JSON.stringify({ error: 'User profile not found', success: false }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error('Failed to process conversion');
+    }
+
+    console.log('[TransferCoins] Success:', data);
 
     return new Response(
       JSON.stringify({
         success: true,
-        icoin_spent: icoinAmount,
-        vicoin_received: vicoinAmount,
-        new_icoin_balance: newIcoinBalance,
-        new_vicoin_balance: newVicoinBalance,
+        icoin_spent: data.icoin_spent,
+        vicoin_received: data.vicoin_received,
+        new_icoin_balance: data.new_icoin_balance,
+        new_vicoin_balance: data.new_vicoin_balance,
         exchange_rate: EXCHANGE_RATE,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -63,132 +63,49 @@ serve(async (req) => {
       );
     }
 
-    // Get tipper's balance
-    const { data: tipperProfile, error: tipperError } = await supabase
-      .from('profiles')
-      .select('vicoin_balance, icoin_balance')
-      .eq('user_id', user.id)
-      .single();
-
-    if (tipperError) {
-      console.error('[TipCreator] Tipper profile error:', tipperError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to get your balance', success: false }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const tipperBalance = coinType === 'vicoin' 
-      ? (tipperProfile.vicoin_balance ?? 0)
-      : (tipperProfile.icoin_balance ?? 0);
-
-    if (tipperBalance < amount) {
-      return new Response(
-        JSON.stringify({ 
-          error: `Insufficient ${coinType} balance`,
-          current_balance: tipperBalance,
-          requested: amount,
-          success: false
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get creator's profile to verify they exist
-    const { data: creatorProfile, error: creatorError } = await supabase
-      .from('profiles')
-      .select('vicoin_balance, icoin_balance')
-      .eq('user_id', creatorId)
-      .single();
-
-    if (creatorError || !creatorProfile) {
-      console.error('[TipCreator] Creator profile error:', creatorError);
-      return new Response(
-        JSON.stringify({ error: 'Creator not found', success: false }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const creatorBalance = coinType === 'vicoin'
-      ? (creatorProfile.vicoin_balance ?? 0)
-      : (creatorProfile.icoin_balance ?? 0);
-
-    const balanceColumn = coinType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
-
-    // Deduct from tipper
-    const { error: deductError } = await supabase
-      .from('profiles')
-      .update({ [balanceColumn]: tipperBalance - amount })
-      .eq('user_id', user.id);
-
-    if (deductError) {
-      console.error('[TipCreator] Deduct error:', deductError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to process tip', success: false }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Add to creator
-    const { error: addError } = await supabase
-      .from('profiles')
-      .update({ [balanceColumn]: creatorBalance + amount })
-      .eq('user_id', creatorId);
-
-    if (addError) {
-      console.error('[TipCreator] Add error:', addError);
-      // Rollback tipper's deduction
-      await supabase
-        .from('profiles')
-        .update({ [balanceColumn]: tipperBalance })
-        .eq('user_id', user.id);
-      
-      return new Response(
-        JSON.stringify({ error: 'Failed to complete tip', success: false }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Create transaction records
-    const tipId = `tip_${Date.now()}`;
-    
-    await supabase.from('transactions').insert([
-      {
-        user_id: user.id,
-        type: 'spent',
-        coin_type: coinType,
-        amount: amount,
-        description: `Tip to creator for content`,
-        reference_id: tipId,
-      },
-      {
-        user_id: creatorId,
-        type: 'earned',
-        coin_type: coinType,
-        amount: amount,
-        description: `Tip received from viewer`,
-        reference_id: tipId,
-      },
-    ]);
-
-    // Create notification for creator
-    await supabase.from('notifications').insert({
-      user_id: creatorId,
-      type: 'earnings',
-      title: 'You received a tip!',
-      body: `Someone tipped you ${amount} ${coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}`,
-      data: { tipId, amount, coinType, contentId },
+    // Call atomic stored procedure — handles locking both users, balance transfer, transactions, and notification
+    const { data, error: rpcError } = await supabase.rpc('atomic_tip_creator', {
+      p_tipper_id: user.id,
+      p_creator_id: creatorId,
+      p_amount: amount,
+      p_coin_type: coinType,
+      p_content_id: contentId,
     });
 
-    console.log('[TipCreator] Success:', { tipId, amount, coinType });
+    if (rpcError) {
+      console.error('[TipCreator] RPC error:', rpcError);
+      const msg = rpcError.message || '';
+
+      if (msg.includes('INSUFFICIENT_BALANCE')) {
+        return new Response(
+          JSON.stringify({ error: `Insufficient ${coinType} balance`, success: false }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (msg.includes('CREATOR_NOT_FOUND')) {
+        return new Response(
+          JSON.stringify({ error: 'Creator not found', success: false }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (msg.includes('TIPPER_NOT_FOUND')) {
+        return new Response(
+          JSON.stringify({ error: 'User profile not found', success: false }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error('Failed to process tip');
+    }
+
+    console.log('[TipCreator] Success:', data);
 
     return new Response(
       JSON.stringify({
         success: true,
-        tip_id: tipId,
-        amount,
-        coin_type: coinType,
-        new_balance: tipperBalance - amount,
+        tip_id: data.tip_id,
+        amount: data.amount,
+        coin_type: data.coin_type,
+        new_balance: data.new_balance,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

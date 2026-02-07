@@ -72,6 +72,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   ];
 
   const handleLogoClick = () => {
+    haptic.light();
     navigate('/create');
   };
 
@@ -102,7 +103,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       longPressTriggered.current = false;
       return;
     }
-    
+    haptic.light();
     if (item.id === 'profile') {
       navigate('/my-page');
     } else {

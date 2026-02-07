@@ -180,6 +180,8 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     isCameraActive,
     calibrationTargets,
     blinkCount,
+    registerButton,
+    unregisterButton,
     toggleActive,
     startCalibration,
     recordCalibrationPoint,
@@ -207,6 +209,42 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
       onNavigate?.(action, direction);
     },
   });
+
+  // Auto-register DOM buttons with [data-button-id] when remote control is enabled
+  useEffect(() => {
+    if (!enabled) return;
+
+    const scanAndRegister = () => {
+      const elements = document.querySelectorAll<HTMLElement>('[data-button-id]');
+      const currentIds = new Set<string>();
+      
+      elements.forEach((el) => {
+        const id = el.getAttribute('data-button-id');
+        if (id) {
+          currentIds.add(id);
+          registerButton(id, el);
+        }
+      });
+
+      return currentIds;
+    };
+
+    // Initial scan
+    scanAndRegister();
+
+    // Re-scan periodically to catch dynamically rendered buttons
+    const interval = setInterval(scanAndRegister, 2000);
+
+    return () => {
+      clearInterval(interval);
+      // Unregister all on disable
+      const elements = document.querySelectorAll<HTMLElement>('[data-button-id]');
+      elements.forEach((el) => {
+        const id = el.getAttribute('data-button-id');
+        if (id) unregisterButton(id);
+      });
+    };
+  }, [enabled, registerButton, unregisterButton]);
 
   // Haptic feedback for blinks
   useEffect(() => {

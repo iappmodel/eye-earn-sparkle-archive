@@ -281,8 +281,7 @@ const Index = () => {
     toast.success('Feed refreshed!');
   }, [refreshProfile]);
 
-  
-  
+
   // Map content type to component rendering
   const renderPageContent = useCallback((contentType: string, isActive: boolean) => {
     switch (contentType) {
@@ -429,6 +428,21 @@ const Index = () => {
       pageNavigate(direction);
     }
   }, [navigateToMedia, pageNavigate, currentState.direction]);
+
+  // Listen for gazeNavigate events from the remote control system
+  useEffect(() => {
+    const handleGazeNavigate = (e: Event) => {
+      const { action } = (e as CustomEvent).detail;
+      switch (action) {
+        case 'nextVideo': navigateToMedia('up'); break;
+        case 'prevVideo': navigateToMedia('down'); break;
+        case 'friendsFeed': pageNavigate('left'); break;
+        case 'promoFeed': pageNavigate('right'); break;
+      }
+    };
+    window.addEventListener('gazeNavigate', handleGazeNavigate);
+    return () => window.removeEventListener('gazeNavigate', handleGazeNavigate);
+  }, [navigateToMedia, pageNavigate]);
 
   // Swipe gesture handling
   const { handlers } = useSwipeNavigation({
@@ -658,6 +672,21 @@ const Index = () => {
                 onAchievementsClick={() => setShowAchievementsPanel(true)}
                 onSaveVideo={handleSaveVideo}
                 onSaveLongPress={handleSaveLongPress}
+                onComboAction={(action) => {
+                  switch (action) {
+                    case 'like': handleLike(); break;
+                    case 'comment': handleComment(); break;
+                    case 'share': handleShare(); break;
+                    case 'save': handleSaveVideo(); break;
+                    case 'nextVideo': navigateToMedia('up'); break;
+                    case 'prevVideo': navigateToMedia('down'); break;
+                    case 'friendsFeed': pageNavigate('left'); break;
+                    case 'promoFeed': pageNavigate('right'); break;
+                    case 'openSettings': handleSettings(); break;
+                    case 'toggleMute': toast.info('Mute toggled'); break;
+                    case 'follow': toast.success('Followed!'); break;
+                  }
+                }}
                 isLiked={isLiked}
                 likeCount={1234}
                 isVideoSaved={savedVideos.isSaved(currentMedia.id)}

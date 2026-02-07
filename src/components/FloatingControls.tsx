@@ -201,6 +201,7 @@ interface FloatingControlsProps {
   onAchievementsClick?: () => void;
   onSaveVideo?: () => void;
   onSaveLongPress?: () => void;
+  onComboAction?: (action: string) => void;
   isLiked?: boolean;
   isFollowing?: boolean;
   isSaved?: boolean;
@@ -418,6 +419,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onAchievementsClick,
   onSaveVideo,
   onSaveLongPress,
+  onComboAction,
   isLiked = false,
   likeCount = 0,
   isVideoSaved = false,
@@ -625,6 +627,10 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         onNavigate={(action, direction) => {
           console.log('[FloatingControls] Remote Control navigation:', action, direction);
           window.dispatchEvent(new CustomEvent('gazeNavigate', { detail: { action, direction } }));
+        }}
+        onComboAction={(action, combo) => {
+          console.log('[FloatingControls] Combo action:', action, combo.name);
+          onComboAction?.(action);
         }}
         showSettings={showRemoteSettings}
         onCloseSettings={() => setShowRemoteSettings(false)}

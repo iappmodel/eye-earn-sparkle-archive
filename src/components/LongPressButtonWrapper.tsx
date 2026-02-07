@@ -1896,6 +1896,7 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
     <>
       <div
         ref={wrapperRef}
+        data-button-id={buttonId}
         className={cn('relative', className)}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}

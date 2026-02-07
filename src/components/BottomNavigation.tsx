@@ -121,11 +121,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       )}
 
       <nav className={cn(
-        'fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300',
+        'fixed left-1/2 -translate-x-1/2 z-50 transition-all duration-300',
+        'bottom-[max(1.5rem,env(safe-area-inset-bottom,6px))]',
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none',
         className
       )}>
-        <div className="glass-neon rounded-full px-3 py-2 flex items-center gap-1">
+        <div className="glass-neon rounded-full px-2 sm:px-3 py-2 flex items-center gap-0.5 sm:gap-1">
           {navItems.map((item) => (
             <React.Fragment key={item.id}>
               {item.isLogo ? (
@@ -148,7 +149,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                     onMouseUp={handleLongPressEnd}
                     onMouseLeave={handleLongPressEnd}
                     className={cn(
-                      'flex flex-col items-center gap-0.5 px-3 py-2 rounded-full transition-all duration-200',
+                      'flex flex-col items-center gap-0.5 px-3 py-2.5 rounded-full transition-all duration-200 min-w-[44px] min-h-[44px] justify-center',
                       activeTab === item.id 
                         ? 'bg-primary/20 neon-border' 
                         : 'hover:bg-primary/10'

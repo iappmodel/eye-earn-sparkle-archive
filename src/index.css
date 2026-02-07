@@ -1242,4 +1242,30 @@
       transform: translate(-50%, -40px) scale(0.8);
     }
   }
+  
+  /* ===== MOBILE SAFE AREA & RESPONSIVE UTILITIES ===== */
+  
+  /* Ensure proper mobile viewport handling */
+  html {
+    min-height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+  }
+  
+  body {
+    min-height: 100dvh;
+  }
+  
+  /* Mobile-specific spacing tightening for very narrow screens */
+  @media (max-width: 380px) {
+    .font-display {
+      font-size: 0.95em;
+    }
+  }
+  
+  /* Ensure text doesn't overflow on narrow screens */
+  @media (max-width: 375px) {
+    .gradient-text, .gradient-text-gold {
+      font-size: 1.5rem;
+    }
+  }
 }

@@ -20,7 +20,7 @@ export function AppShell({ children, hideNavigation = false, className }: AppShe
       {isOffline && <OfflineBanner />}
 
       {/* Main Content Area */}
-      <main className={cn('flex-1', !hideNavigation && 'pl-16')}>
+      <main className="flex-1">
         {children}
       </main>
 

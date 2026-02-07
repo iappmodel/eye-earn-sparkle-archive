@@ -430,6 +430,8 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   const [showRemoteSettings, setShowRemoteSettings] = useState(false);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   const saveLongPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const didLongPress = useRef(false);
+  const touchFired = useRef(false);
   
   const handleFullProfileClick = () => {
     setProfileSheetOpen(false);
@@ -445,21 +447,50 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
     setRemoteControlEnabled(!remoteControlEnabled);
   };
 
-  const handleSaveTouchStart = useCallback(() => {
+  const startSaveTimer = useCallback(() => {
+    if (saveLongPressTimer.current) clearTimeout(saveLongPressTimer.current);
+    didLongPress.current = false;
     saveLongPressTimer.current = setTimeout(() => {
       saveLongPressTimer.current = null;
+      didLongPress.current = true;
       medium();
       onSaveLongPress?.();
-    }, 1500);
+    }, 1000);
   }, [medium, onSaveLongPress]);
 
-  const handleSaveTouchEnd = useCallback(() => {
+  const clearSaveTimer = useCallback(() => {
     if (saveLongPressTimer.current) {
       clearTimeout(saveLongPressTimer.current);
       saveLongPressTimer.current = null;
-      // Short tap – toggle save
-      onSaveVideo?.();
     }
+  }, []);
+
+  const handleSaveTouchStart = useCallback(() => {
+    touchFired.current = true;
+    startSaveTimer();
+  }, [startSaveTimer]);
+
+  const handleSaveTouchEnd = useCallback(() => {
+    clearSaveTimer();
+    setTimeout(() => { touchFired.current = false; }, 0);
+  }, [clearSaveTimer]);
+
+  const handleSaveMouseDown = useCallback(() => {
+    if (touchFired.current) return;
+    startSaveTimer();
+  }, [startSaveTimer]);
+
+  const handleSaveMouseUp = useCallback(() => {
+    if (touchFired.current) return;
+    clearSaveTimer();
+  }, [clearSaveTimer]);
+
+  const handleSaveClick = useCallback(() => {
+    if (didLongPress.current) {
+      didLongPress.current = false;
+      return;
+    }
+    onSaveVideo?.();
   }, [onSaveVideo]);
 
   useEffect(() => {
@@ -512,16 +543,13 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         <div
           onTouchStart={handleSaveTouchStart}
           onTouchEnd={handleSaveTouchEnd}
-          onMouseDown={handleSaveTouchStart}
-          onMouseUp={handleSaveTouchEnd}
-          onMouseLeave={() => {
-            if (saveLongPressTimer.current) {
-              clearTimeout(saveLongPressTimer.current);
-              saveLongPressTimer.current = null;
-            }
-          }}
+          onTouchCancel={clearSaveTimer}
+          onMouseDown={handleSaveMouseDown}
+          onMouseUp={handleSaveMouseUp}
+          onMouseLeave={handleSaveMouseUp}
         >
           <NeuButton
+            onClick={handleSaveClick}
             variant={isVideoSaved ? 'accent' : 'default'}
             tooltip={isVideoSaved ? 'Saved' : 'Save'}
           >

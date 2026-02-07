@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 
 export interface RouteStop {
   id: string;
@@ -79,6 +79,26 @@ export const defaultRouteFilters: RouteFilters = {
 
 const generateRouteId = () => `route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const SAVED_ROUTES_KEY = 'promo-saved-routes';
+const WATCH_LATER_KEY = 'promo-watch-later';
+
+function readFromStorage<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeToStorage<T>(key: string, value: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // localStorage full or unavailable – silently ignore
+  }
+}
+
 // Haversine for distance sorting
 const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371;
@@ -92,9 +112,13 @@ const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): numb
 
 export function usePromoRoute() {
   const [activeRoute, setActiveRoute] = useState<PromoRoute | null>(null);
-  const [savedRoutes, setSavedRoutes] = useState<PromoRoute[]>([]);
+  const [savedRoutes, setSavedRoutes] = useState<PromoRoute[]>(() => readFromStorage<PromoRoute[]>(SAVED_ROUTES_KEY, []));
   const [isBuilding, setIsBuilding] = useState(false);
-  const [watchLater, setWatchLater] = useState<RouteStop[]>([]);
+  const [watchLater, setWatchLater] = useState<RouteStop[]>(() => readFromStorage<RouteStop[]>(WATCH_LATER_KEY, []));
+
+  // Persist to localStorage
+  useEffect(() => { writeToStorage(SAVED_ROUTES_KEY, savedRoutes); }, [savedRoutes]);
+  useEffect(() => { writeToStorage(WATCH_LATER_KEY, watchLater); }, [watchLater]);
 
   // ─── Basic Route Operations ─────────────────────────────────────
 
@@ -241,6 +265,60 @@ export function usePromoRoute() {
       }
     },
     [activeRoute],
+  );
+
+  // ─── Duplicate Route ─────────────────────────────────────────────
+
+  const duplicateRoute = useCallback(
+    (routeId: string) => {
+      const route = savedRoutes.find(r => r.id === routeId);
+      if (!route) return null;
+      const copy: PromoRoute = {
+        ...route,
+        id: generateRouteId(),
+        name: `${route.name} (Copy)`,
+        createdAt: new Date().toISOString(),
+      };
+      setSavedRoutes(prev => [...prev, copy]);
+      return copy;
+    },
+    [savedRoutes],
+  );
+
+  // ─── Open saved route directly in Google Maps ──────────────────
+
+  const openSavedRouteInMaps = useCallback(
+    (routeId: string, userLat?: number, userLng?: number) => {
+      const route = savedRoutes.find(r => r.id === routeId);
+      if (!route || route.stops.length === 0) return;
+      const stops = route.stops;
+      const origin = route.origin
+        ? `${route.origin.latitude},${route.origin.longitude}`
+        : userLat && userLng
+          ? `${userLat},${userLng}`
+          : `${stops[0].latitude},${stops[0].longitude}`;
+      const dest = route.destination
+        ? `${route.destination.latitude},${route.destination.longitude}`
+        : `${stops[stops.length - 1].latitude},${stops[stops.length - 1].longitude}`;
+      const waypoints =
+        stops.length > 2
+          ? stops.slice(1, -1).map(s => `${s.latitude},${s.longitude}`).join('|')
+          : stops.length === 2 && (route.origin || userLat)
+            ? `${stops[0].latitude},${stops[0].longitude}`
+            : '';
+      const travelMode =
+        route.transportMode === 'walking' || route.transportMode === 'running'
+          ? 'walking'
+          : route.transportMode === 'transit'
+            ? 'transit'
+            : route.transportMode === 'cycling'
+              ? 'bicycling'
+              : 'driving';
+      let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=${travelMode}`;
+      if (waypoints) url += `&waypoints=${encodeURIComponent(waypoints)}`;
+      window.open(url, '_blank');
+    },
+    [savedRoutes],
   );
 
   // ─── Watch Later ────────────────────────────────────────────────
@@ -560,6 +638,8 @@ export function usePromoRoute() {
     removeFromWatchLater,
     isInWatchLater,
     openInGoogleMaps,
+    duplicateRoute,
+    openSavedRouteInMaps,
     suggestRoute,
     suggestFromWatchLater,
     suggestByInterests,

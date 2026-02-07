@@ -11,6 +11,7 @@ import {
   Navigation, Sparkles, Save, MapPin, Coins, ExternalLink,
   Filter, Clock, CalendarCheck, ChevronDown, ChevronUp, Edit2,
   Bookmark, Zap, TrendingUp, Timer, Brain, Heart, MapPinned,
+  Copy, Play,
 } from 'lucide-react';
 import { CategoryIcon } from './PromotionCategories';
 import { RouteFilterSheet } from './RouteFilterSheet';
@@ -46,6 +47,8 @@ interface RouteBuilderProps {
   onSuggestFromSaved?: () => void;
   onSuggestByInterests?: () => void;
   onSuggestSmartRoute?: () => void;
+  onDuplicateRoute?: (routeId: string) => void;
+  onOpenSavedRouteInMaps?: (routeId: string) => void;
   getSegmentTransport?: (fromIdx: number, toIdx: number) => TransportMode;
   userLocation?: { lat: number; lng: number } | null;
   mapboxToken?: string | null;
@@ -110,6 +113,8 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   onSuggestFromSaved,
   onSuggestByInterests,
   onSuggestSmartRoute,
+  onDuplicateRoute,
+  onOpenSavedRouteInMaps,
   getSegmentTransport,
   userLocation,
   mapboxToken,
@@ -611,25 +616,83 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     </span>
                     {showSaved ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
-                  {showSaved && savedRoutes.map((r) => (
-                    <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-card">
-                      <Route className="w-5 h-5 text-primary shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{r.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {r.stops.length} stops · {r.totalReward} coins{r.isCommuteRoute && ' · Daily'}
+                  {showSaved && savedRoutes.map((r) => {
+                    const TransportIcon = getTransportIcon(r.transportMode);
+                    const savedAgo = (() => {
+                      const diff = Date.now() - new Date(r.createdAt).getTime();
+                      const mins = Math.floor(diff / 60000);
+                      if (mins < 60) return `${mins}m ago`;
+                      const hrs = Math.floor(mins / 60);
+                      if (hrs < 24) return `${hrs}h ago`;
+                      const days = Math.floor(hrs / 24);
+                      return `${days}d ago`;
+                    })();
+                    return (
+                      <div key={r.id} className="p-3 rounded-xl border border-border/50 bg-card space-y-2">
+                        {/* Top row: icon + name + actions */}
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <TransportIcon className="w-4.5 h-4.5 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{r.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {r.stops.length} stops · {r.totalReward} coins
+                              {r.isCommuteRoute && r.schedule ? ` · ${r.schedule.day === 'everyday' ? 'Daily' : r.schedule.day} at ${r.schedule.time}` : r.isCommuteRoute ? ' · Daily' : ''}
+                            </div>
+                            {r.destination && (
+                              <div className="text-xs text-muted-foreground truncate">
+                                → {r.destination.address.split(',')[0]}
+                              </div>
+                            )}
+                            <div className="text-[10px] text-muted-foreground/60 mt-0.5">Saved {savedAgo}</div>
+                          </div>
+                        </div>
+                        {/* Action buttons row */}
+                        <div className="flex gap-1.5 pt-1 border-t border-border/30">
+                          <Button
+                            size="sm" variant="default"
+                            className="flex-1 gap-1.5 h-8 text-xs"
+                            onClick={() => { onLoadRoute(r.id); onOpenInGoogleMaps(userLocation?.lat, userLocation?.lng); }}
+                          >
+                            <Play className="w-3.5 h-3.5" /> Use
+                          </Button>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-8 px-2.5"
+                            title="Open in Google Maps"
+                            onClick={() => onOpenSavedRouteInMaps?.(r.id)}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-8 px-2.5"
+                            title="Duplicate route"
+                            onClick={() => { onDuplicateRoute?.(r.id); toast.success('Route duplicated'); }}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost"
+                            className="h-8 px-2.5"
+                            title="Edit route"
+                            onClick={() => onLoadRoute(r.id)}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm" variant="ghost"
+                            className="text-destructive h-8 px-2.5"
+                            title="Delete route"
+                            onClick={() => { onDeleteSavedRoute(r.id); toast.success('Route deleted'); }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex gap-1.5">
-                        <Button size="sm" variant="ghost" onClick={() => onLoadRoute(r.id)}>
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => onDeleteSavedRoute(r.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {showSaved && savedRoutes.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-3">No saved routes yet</p>
                   )}

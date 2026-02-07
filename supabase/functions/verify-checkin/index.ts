@@ -211,24 +211,21 @@ serve(async (req) => {
       );
     }
 
-    // If verified, update user's coin balance and streak
+    // If verified, update user's coin balance atomically and streak
     if (isWithinRange && totalReward && rewardType) {
-      const balanceField = rewardType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('vicoin_balance, icoin_balance')
-        .eq('user_id', user.id)
-        .single();
+      // Use atomic balance update to prevent race conditions
+      const { data: balanceResult, error: balanceError } = await supabase.rpc('atomic_update_balance', {
+        p_user_id: user.id,
+        p_amount: totalReward,
+        p_coin_type: rewardType,
+        p_description: `Check-in reward at ${businessName || 'location'}`,
+        p_reference_id: checkin.id,
+      });
 
-      if (profile) {
-        const currentBalance = (rewardType === 'vicoin' ? profile.vicoin_balance : profile.icoin_balance) || 0;
-        await supabase
-          .from('profiles')
-          .update({ [balanceField]: currentBalance + totalReward })
-          .eq('user_id', user.id);
-
-        console.log('[verify-checkin] Updated balance:', { balanceField, newBalance: currentBalance + totalReward });
+      if (balanceError) {
+        console.error('[verify-checkin] Atomic balance update error:', balanceError);
+      } else {
+        console.log('[verify-checkin] Updated balance atomically:', balanceResult);
       }
 
       // Update streak in user_levels

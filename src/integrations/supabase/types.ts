@@ -2305,6 +2305,43 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      atomic_convert_coins: {
+        Args: {
+          p_exchange_rate?: number
+          p_icoin_amount: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      atomic_request_payout: {
+        Args: {
+          p_amount: number
+          p_coin_type: string
+          p_method: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      atomic_tip_creator: {
+        Args: {
+          p_amount: number
+          p_coin_type: string
+          p_content_id: string
+          p_creator_id: string
+          p_tipper_id: string
+        }
+        Returns: Json
+      }
+      atomic_update_balance: {
+        Args: {
+          p_amount: number
+          p_coin_type: string
+          p_description: string
+          p_reference_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

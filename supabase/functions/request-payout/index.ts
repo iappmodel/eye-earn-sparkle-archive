@@ -79,95 +79,51 @@ serve(async (req) => {
       );
     }
 
-    // Check KYC status
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('kyc_status, vicoin_balance, icoin_balance')
-      .eq('user_id', user.id)
-      .single();
-
-    if (profileError) {
-      console.error('[RequestPayout] Profile error:', profileError);
-      throw profileError;
-    }
-
-    if (profile.kyc_status !== 'verified') {
-      return new Response(
-        JSON.stringify({ 
-          error: 'KYC verification required before payout',
-          kyc_status: profile.kyc_status 
-        }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check sufficient balance
-    const currentBalance = coinType === 'vicoin' ? profile.vicoin_balance : profile.icoin_balance;
-    if (currentBalance < amount) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Insufficient balance',
-          current_balance: currentBalance,
-          requested: amount 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Deduct from balance
-    const balanceColumn = coinType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ [balanceColumn]: currentBalance - amount })
-      .eq('user_id', user.id);
-
-    if (updateError) {
-      console.error('[RequestPayout] Balance update error:', updateError);
-      throw updateError;
-    }
-
-    // Create transaction record
-    const { data: transaction, error: txError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: user.id,
-        type: 'withdrawn',
-        coin_type: coinType,
-        amount: amount,
-        description: `Payout via ${method}`,
-        reference_id: `payout_${Date.now()}`,
-      })
-      .select()
-      .single();
-
-    if (txError) {
-      console.error('[RequestPayout] Transaction error:', txError);
-      // Rollback balance
-      await supabase
-        .from('profiles')
-        .update({ [balanceColumn]: currentBalance })
-        .eq('user_id', user.id);
-      throw txError;
-    }
-
-    // In a real implementation, you would integrate with PayPal/Bank APIs here
-    console.log('[RequestPayout] Payout initiated:', { 
-      transactionId: transaction.id, 
-      method,
-      amount,
-      coinType 
+    // Call atomic stored procedure — handles locking, KYC check, balance deduction, and transaction logging
+    const { data, error: rpcError } = await supabase.rpc('atomic_request_payout', {
+      p_user_id: user.id,
+      p_amount: amount,
+      p_coin_type: coinType,
+      p_method: method,
     });
+
+    if (rpcError) {
+      console.error('[RequestPayout] RPC error:', rpcError);
+      const msg = rpcError.message || '';
+
+      if (msg.includes('KYC_REQUIRED')) {
+        return new Response(
+          JSON.stringify({ error: 'KYC verification required before payout' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (msg.includes('INSUFFICIENT_BALANCE')) {
+        return new Response(
+          JSON.stringify({ error: 'Insufficient balance' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (msg.includes('PROFILE_NOT_FOUND')) {
+        return new Response(
+          JSON.stringify({ error: 'User profile not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error('Failed to process payout');
+    }
+
+    console.log('[RequestPayout] Payout initiated:', data);
 
     return new Response(
       JSON.stringify({
         success: true,
-        transaction_id: transaction.id,
-        amount,
-        coin_type: coinType,
-        method,
+        transaction_id: data.transaction_id,
+        amount: data.amount,
+        coin_type: data.coin_type,
+        method: data.method,
         status: 'processing',
         estimated_arrival: '3-5 business days',
-        new_balance: currentBalance - amount,
+        new_balance: data.new_balance,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

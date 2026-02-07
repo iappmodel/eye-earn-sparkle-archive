@@ -10,6 +10,7 @@ import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import { UICustomizationProvider } from "@/contexts/UICustomizationContext";
 import { DragContextProvider } from "@/components/DraggableButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import { SplashScreen } from "@/components/SplashScreen";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { BreadcrumbNavigation } from "@/components/BreadcrumbNavigation";
@@ -107,6 +108,7 @@ const AppContent = () => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <SplashScreen />
     <LocalizationProvider>
       <AccessibilityProvider>
         <UICustomizationProvider>

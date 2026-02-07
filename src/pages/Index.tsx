@@ -685,6 +685,15 @@ const Index = () => {
                     case 'openSettings': handleSettings(); break;
                     case 'toggleMute': toast.info('Mute toggled'); break;
                     case 'follow': toast.success('Followed!'); break;
+                    case 'openWallet': setShowWallet(true); break;
+                    case 'openProfile': setShowProfile(true); break;
+                    case 'openMap': setShowMap(true); break;
+                    case 'openMessages': setShowMessages(true); break;
+                    case 'openAchievements': setShowAchievementsPanel(true); break;
+                    case 'openRouteBuilder': setShowRouteBuilderFromFeed(true); break;
+                    case 'openSavedVideos': setShowSavedGallery(true); break;
+                    case 'checkIn': toast.success('Checked in!'); break;
+                    case 'tipCreator': toast.info('Tip creator'); break;
                   }
                 }}
                 isLiked={isLiked}

@@ -5,6 +5,7 @@ import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { LongPressButtonWrapper } from './LongPressButtonWrapper';
 import { BlinkRemoteControl } from './BlinkRemoteControl';
+import { TargetOverlay } from './TargetOverlay';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 // Context for sharing visibility state across components
@@ -635,6 +636,15 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         showSettings={showRemoteSettings}
         onCloseSettings={() => setShowRemoteSettings(false)}
         className="left-4 top-20"
+      />
+
+      {/* Target Overlay - rendered when remote control is active */}
+      <TargetOverlay
+        enabled={remoteControlEnabled}
+        onTargetAction={(command) => {
+          console.log('[FloatingControls] Target action:', command);
+          onComboAction?.(command);
+        }}
       />
     </>
   );

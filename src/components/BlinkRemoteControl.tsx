@@ -4,7 +4,7 @@ import {
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Hand, MousePointer,
   ToggleLeft, Ban, Navigation, Play, SkipForward, SkipBack, Users, Video,
   Sparkles, Plus, Trash2, HelpCircle, BookOpen, Clock, Volume2, VolumeX, Film,
-  Activity
+  Activity, Crosshair
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -49,6 +49,8 @@ import { EyeMovementTracking, EyeMovementResult } from '@/components/EyeMovement
 import FacialExpressionScanning, { FacialExpressionResult } from '@/components/FacialExpressionScanning';
 import { SlowBlinkTraining, SlowBlinkResult } from '@/components/SlowBlinkTraining';
 import { VoiceCalibration, VoiceCalibrationResult } from '@/components/VoiceCalibration';
+import { TargetEditor } from '@/components/TargetEditor';
+import { TargetSuggestions } from '@/components/TargetSuggestions';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -441,12 +443,13 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           </SheetHeader>
           
           <Tabs defaultValue="commands" className="mt-4">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="commands">Blinks</TabsTrigger>
-              <TabsTrigger value="combos">Combos</TabsTrigger>
-              <TabsTrigger value="gaze">Gaze</TabsTrigger>
-              <TabsTrigger value="audio">Audio</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="commands" className="text-[11px] px-1">Blinks</TabsTrigger>
+              <TabsTrigger value="combos" className="text-[11px] px-1">Combos</TabsTrigger>
+              <TabsTrigger value="targets" className="text-[11px] px-1">Targets</TabsTrigger>
+              <TabsTrigger value="gaze" className="text-[11px] px-1">Gaze</TabsTrigger>
+              <TabsTrigger value="audio" className="text-[11px] px-1">Audio</TabsTrigger>
+              <TabsTrigger value="settings" className="text-[11px] px-1">Settings</TabsTrigger>
             </TabsList>
 
             {/* Blink Commands Tab */}
@@ -679,6 +682,21 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 isOpen={showComboGuide}
                 onClose={() => setShowComboGuide(false)}
               />
+            </TabsContent>
+
+            {/* Targets Tab */}
+            <TabsContent value="targets" className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pb-4">
+              <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Crosshair className="w-4 h-4 text-primary" />
+                  Screen Targets
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Place targets on screen and assign commands with micro-gestures. Tap the canvas to add targets, drag to reposition.
+                </p>
+              </div>
+              <TargetEditor />
+              <TargetSuggestions />
             </TabsContent>
 
             {/* Gaze Navigation Tab */}

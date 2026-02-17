@@ -39,8 +39,59 @@
   </head>
 
   <body>
-    <div id="splash" style="position:fixed;inset:0;z-index:200;background:#0A0A0F;"></div>
+    <div id="splash" style="position:fixed;inset:0;z-index:200;background:#0A0A0F;color:rgba(255,255,255,0.9);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;display:flex;align-items:center;justify-content:center;padding:24px;">
+      <div style="max-width:720px;width:100%;text-align:center;">
+        <div style="font-weight:800;font-size:18px;margin-bottom:10px;">Loading iView…</div>
+        <div style="font-size:13px;opacity:0.8;line-height:1.4;">
+          If this screen stays for more than 5 seconds on mobile, the app likely failed to start.
+          Keep this page open for a moment—an error panel should appear automatically.
+        </div>
+        <div id="boot-error" style="margin-top:14px;text-align:left;display:none;">
+          <div style="font-size:12px;opacity:0.75;margin-bottom:8px;">Errors:</div>
+          <pre id="boot-error-pre" style="white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.06);padding:12px;border-radius:12px;line-height:1.35;"></pre>
+          <button style="margin-top:14px;background:#8B5CF6;color:white;border:0;border-radius:12px;padding:12px 14px;font-weight:600" onclick="location.reload()">Reload</button>
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
+    <script>
+      // Boot diagnostics for mobile/tunnel debugging.
+      // If the app fails before React mounts, we replace the black splash with the error.
+      (function () {
+        var errors = [];
+        window.__iviewBootErrors = errors;
+        window.addEventListener('error', function (e) {
+          try {
+            errors.push((e && e.message) || (e && e.error && e.error.message) || String(e));
+          } catch (_) {}
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          try {
+            var r = e && e.reason;
+            errors.push('Unhandled promise: ' + ((r && r.message) || String(r)));
+          } catch (_) {}
+        });
+        window.__iviewMarkMounted = function () {
+          window.__iviewAppMounted = true;
+        };
+
+        setTimeout(function () {
+          if (window.__iviewAppMounted) return;
+          var splash = document.getElementById('splash');
+          if (!splash) return;
+          // Show errors in the pre-rendered boot panel (keeps HTML parsing simple).
+          splash.style.overflow = 'auto';
+          var panel = document.getElementById('boot-error');
+          var pre = document.getElementById('boot-error-pre');
+          if (panel && pre) {
+            panel.style.display = 'block';
+            pre.textContent = errors.length
+              ? errors.slice(-8).join('\\n\\n')
+              : 'No errors captured yet (module load may be blocked).';
+          }
+        }, 3000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

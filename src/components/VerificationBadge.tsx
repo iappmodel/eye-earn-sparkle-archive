@@ -119,7 +119,7 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({ role, className }) => {
 
 // KYC Status Badge
 interface KycStatusBadgeProps {
-  status: 'pending' | 'submitted' | 'verified' | 'rejected';
+  status: 'pending' | 'submitted' | 'verified' | 'rejected' | 'under_review';
   className?: string;
 }
 
@@ -127,6 +127,7 @@ export const KycStatusBadge: React.FC<KycStatusBadgeProps> = ({ status, classNam
   const statusConfig: Record<string, { label: string; className: string }> = {
     pending: { label: 'Not Verified', className: 'bg-muted text-muted-foreground' },
     submitted: { label: 'Under Review', className: 'bg-icoin/20 text-icoin' },
+    under_review: { label: 'Under Review', className: 'bg-icoin/20 text-icoin' },
     verified: { label: 'Verified', className: 'bg-primary/20 text-primary' },
     rejected: { label: 'Rejected', className: 'bg-destructive/20 text-destructive' },
   };

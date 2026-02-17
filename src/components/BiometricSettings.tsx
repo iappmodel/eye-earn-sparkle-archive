@@ -1,67 +1,135 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Fingerprint, ScanFace, AlertCircle } from 'lucide-react';
-import { useBiometricAuth } from '@/hooks/useBiometricAuth';
-import { useAuth } from '@/contexts/AuthContext';
+import { Fingerprint, ScanFace, ScanLine, AlertCircle, Loader2 } from 'lucide-react';
+import { useBiometricAuth, type BiometryType } from '@/hooks/useBiometricAuth';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
-interface BiometricSettingsProps {
+export interface BiometricSettingsProps {
+  /** Current email (optional). If provided with password, credentials can be saved immediately. */
   email?: string;
+  /** Current password (optional). Required to save credentials when enabling. */
   password?: string;
+  /** Additional CSS class for the container. */
+  className?: string;
 }
 
-export const BiometricSettings: React.FC<BiometricSettingsProps> = ({ email, password }) => {
-  const { 
-    isAvailable, 
-    biometryType, 
-    isEnabled, 
+function getBiometricIcon(type: BiometryType) {
+  switch (type) {
+    case 'faceId':
+      return ScanFace;
+    case 'iris':
+      return ScanLine;
+    case 'fingerprint':
+    case 'multiple':
+    default:
+      return Fingerprint;
+  }
+}
+
+export const BiometricSettings: React.FC<BiometricSettingsProps> = ({
+  email,
+  password,
+  className,
+}) => {
+  const {
+    isAvailable,
+    biometryType,
+    isEnabled,
     isLoading,
-    enableBiometric, 
+    authenticate,
+    enableBiometric,
     disableBiometric,
     saveCredentials,
-    deleteCredentials,
+    biometryLabel,
   } = useBiometricAuth();
-  const { user } = useAuth();
   const { toast } = useToast();
+  const [isToggling, setIsToggling] = useState(false);
 
   const handleToggle = async (enabled: boolean) => {
+    if (isToggling) return;
+
     if (enabled) {
-      if (email && password) {
-        const saved = await saveCredentials({ username: email, password });
-        if (saved) {
-          enableBiometric();
+      setIsToggling(true);
+      try {
+        const verified = await authenticate({
+          reason: `Verify your identity to enable ${biometryLabel} login`,
+          title: `Enable ${biometryLabel}`,
+          subtitle: 'Confirm it\'s you',
+          description: `Use ${biometryLabel} to sign in quickly next time`,
+          useFallback: true,
+        });
+
+        if (!verified) {
           toast({
-            title: 'Biometric Login Enabled',
-            description: 'You can now use biometrics to sign in.',
-          });
-        } else {
-          toast({
-            title: 'Failed to Enable',
-            description: 'Could not save credentials for biometric login.',
+            title: 'Verification required',
+            description: 'Complete biometric verification to enable quick login.',
             variant: 'destructive',
           });
+          setIsToggling(false);
+          return;
         }
-      } else {
-        enableBiometric();
+
+        if (email && password) {
+          const saved = await saveCredentials({ username: email, password });
+          if (saved) {
+            enableBiometric();
+            toast({
+              title: `${biometryLabel} login enabled`,
+              description: 'You can now sign in with your biometrics.',
+            });
+          } else {
+            toast({
+              title: 'Could not save credentials',
+              description: 'Biometric login could not be enabled. Try again.',
+              variant: 'destructive',
+            });
+          }
+        } else {
+          enableBiometric();
+          toast({
+            title: `${biometryLabel} login enabled`,
+            description: 'Sign in with your email and password once to save them for quick biometric login.',
+          });
+        }
+      } catch {
         toast({
-          title: 'Biometric Login Enabled',
-          description: 'Sign in with your credentials once to save them for biometric login.',
+          title: 'Something went wrong',
+          description: 'Could not enable biometric login.',
+          variant: 'destructive',
         });
+      } finally {
+        setIsToggling(false);
       }
     } else {
-      await deleteCredentials();
-      disableBiometric();
-      toast({
-        title: 'Biometric Login Disabled',
-        description: 'Your saved credentials have been removed.',
-      });
+      setIsToggling(true);
+      try {
+        await disableBiometric();
+        toast({
+          title: `${biometryLabel} login disabled`,
+          description: 'Your saved credentials have been removed from this device.',
+        });
+      } catch {
+        toast({
+          title: 'Could not disable',
+          description: 'Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsToggling(false);
+      }
     }
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-3 p-4 rounded-lg bg-secondary/50 animate-pulse">
+      <div
+        className={cn(
+          'flex items-center gap-3 p-4 rounded-lg bg-secondary/50 animate-pulse',
+          className
+        )}
+      >
         <div className="w-10 h-10 rounded-full bg-muted" />
         <div className="flex-1 space-y-2">
           <div className="h-4 w-32 bg-muted rounded" />
@@ -73,45 +141,63 @@ export const BiometricSettings: React.FC<BiometricSettingsProps> = ({ email, pas
 
   if (!isAvailable) {
     return (
-      <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30">
-        <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center">
+      <div
+        className={cn(
+          'flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border/50',
+          className
+        )}
+      >
+        <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center shrink-0">
           <AlertCircle className="w-5 h-5 text-muted-foreground" />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-muted-foreground">
-            Biometric Login Unavailable
+            Biometric login unavailable
           </p>
-          <p className="text-xs text-muted-foreground/70">
-            Your device doesn't support biometric authentication or it's running in a browser.
+          <p className="text-xs text-muted-foreground/80 mt-0.5">
+            Your device doesn’t support biometric authentication, or you’re using the app in a browser.
           </p>
         </div>
       </div>
     );
   }
 
-  const Icon = biometryType === 'faceId' ? ScanFace : Fingerprint;
-  const label = biometryType === 'faceId' ? 'Face ID' : 'Fingerprint';
+  const Icon = getBiometricIcon(biometryType);
 
   return (
-    <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-secondary/50">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+    <div
+      className={cn(
+        'flex items-center justify-between gap-3 p-4 rounded-lg bg-secondary/50 border border-border/50',
+        className
+      )}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
           <Icon className="w-5 h-5 text-primary" />
         </div>
-        <div>
-          <Label htmlFor="biometric-toggle" className="text-sm font-medium cursor-pointer">
-            {label} Login
+        <div className="min-w-0">
+          <Label
+            htmlFor="biometric-toggle"
+            className="text-sm font-medium cursor-pointer block"
+          >
+            {biometryLabel} login
           </Label>
-          <p className="text-xs text-muted-foreground">
-            Use {label.toLowerCase()} to sign in quickly
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Use {biometryLabel.toLowerCase()} to sign in quickly on this device
           </p>
         </div>
       </div>
-      <Switch
-        id="biometric-toggle"
-        checked={isEnabled}
-        onCheckedChange={handleToggle}
-      />
+      {isToggling ? (
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground shrink-0" />
+      ) : (
+        <Switch
+          id="biometric-toggle"
+          checked={isEnabled}
+          onCheckedChange={handleToggle}
+          disabled={isToggling}
+          aria-label={`Toggle ${biometryLabel} login`}
+        />
+      )}
     </div>
   );
 };

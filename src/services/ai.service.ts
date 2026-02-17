@@ -4,6 +4,42 @@ import type { AISuggestion, AIFeedPreference, MediaContent } from '@/types/app.t
 
 const AI_FUNCTIONS_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
+export type SuggestionTone = 'friendly' | 'professional' | 'enthusiastic' | 'concise';
+
+export interface GenerateReplySuggestionsParams {
+  message: string;
+  tone?: SuggestionTone;
+  conversationHistory?: Array<{ role: string; content: string }>;
+  recipientName?: string;
+}
+
+export interface GenerateReplySuggestionsResult {
+  success: boolean;
+  suggestions?: string[];
+  error?: string;
+  errorCode?: 'RATE_LIMIT' | 'CREDITS_EXHAUSTED' | 'CONFIG_MISSING' | 'NETWORK' | 'PARSE' | 'UNKNOWN';
+}
+
+/** Result from ai-content-analyzer / analyzeContent() for tagging, caption, and safety */
+export interface ContentAnalysisResult {
+  tags: string[];
+  category: string;
+  quality_score: number;
+  content_safety: 'safe' | 'sensitive' | 'adult';
+  suggested_hashtags: string[];
+  suggested_caption: string | null;
+  detected_mood?: string;
+}
+
+const DEFAULT_CONTENT_ANALYSIS: ContentAnalysisResult = {
+  tags: [],
+  category: 'general',
+  quality_score: 0,
+  content_safety: 'safe',
+  suggested_hashtags: [],
+  suggested_caption: null,
+};
+
 class AIService {
   // Get AI-curated feed recommendations
   async getFeedRecommendations(
@@ -50,6 +86,71 @@ class AIService {
     }
   }
 
+  // Generate quick reply suggestions for chat (generate-reply edge function)
+  async generateReplySuggestions(params: GenerateReplySuggestionsParams): Promise<GenerateReplySuggestionsResult> {
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-reply', {
+        body: {
+          message: params.message,
+          tone: params.tone ?? 'friendly',
+          context: params.conversationHistory
+            ? params.conversationHistory
+                .slice(-10) // Last 10 messages for context
+                .map((m) => `${m.role}: ${m.content}`)
+                .join('\n')
+            : undefined,
+          recipientName: params.recipientName,
+        },
+      });
+
+      if (error) {
+        return {
+          success: false,
+          error: error.message ?? 'Function invocation failed',
+          errorCode: 'NETWORK',
+        };
+      }
+
+      // Handle explicit error responses from edge function
+      if (data?.success === false && data?.error) {
+        const errorCode =
+          data.errorCode === 'RATE_LIMIT'
+            ? 'RATE_LIMIT'
+            : data.errorCode === 'CREDITS_EXHAUSTED'
+              ? 'CREDITS_EXHAUSTED'
+              : data.errorCode === 'CONFIG_MISSING'
+                ? 'CONFIG_MISSING'
+                : 'UNKNOWN';
+        return {
+          success: false,
+          error: data.error,
+          errorCode,
+        };
+      }
+
+      const suggestions = data?.suggestions;
+      if (!Array.isArray(suggestions) || suggestions.length === 0) {
+        return {
+          success: false,
+          error: 'No suggestions returned',
+          errorCode: 'PARSE',
+        };
+      }
+
+      return {
+        success: true,
+        suggestions: suggestions.slice(0, 3).filter((s): s is string => typeof s === 'string'),
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate suggestions';
+      return {
+        success: false,
+        error: message,
+        errorCode: 'NETWORK',
+      };
+    }
+  }
+
   // Generate auto-response for messages
   async generateAutoResponse(
     conversationHistory: Array<{ role: string; content: string }>,
@@ -71,24 +172,40 @@ class AIService {
     }
   }
 
-  // Analyze content for auto-tagging and categorization
+  /** Result from AI content analyzer (tags, category, quality, safety, caption/hashtags) */
   async analyzeContent(
     contentUrl: string,
-    contentType: 'video' | 'image'
-  ): Promise<{ tags: string[]; category: string; quality_score: number }> {
+    contentType: 'video' | 'image',
+    options?: { thumbnailUrl?: string; thumbnailUrls?: string[] }
+  ): Promise<ContentAnalysisResult> {
     try {
+      const body: { contentUrl: string; contentType: 'video' | 'image'; thumbnailUrl?: string; thumbnailUrls?: string[] } = {
+        contentUrl,
+        contentType,
+      };
+      if (options?.thumbnailUrls?.length) body.thumbnailUrls = options.thumbnailUrls;
+      else if (options?.thumbnailUrl) body.thumbnailUrl = options.thumbnailUrl;
+
       const { data, error } = await supabase.functions.invoke('ai-content-analyzer', {
-        body: {
-          contentUrl,
-          contentType,
-        },
+        body,
       });
 
       if (error) throw error;
-      return data || { tags: [], category: 'general', quality_score: 0 };
+      const d = data as ContentAnalysisResult | undefined;
+      return d && Array.isArray(d.tags)
+        ? {
+            tags: d.tags,
+            category: d.category ?? 'general',
+            quality_score: typeof d.quality_score === 'number' ? d.quality_score : 0,
+            content_safety: d.content_safety ?? 'safe',
+            suggested_hashtags: Array.isArray(d.suggested_hashtags) ? d.suggested_hashtags : [],
+            suggested_caption: d.suggested_caption ?? null,
+            ...(d.detected_mood && { detected_mood: d.detected_mood }),
+          }
+        : DEFAULT_CONTENT_ANALYSIS;
     } catch (error) {
       console.error('[AI] Content analysis error:', error);
-      return { tags: [], category: 'general', quality_score: 0 };
+      return DEFAULT_CONTENT_ANALYSIS;
     }
   }
 

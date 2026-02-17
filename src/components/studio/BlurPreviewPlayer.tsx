@@ -6,7 +6,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
-import { BlurSegment, BlurType } from './MediaBlurEditor';
+import { BlurSegment } from './MediaBlurEditor';
+import { getBlurFilterStyle } from './blurUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface BlurPreviewPlayerProps {
@@ -126,35 +127,8 @@ export const BlurPreviewPlayer: React.FC<BlurPreviewPlayerProps> = ({
     }
   };
 
-  const getBlurStyle = (segment: BlurSegment): React.CSSProperties => {
-    const intensity = segment.blurIntensity / 100;
-    
-    switch (segment.blurType) {
-      case 'glass':
-        return { filter: `blur(${12 * intensity}px)` };
-      case 'mosaic':
-      case 'pixelate':
-        return { filter: `blur(${2 * intensity}px)`, imageRendering: 'pixelated' as const };
-      case 'xray':
-        return { filter: `invert(${intensity})` };
-      case 'outlines':
-        return { filter: `contrast(${1 + 2 * intensity}) brightness(${1 + 0.5 * intensity})` };
-      case 'negative':
-        return { filter: `invert(${intensity}) hue-rotate(${180 * intensity}deg)` };
-      case 'shadow':
-        return { filter: `brightness(${1 - 0.8 * intensity})` };
-      case 'whitening':
-        return { filter: `brightness(${1 + intensity}) contrast(${1 - 0.5 * intensity})` };
-      case 'blackwhite':
-        return { filter: `grayscale(${intensity}) blur(${8 * intensity}px)` };
-      case 'frosted':
-        return { filter: `blur(${20 * intensity}px) saturate(${1 + 0.5 * intensity})` };
-      case 'gaussian':
-        return { filter: `blur(${25 * intensity}px)` };
-      default:
-        return { filter: `blur(${10 * intensity}px)` };
-    }
-  };
+  const getBlurStyle = (segment: BlurSegment): React.CSSProperties =>
+    getBlurFilterStyle({ blurType: segment.blurType, blurIntensity: segment.blurIntensity });
 
   const getCAFIcon = (type: string) => {
     switch (type) {
@@ -197,6 +171,16 @@ export const BlurPreviewPlayer: React.FC<BlurPreviewPlayerProps> = ({
             alt="Media preview"
             className="w-full h-full object-contain"
             style={isCurrentlyBlurred ? getBlurStyle(activeSegment!) : undefined}
+          />
+        )}
+
+        {/* Vignette overlay for vignette blur type */}
+        {activeSegment?.blurType === 'vignette' && isCurrentlyBlurred && !isVideoHidden && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: `radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,${(activeSegment.blurIntensity / 100) * 0.85}) 100%)`,
+            }}
           />
         )}
 

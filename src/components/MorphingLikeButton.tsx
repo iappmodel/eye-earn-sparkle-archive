@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Heart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -10,6 +10,10 @@ interface MorphingLikeButtonProps {
   onLike?: () => void;
   onTip?: (coinType: 'vicoin' | 'icoin', amount: number) => void;
   className?: string;
+  /** Enables per-button appearance overrides saved from the long-press editor. */
+  buttonId?: string;
+  /** When false, tip UI (V/I buttons and tip panel open) is hidden for non-tippable creators. */
+  tipEnabled?: boolean;
 }
 
 export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
@@ -18,6 +22,8 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   onLike,
   onTip,
   className,
+  buttonId,
+  tipEnabled = true,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedCoin, setSelectedCoin] = useState<'vicoin' | 'icoin' | null>(null);
@@ -28,6 +34,83 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
   const startX = useRef(0);
   const haptic = useHapticFeedback();
   const rulerRef = useRef<HTMLDivElement>(null);
+
+  // Listen for tipCreator gesture / programmatic open (e.g. from ComboAction); no-op when tip disabled
+  useEffect(() => {
+    const openTipPanel = () => {
+      if (!tipEnabled) return;
+      setIsExpanded(true);
+      haptic.medium();
+    };
+    window.addEventListener('openTipPanel', openTipPanel);
+    return () => window.removeEventListener('openTipPanel', openTipPanel);
+  }, [haptic, tipEnabled]);
+
+  // Per-button appearance overrides (same storage as long-press editor)
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!buttonId) return;
+    const bump = () => setRevision((v) => v + 1);
+    const events = [
+      'buttonSizesChanged',
+      'buttonColorsChanged',
+      'buttonOpacitiesChanged',
+      'buttonShapesChanged',
+    ] as const;
+    events.forEach((evt) => window.addEventListener(evt, bump as EventListener));
+    window.addEventListener('storage', bump);
+    return () => {
+      events.forEach((evt) => window.removeEventListener(evt, bump as EventListener));
+      window.removeEventListener('storage', bump);
+    };
+  }, [buttonId]);
+
+  const overrides = useMemo(() => {
+    if (!buttonId) return null;
+    const safeLoad = <T,>(key: string): Record<string, T> => {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? (JSON.parse(raw) as Record<string, T>) : {};
+      } catch {
+        return {};
+      }
+    };
+    const sizes = safeLoad<'sm' | 'md' | 'lg'>('visuai-button-sizes');
+    const colors = safeLoad<string>('visuai-button-colors');
+    const opacities = safeLoad<number>('visuai-button-opacity');
+    const shapes = safeLoad<
+      | 'theme'
+      | 'rounded'
+      | 'pill'
+      | 'square'
+      | 'circle'
+      | 'hex'
+      | 'star'
+      | 'heart'
+      | 'diamond'
+    >('visuai-button-shapes');
+
+    return {
+      size: sizes[buttonId],
+      color: colors[buttonId],
+      opacity: opacities[buttonId] ?? 100,
+      hasOpacity: Object.prototype.hasOwnProperty.call(opacities, buttonId),
+      shape: shapes[buttonId] ?? 'theme',
+    };
+  }, [buttonId, revision]);
+
+  const mainSizePx = overrides?.size === 'sm' ? 48 : overrides?.size === 'lg' ? 68 : 56;
+  const shapeClass =
+    overrides?.shape === 'theme' ? '' :
+    overrides?.shape === 'rounded' ? 'btn-shape-rounded' :
+    overrides?.shape === 'pill' ? 'btn-shape-pill' :
+    overrides?.shape === 'square' ? 'btn-shape-square' :
+    overrides?.shape === 'circle' ? 'btn-shape-circle' :
+    overrides?.shape === 'hex' ? 'btn-shape-hex' :
+    overrides?.shape === 'star' ? 'btn-shape-star' :
+    overrides?.shape === 'heart' ? 'btn-shape-heart' :
+    overrides?.shape === 'diamond' ? 'btn-shape-diamond' :
+    '';
 
   const formatCount = (count: number): string => {
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
@@ -40,9 +123,9 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
     startX.current = clientX;
 
     longPressTimer.current = setTimeout(() => {
-      setIsExpanded(true);
+      if (tipEnabled) setIsExpanded(true);
     }, 300);
-  }, []);
+  }, [tipEnabled]);
 
   const handlePressEnd = useCallback(() => {
     if (longPressTimer.current) {
@@ -133,7 +216,8 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
         />
       )}
 
-      {/* Icoin Button (Top) */}
+      {/* Icoin Button (Top) – hidden when tip disabled for non-UUID creators */}
+      {tipEnabled && (
       <div className="relative flex flex-col items-center">
         <button
           onClick={() => handleCoinSelect('icoin')}
@@ -188,8 +272,10 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
           </div>
         )}
       </div>
+      )}
 
-      {/* Vicoin Button (Middle) */}
+      {/* Vicoin Button (Middle) – hidden when tip disabled */}
+      {tipEnabled && (
       <div className="relative flex flex-col items-center">
         <button
           onClick={() => handleCoinSelect('vicoin')}
@@ -244,6 +330,7 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Main Heart Button (Bottom) */}
       <div className="flex flex-col items-center gap-1">
@@ -259,11 +346,26 @@ export const MorphingLikeButton: React.FC<MorphingLikeButtonProps> = ({
           onTouchEnd={handlePressEnd}
           className={cn(
             neuButtonBase,
-            'w-14 h-14 z-20',
+            'z-20',
+            shapeClass,
             isLiked 
               ? 'text-destructive border border-destructive/30 hover:shadow-[0_0_20px_hsl(var(--destructive)/0.3)]' 
               : 'text-foreground border border-border/30 hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]',
           )}
+          style={{
+            width: mainSizePx,
+            height: mainSizePx,
+            ...(overrides?.hasOpacity ? ({ ['--btn-alpha' as any]: overrides.opacity / 100 } as React.CSSProperties) : null),
+            ...(overrides?.color
+              ? ({
+                  // Used by glass theme + consistent tinting
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ['--btn-tint-hsl' as any]: overrides.color,
+                  borderColor: isLiked ? undefined : `hsl(${overrides.color} / 0.28)`,
+                  color: isLiked ? undefined : `hsl(${overrides.color})`,
+                } as React.CSSProperties)
+              : null),
+          }}
         >
           {/* Inner glow for liked state */}
           {isLiked && (

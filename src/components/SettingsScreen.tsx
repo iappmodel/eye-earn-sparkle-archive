@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2, MessageCircle, Crown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Globe, DollarSign, Palette, Moon, Sun, Sparkles, RotateCcw, Move, Link2, Magnet, Save, FolderOpen, Trash2, LayoutTemplate, Eye, EyeOff, Cloud, Type, Volume2, Play, Shield, EyeIcon, Share2, MessageCircle, Crown, BookOpen } from 'lucide-react';
 import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { NeuButton } from './NeuButton';
 import { LanguageSelector } from './LanguageSelector';
@@ -25,6 +26,7 @@ import {
 import { getAutoHideEnabled, setAutoHideEnabled, getAutoHideDelay, setAutoHideDelay, AUTO_HIDE_DELAY_OPTIONS } from './FloatingControls';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useGestureTutorial } from '@/contexts/GestureTutorialContext';
 
 interface SettingsScreenProps {
   isOpen: boolean;
@@ -51,13 +53,21 @@ const themeOptions: { id: ThemePack; label: string; icon: React.ReactNode; descr
     icon: <Cloud className="w-5 h-5" />, 
     description: 'White neumorphic' 
   },
+  {
+    id: 'glass',
+    label: 'Glass',
+    icon: <Sparkles className="w-5 h-5" />,
+    description: 'Liquid glass translucency',
+  },
 ];
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   isOpen,
   onClose,
 }) => {
+  const navigate = useNavigate();
   const { t, localeConfig, formatCurrency, isRTL } = useLocalization();
+  const { openTutorial: openGestureTutorial } = useGestureTutorial();
   const { themePack, setThemePack } = useAccessibility();
   const { setGroupingMode, setSnapPointMode } = useDragContext();
   const { settings: timedSettings, updateSettings: updateTimedSettings } = useTimedInteractions();
@@ -388,6 +398,26 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <h2 className="font-display text-lg font-semibold">Hidden Buttons</h2>
             </div>
             <HiddenButtonsManager />
+          </section>
+
+          {/* Gesture Tutorial */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <BookOpen className="w-5 h-5 text-primary" />
+              <h2 className="font-display text-lg font-semibold">Gesture Tutorial</h2>
+            </div>
+            <button
+              onClick={() => {
+                openGestureTutorial();
+                onClose();
+                navigate('/');
+                toast.success('Gesture tutorial will open on the home feed');
+              }}
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span className="font-medium">Show gesture tutorial again</span>
+            </button>
           </section>
 
           {/* Layout Presets */}

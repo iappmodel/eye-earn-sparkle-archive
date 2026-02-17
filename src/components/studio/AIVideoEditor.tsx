@@ -4,11 +4,37 @@ import {
   Wand2, Check, Play, Zap, Heart, Film, Sparkles,
   Mountain, Music, Clapperboard, Flame, Droplets, Wind, Sun,
   Moon, Star, Ghost, Skull, Laugh, PartyPopper, Medal, Brain,
-  RefreshCw, ChevronRight
+  RefreshCw, ChevronRight, Palette, ThumbsUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Slider } from '@/components/ui/slider';
 import { toast } from 'sonner';
+
+/** Result from analyze-video edge; used to show recommendations and color tip */
+export interface AIAnalysisResult {
+  recommendedStyles: string[];
+  recommendedStyleId: string | null;
+  colorGradeRecommendation: string | null;
+  engagementPrediction?: number;
+  detectedStyle?: string;
+  /** Content tags for discovery */
+  tags?: string[];
+  /** Content category */
+  category?: string;
+  /** 0-100 quality score */
+  qualityScore?: number;
+  /** safe | sensitive | adult */
+  contentSafety?: 'safe' | 'sensitive' | 'adult';
+  /** Suggested hashtags (without #) */
+  suggestedHashtags?: string[];
+  /** Suggested caption for social post */
+  suggestedCaption?: string | null;
+  /** Pacing: slow | medium | fast */
+  pacing?: 'slow' | 'medium' | 'fast';
+  /** Scene break times in seconds (for timeline markers) */
+  sceneBreaks?: number[];
+}
 
 export interface AIStyle {
   id: string;
@@ -57,6 +83,10 @@ interface AIVideoEditorProps {
   onStyleSelect: (style: AIStyle | null) => void;
   onApplyAI: (style: AIStyle, options: AIEditOptions) => Promise<void>;
   selectedStyleId: string | null;
+  /** After "Analyze Video with AI", pass the result to show recommendations and color tip */
+  analysisResult?: AIAnalysisResult | null;
+  /** Callback when user taps "Apply recommended" (style will be selected and can be applied) */
+  onApplyRecommended?: (style: AIStyle) => void;
 }
 
 export interface AIEditOptions {
@@ -71,6 +101,8 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
   onStyleSelect,
   onApplyAI,
   selectedStyleId,
+  analysisResult,
+  onApplyRecommended,
 }) => {
   const isPremium = true; // All features unlocked
   const [activeCategory, setActiveCategory] = useState<AIStyle['category']>('dynamic');
@@ -82,6 +114,10 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
     enhanceColor: true,
     stabilize: false,
   });
+
+  const recommendedStyle = analysisResult?.recommendedStyleId
+    ? aiStyles.find(s => s.id === analysisResult.recommendedStyleId)
+    : null;
 
   const categories: { id: AIStyle['category']; label: string; icon: React.ReactNode }[] = [
     { id: 'dynamic', label: 'Dynamic', icon: <Zap className="w-4 h-4" /> },
@@ -117,6 +153,43 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* AI recommendation after analysis */}
+      {analysisResult && (recommendedStyle || analysisResult.colorGradeRecommendation) && (
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+          {analysisResult.engagementPrediction != null && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ThumbsUp className="w-3.5 h-3.5" />
+              <span>Engagement prediction: {analysisResult.engagementPrediction}%</span>
+            </div>
+          )}
+          {recommendedStyle && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="text-sm font-medium">AI recommends: {recommendedStyle.name}</span>
+              {onApplyRecommended && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className={cn('shrink-0 bg-gradient-to-r', recommendedStyle.color)}
+                  onClick={() => {
+                    onStyleSelect(recommendedStyle);
+                    onApplyRecommended(recommendedStyle);
+                  }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1" />
+                  Apply recommended
+                </Button>
+              )}
+            </div>
+          )}
+          {analysisResult.colorGradeRecommendation && (
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <Palette className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Color: {analysisResult.colorGradeRecommendation}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Category tabs */}
       <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
         {categories.map((cat) => (
@@ -230,6 +303,22 @@ export const AIVideoEditor: React.FC<AIVideoEditorProps> = ({
               <h4 className="font-semibold">{selectedStyle.name} Style</h4>
               <p className="text-sm text-muted-foreground">{selectedStyle.description}</p>
             </div>
+          </div>
+
+          {/* Intensity slider */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Effect intensity</span>
+              <span className="font-medium tabular-nums">{editOptions.intensity}%</span>
+            </div>
+            <Slider
+              value={[editOptions.intensity]}
+              onValueChange={([v]) => setEditOptions(prev => ({ ...prev, intensity: v ?? 75 }))}
+              min={20}
+              max={100}
+              step={5}
+              className="w-full"
+            />
           </div>
 
           {/* AI Options */}

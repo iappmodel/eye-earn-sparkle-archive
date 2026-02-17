@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface QueuedAction {
   id: string;
@@ -46,27 +46,6 @@ export const useOfflineMode = () => {
   useEffect(() => {
     localStorage.setItem(QUEUED_ACTIONS_KEY, JSON.stringify(queuedActions));
   }, [queuedActions]);
-
-  // Listen for online/offline events
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      // Attempt to sync when coming back online
-      syncPendingActions();
-    };
-
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Queue an action for later sync
   const queueAction = useCallback((
@@ -117,6 +96,39 @@ export const useOfflineMode = () => {
     setIsSyncing(false);
   }, [queuedActions, isSyncing]);
 
+  const syncRef = useRef(syncPendingActions);
+  syncRef.current = syncPendingActions;
+  const hasSyncedOnMount = useRef(false);
+
+  // Sync on mount when already online with pending actions (e.g. user queued likes
+  // while offline, closed app, reopened while online - 'online' event won't fire)
+  useEffect(() => {
+    if (!hasSyncedOnMount.current && navigator.onLine && queuedActions.length > 0) {
+      hasSyncedOnMount.current = true;
+      syncRef.current();
+    }
+  }, [queuedActions.length]);
+
+  // Listen for online/offline events (use ref so handler always calls latest sync)
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncRef.current();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   return {
     isOnline,
     isOffline: !isOnline,
@@ -136,17 +148,6 @@ async function processQueuedAction(action: QueuedAction): Promise<boolean> {
   const { supabase } = await import('@/integrations/supabase/client');
 
   switch (action.type) {
-    case 'like':
-      // Handle like action
-      const { error: likeError } = await supabase
-        .from('content_interactions')
-        .upsert({
-          user_id: action.payload.userId as string,
-          content_id: action.payload.contentId as string,
-          liked: true,
-        });
-      return !likeError;
-
     case 'task_complete':
       // Handle task completion
       const { error: taskError } = await supabase
@@ -165,6 +166,73 @@ async function processQueuedAction(action: QueuedAction): Promise<boolean> {
         .from('transactions')
         .insert([action.payload as { amount: number; coin_type: string; description: string; type: string; user_id: string }]);
       return !txError;
+
+    case 'follow': {
+      const { action: followAction, follower_id, following_id } = action.payload as {
+        action: 'follow' | 'unfollow';
+        follower_id: string;
+        following_id: string;
+      };
+      if (!follower_id || !following_id) return false;
+      if (followAction === 'unfollow') {
+        const { error: unfollowErr } = await supabase
+          .from('user_follows')
+          .delete()
+          .eq('follower_id', follower_id)
+          .eq('following_id', following_id);
+        return !unfollowErr;
+      }
+      const { error: followErr } = await supabase
+        .from('user_follows')
+        .insert({ follower_id, following_id });
+      return !followErr;
+    }
+
+    case 'like': {
+      // Semantics: content_likes = canonical like state (syncs to user_content.likes_count);
+      // content_interactions = analytics-only (track-interaction). Both must stay in sync.
+      const { user_id, content_id, liked } = action.payload as {
+        user_id: string;
+        content_id: string;
+        liked: boolean;
+      };
+      if (!user_id || !content_id) return false;
+
+      // 1. Persist to content_likes (canonical source)
+      if (liked) {
+        const { error: likeErr } = await supabase
+          .from('content_likes')
+          .upsert(
+            { user_id, content_id },
+            { onConflict: 'user_id,content_id' }
+          );
+        if (likeErr) return false;
+      } else {
+        const { error: unlikeErr } = await supabase
+          .from('content_likes')
+          .delete()
+          .eq('user_id', user_id)
+          .eq('content_id', content_id);
+        if (unlikeErr) return false;
+      }
+
+      // 2. Backfill analytics (content_interactions, user_preferences) via track-interaction
+      try {
+        await supabase.functions.invoke('track-interaction', {
+          body: {
+            contentId: content_id,
+            contentType: (action.payload.contentType as string) ?? 'video',
+            action: liked ? 'like' : 'unlike',
+            tags: (action.payload.tags as string[]) ?? [],
+            category: (action.payload.category as string | null) ?? null,
+          },
+        });
+      } catch (analyticsErr) {
+        // Analytics failure should not fail the like sync; canonical state is already persisted
+        console.warn('[useOfflineMode] track-interaction backfill failed:', analyticsErr);
+      }
+      return true;
+    }
 
     default:
       console.warn('Unknown action type:', action.type);

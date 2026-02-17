@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Plus, Trash2, X, Check, Layout, Target, Smartphone } from 'lucide-react';
+import { Plus, Trash2, X, Check, Layout, Target, Smartphone, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import {
   ScreenTarget,
   AppCommand,
   GestureTrigger,
+  SimpleGestureTrigger,
   TRIGGER_LABELS,
   TRIGGER_CATEGORIES,
   TARGET_PRESETS,
@@ -51,6 +52,8 @@ const COMMAND_GROUPS: { label: string; actions: { value: ComboAction; label: str
       { value: 'openRouteBuilder', label: 'Route Builder' },
       { value: 'checkIn', label: 'Check In' },
       { value: 'tipCreator', label: 'Tip Creator' },
+      { value: 'viewCreatorProfile', label: 'Creator Profile' },
+      { value: 'report', label: 'Report Content' },
       { value: 'toggleRemoteControl', label: 'Toggle Remote' },
     ],
   },
@@ -58,7 +61,8 @@ const COMMAND_GROUPS: { label: string; actions: { value: ComboAction; label: str
 
 // Trigger icon shorthand
 const triggerIcon = (trigger: GestureTrigger): string => {
-  const map: Partial<Record<GestureTrigger, string>> = {
+  if (typeof trigger !== 'string') return '✨';
+  const map: Partial<Record<SimpleGestureTrigger, string>> = {
     singleBlink: '👁', doubleBlink: '👁👁', tripleBlink: '👁³',
     lipRaiseLeft: '👄←', lipRaiseRight: '👄→',
     faceTurnLeft: '↩️', faceTurnRight: '↪️',
@@ -81,6 +85,7 @@ const commandIcon = (command: AppCommand): string => {
     openMap: '🗺️', openMessages: '✉️', openAchievements: '🏆',
     openSavedVideos: '📁', openRouteBuilder: '🛤️',
     checkIn: '📍', tipCreator: '💎', toggleRemoteControl: '📡',
+    viewCreatorProfile: '👤', report: '🚩',
   };
   return map[command] || '⚡';
 };
@@ -95,13 +100,20 @@ const AddTargetForm: React.FC<AddTargetFormProps> = ({ position, onAdd, onCancel
   const [label, setLabel] = useState('');
   const [command, setCommand] = useState<AppCommand>('like');
   const [trigger, setTrigger] = useState<GestureTrigger>('singleBlink');
+  const [useCombined, setUseCombined] = useState(false);
+  const [combinedSteps, setCombinedSteps] = useState<SimpleGestureTrigger[]>([]);
   const [size, setSize] = useState(10);
+  const dragStepIndexRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const [reorderIndex, setReorderIndex] = useState<number | null>(null);
 
   const handleAdd = () => {
     onAdd({
       label: label || COMBO_ACTION_LABELS[command] || 'Target',
       command,
-      trigger,
+      trigger: useCombined && combinedSteps.length
+        ? { type: 'combined', steps: combinedSteps }
+        : trigger,
       position,
       size,
       enabled: true,
@@ -152,7 +164,114 @@ const AddTargetForm: React.FC<AddTargetFormProps> = ({ position, onAdd, onCancel
 
       {/* Trigger selection */}
       <div className="space-y-2">
-        <label className="text-xs font-medium text-muted-foreground">Trigger Gesture</label>
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-muted-foreground">Trigger Gesture</label>
+          <button
+            type="button"
+            onClick={() => {
+              if (!useCombined) {
+                setUseCombined(true);
+                setCombinedSteps(typeof trigger === 'string' ? [trigger] : []);
+              } else {
+                setUseCombined(false);
+                if (combinedSteps.length) setTrigger(combinedSteps[0]);
+              }
+            }}
+            className={cn(
+              'px-2 py-1 rounded text-[11px] border transition-all',
+              useCombined ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground'
+            )}
+          >
+            Combined
+          </button>
+        </div>
+        {useCombined && (
+          <div className="flex flex-wrap items-center gap-1 text-[10px]">
+            <span className="text-muted-foreground">Long-press to reorder</span>
+            {combinedSteps.length === 0 && (
+              <span className="text-muted-foreground">Add steps below</span>
+            )}
+            {combinedSteps.map((step, i) => (
+              <span
+                key={`${step}-${i}`}
+                draggable
+                onDragStart={() => { dragStepIndexRef.current = i; }}
+                onDragEnd={() => { dragStepIndexRef.current = null; }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  const from = dragStepIndexRef.current;
+                  if (from == null || from === i) return;
+                  setCombinedSteps(prev => {
+                    const next = [...prev];
+                    const [moved] = next.splice(from, 1);
+                    next.splice(i, 0, moved);
+                    return next;
+                  });
+                  dragStepIndexRef.current = null;
+                }}
+                onTouchStart={() => {
+                  if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+                  longPressTimerRef.current = window.setTimeout(() => {
+                    setReorderIndex(i);
+                  }, 350);
+                }}
+                onTouchEnd={() => {
+                  if (longPressTimerRef.current) {
+                    window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                  }
+                }}
+                onTouchCancel={() => {
+                  if (longPressTimerRef.current) {
+                    window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                  }
+                }}
+                onClick={() => {
+                  if (reorderIndex == null) return;
+                  if (reorderIndex === i) {
+                    setReorderIndex(null);
+                    return;
+                  }
+                  setCombinedSteps(prev => {
+                    const next = [...prev];
+                    const [moved] = next.splice(reorderIndex, 1);
+                    next.splice(i, 0, moved);
+                    return next;
+                  });
+                  setReorderIndex(null);
+                }}
+                className={cn(
+                  'flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/50 cursor-move',
+                  reorderIndex === i && 'ring-1 ring-primary/60'
+                )}
+                title="Drag to reorder"
+              >
+                <GripVertical className="w-3 h-3 text-muted-foreground/60" />
+                {TRIGGER_LABELS[step]}
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCombinedSteps(prev => prev.filter((_, idx) => idx !== i));
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {combinedSteps.length > 0 && (
+              <button
+                type="button"
+                className="px-2 py-0.5 rounded border border-border text-muted-foreground"
+                onClick={() => setCombinedSteps([])}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
         <div className="max-h-32 overflow-y-auto space-y-2">
           {TRIGGER_CATEGORIES.map(cat => (
             <div key={cat.label}>
@@ -161,10 +280,16 @@ const AddTargetForm: React.FC<AddTargetFormProps> = ({ position, onAdd, onCancel
                 {cat.triggers.map(t => (
                   <button
                     key={t}
-                    onClick={() => setTrigger(t)}
+                    onClick={() => {
+                      if (useCombined) {
+                        setCombinedSteps((prev) => [...prev, t]);
+                      } else {
+                        setTrigger(t);
+                      }
+                    }}
                     className={cn(
                       'px-2 py-1 rounded text-[11px] border transition-all',
-                      trigger === t
+                      !useCombined && trigger === t
                         ? 'border-primary bg-primary/10 text-primary font-medium'
                         : 'border-border hover:border-primary/50'
                     )}
@@ -207,10 +332,14 @@ export const TargetEditor: React.FC<TargetEditorProps> = ({ className }) => {
   const { targets, addTarget, removeTarget, updateTarget, applyPreset, clearAll } = useScreenTargets();
   const haptics = useHapticFeedback();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const editDragIndexRef = useRef<number | null>(null);
+  const editLongPressTimerRef = useRef<number | null>(null);
+  const [editReorderIndex, setEditReorderIndex] = useState<number | null>(null);
   const [addingAt, setAddingAt] = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const [editingTarget, setEditingTarget] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
 
   const handleCanvasTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (dragging || editingTarget) return;
@@ -232,6 +361,7 @@ export const TargetEditor: React.FC<TargetEditorProps> = ({ className }) => {
 
     if (hit) {
       setEditingTarget(hit.id);
+      setEditLabel(hit.label);
       haptics.light();
     } else {
       setAddingAt({ x: Math.max(0.05, Math.min(0.95, x)), y: Math.max(0.05, Math.min(0.95, y)) });
@@ -383,14 +513,216 @@ export const TargetEditor: React.FC<TargetEditorProps> = ({ className }) => {
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
-                <button onClick={() => setEditingTarget(null)} className="p-1 rounded hover:bg-muted">
+                <button
+                  onClick={() => {
+                    setEditingTarget(null);
+                    setEditLabel('');
+                  }}
+                  className="p-1 rounded hover:bg-muted"
+                >
                   <X className="w-3 h-3" />
                 </button>
               </div>
             </div>
+
+            {/* Label */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">Label</label>
+              <div className="flex gap-2">
+                <Input
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    updateTarget(target.id, { label: editLabel.trim() || target.label });
+                    haptics.light();
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+
+            {/* Command */}
+            <div className="space-y-2">
+              <label className="text-[11px] text-muted-foreground">Command</label>
+              <div className="flex flex-wrap gap-1">
+                {COMMAND_GROUPS.flatMap(g => g.actions).map(a => (
+                  <button
+                    key={a.value}
+                    onClick={() => {
+                      updateTarget(target.id, { command: a.value });
+                      if (!editLabel.trim()) setEditLabel(COMBO_ACTION_LABELS[a.value] || a.label);
+                      haptics.light();
+                    }}
+                    className={cn(
+                      'px-2 py-1 rounded text-[11px] border transition-all',
+                      target.command === a.value
+                        ? 'border-primary bg-primary/10 text-primary font-medium'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    {commandIcon(a.value)} {a.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Trigger */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] text-muted-foreground">Trigger</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const isCombined = typeof target.trigger !== 'string' && target.trigger.type === 'combined';
+                    if (!isCombined) {
+                      const base = typeof target.trigger === 'string' ? [target.trigger] : [];
+                      updateTarget(target.id, { trigger: { type: 'combined', steps: base } });
+                    } else {
+                      const steps = target.trigger.steps;
+                      updateTarget(target.id, { trigger: steps[0] || 'singleBlink' });
+                    }
+                    haptics.light();
+                  }}
+                  className={cn(
+                    'px-2 py-1 rounded text-[11px] border transition-all',
+                    typeof target.trigger !== 'string' && target.trigger.type === 'combined'
+                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      : 'border-border text-muted-foreground'
+                  )}
+                >
+                  Combined
+                </button>
+              </div>
+              {typeof target.trigger !== 'string' && target.trigger.type === 'combined' && (
+                <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                  <span className="text-muted-foreground">Long-press to reorder</span>
+                  {target.trigger.steps.length === 0 && (
+                    <span className="text-muted-foreground">Add steps below</span>
+                  )}
+                  {target.trigger.steps.map((step, i) => (
+                    <span
+                      key={`${step}-${i}`}
+                      draggable
+                      onDragStart={() => { editDragIndexRef.current = i; }}
+                      onDragEnd={() => { editDragIndexRef.current = null; }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        const from = editDragIndexRef.current;
+                        if (from == null || from === i) return;
+                        const next = [...target.trigger.steps];
+                        const [moved] = next.splice(from, 1);
+                        next.splice(i, 0, moved);
+                        updateTarget(target.id, { trigger: { type: 'combined', steps: next } });
+                        editDragIndexRef.current = null;
+                      }}
+                      onTouchStart={() => {
+                        if (editLongPressTimerRef.current) window.clearTimeout(editLongPressTimerRef.current);
+                        editLongPressTimerRef.current = window.setTimeout(() => {
+                          setEditReorderIndex(i);
+                        }, 350);
+                      }}
+                      onTouchEnd={() => {
+                        if (editLongPressTimerRef.current) {
+                          window.clearTimeout(editLongPressTimerRef.current);
+                          editLongPressTimerRef.current = null;
+                        }
+                      }}
+                      onTouchCancel={() => {
+                        if (editLongPressTimerRef.current) {
+                          window.clearTimeout(editLongPressTimerRef.current);
+                          editLongPressTimerRef.current = null;
+                        }
+                      }}
+                      onClick={() => {
+                        if (editReorderIndex == null) return;
+                        if (editReorderIndex === i) {
+                          setEditReorderIndex(null);
+                          return;
+                        }
+                        const next = [...target.trigger.steps];
+                        const [moved] = next.splice(editReorderIndex, 1);
+                        next.splice(i, 0, moved);
+                        updateTarget(target.id, { trigger: { type: 'combined', steps: next } });
+                        setEditReorderIndex(null);
+                      }}
+                      className={cn(
+                        'flex items-center gap-1 px-2 py-0.5 rounded border border-border bg-muted/50 cursor-move',
+                        editReorderIndex === i && 'ring-1 ring-primary/60'
+                      )}
+                      title="Drag to reorder"
+                    >
+                      <GripVertical className="w-3 h-3 text-muted-foreground/60" />
+                      {TRIGGER_LABELS[step]}
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const next = target.trigger.steps.filter((_, idx) => idx !== i);
+                          updateTarget(target.id, { trigger: { type: 'combined', steps: next } });
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {target.trigger.steps.length > 0 && (
+                    <button
+                      type="button"
+                      className="px-2 py-0.5 rounded border border-border text-muted-foreground"
+                      onClick={() => updateTarget(target.id, { trigger: { type: 'combined', steps: [] } })}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1">
+                {TRIGGER_CATEGORIES.flatMap(c => c.triggers).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      if (typeof target.trigger !== 'string' && target.trigger.type === 'combined') {
+                        updateTarget(target.id, { trigger: { type: 'combined', steps: [...target.trigger.steps, t] } });
+                      } else {
+                        updateTarget(target.id, { trigger: t });
+                      }
+                      haptics.light();
+                    }}
+                    className={cn(
+                      'px-2 py-1 rounded text-[11px] border transition-all',
+                      typeof target.trigger === 'string' && target.trigger === t
+                        ? 'border-primary bg-primary/10 text-primary font-medium'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                  >
+                    {triggerIcon(t)} {TRIGGER_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Size */}
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-muted-foreground">Size</label>
+              <input
+                type="range"
+                min={5}
+                max={25}
+                value={target.size}
+                onChange={(e) => updateTarget(target.id, { size: Number(e.target.value) })}
+                className="flex-1"
+              />
+              <span className="text-[11px] w-10 text-right text-muted-foreground">{target.size}%</span>
+            </div>
+
             <div className="text-xs text-muted-foreground space-y-1">
-              <p>Command: <span className="text-foreground">{COMBO_ACTION_LABELS[target.command]}</span></p>
-              <p>Trigger: <span className="text-foreground">{TRIGGER_LABELS[target.trigger]}</span></p>
               <p>Position: ({Math.round(target.position.x * 100)}%, {Math.round(target.position.y * 100)}%)</p>
             </div>
             <div className="flex items-center gap-2">

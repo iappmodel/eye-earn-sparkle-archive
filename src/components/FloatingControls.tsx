@@ -1,17 +1,30 @@
-import React, { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react';
-import { User, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet, Bookmark, Check } from 'lucide-react';
+import React, { useState, useEffect, useCallback, createContext, useContext, useRef, useMemo } from 'react';
+import { User, UserPlus, MessageCircle, Share2, Settings, Heart, Eye, EyeOff, Radio, Cog, ChevronDown, Trophy, Wallet, Bookmark, Check, Link2, Volume2, VolumeX } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { useScreenTargets } from '@/hooks/useScreenTargets';
+import { loadRemoteControlSettings, saveRemoteControlSettings } from '@/hooks/useBlinkRemoteControl';
 import { NeuButton } from './NeuButton';
 import { MorphingLikeButton } from './MorphingLikeButton';
 import { LongPressButtonWrapper } from './LongPressButtonWrapper';
 import { BlinkRemoteControl } from './BlinkRemoteControl';
 import { TargetOverlay } from './TargetOverlay';
-import { cn } from '@/lib/utils';
+import { cn, dispatchCameraUserStart } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useAccessibility } from '@/contexts/AccessibilityContext';
+import { useVideoMute } from '@/contexts/VideoMuteContext';
+import { useUICustomization } from '@/contexts/UICustomizationContext';
+import { useLocalization } from '@/contexts/LocalizationContext';
+import { toast } from 'sonner';
 // Context for sharing visibility state across components
 interface ControlsVisibilityContextType {
   isVisible: boolean;
   showControls: () => void;
+  /** When true, entire sidebar is hidden. */
+  buttonsHidden: boolean;
+  /** When true, buttons stay visible (no auto-hide). When false, buttons can auto-hide. */
+  buttonsPinned: boolean;
+  setButtonsPinned: (pinned: boolean) => void;
 }
 
 const ControlsVisibilityContext = createContext<ControlsVisibilityContextType | null>(null);
@@ -19,7 +32,13 @@ const ControlsVisibilityContext = createContext<ControlsVisibilityContextType | 
 export const useControlsVisibility = () => {
   const context = useContext(ControlsVisibilityContext);
   if (!context) {
-    return { isVisible: true, showControls: () => {} };
+    return {
+      isVisible: true,
+      showControls: () => {},
+      buttonsHidden: false,
+      buttonsPinned: false,
+      setButtonsPinned: () => {},
+    };
   }
   return context;
 };
@@ -28,6 +47,25 @@ export const useControlsVisibility = () => {
 const AUTO_HIDE_STORAGE_KEY = 'visuai-buttons-auto-hide';
 const AUTO_HIDE_DELAY_STORAGE_KEY = 'visuai-buttons-auto-hide-delay';
 const BUTTONS_HIDDEN_STORAGE_KEY = 'visuai-buttons-hidden';
+const BUTTONS_PINNED_STORAGE_KEY = 'visuai-buttons-pinned';
+const UI_EDIT_MODE_KEY = 'visuai-ui-edit-mode';
+
+export const getButtonsPinned = (): boolean => {
+  try {
+    const saved = localStorage.getItem(BUTTONS_PINNED_STORAGE_KEY);
+    return saved === 'true';
+  } catch {
+    return false;
+  }
+};
+
+export const setButtonsPinned = (pinned: boolean) => {
+  try {
+    localStorage.setItem(BUTTONS_PINNED_STORAGE_KEY, String(pinned));
+  } catch (e) {
+    console.error('Failed to save buttons pinned state:', e);
+  }
+};
 
 // Available delay options in milliseconds (0 = never)
 export const AUTO_HIDE_DELAY_OPTIONS = [
@@ -104,7 +142,14 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
   const [autoHideEnabled, setAutoHideEnabledState] = useState(() => getAutoHideEnabled());
   const [autoHideDelay, setAutoHideDelayState] = useState(() => getAutoHideDelay());
   const [buttonsHidden, setButtonsHiddenState] = useState(() => getButtonsHidden());
+  const [buttonsPinned, setButtonsPinnedState] = useState(() => getButtonsPinned());
   const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setPinned = useCallback((pinned: boolean) => {
+    setButtonsPinnedState(pinned);
+    setButtonsPinned(pinned);
+    window.dispatchEvent(new Event('storage'));
+  }, []);
 
   // Listen for storage changes to sync preferences
   useEffect(() => {
@@ -112,6 +157,7 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
       setAutoHideEnabledState(getAutoHideEnabled());
       setAutoHideDelayState(getAutoHideDelay());
       setButtonsHiddenState(getButtonsHidden());
+      setButtonsPinnedState(getButtonsPinned());
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
@@ -167,10 +213,16 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
     };
   }, [showControls, buttonsHidden]);
 
-  const finalVisible = buttonsHidden ? false : (autoHideEnabled && autoHideDelay > 0 ? isVisible : true);
+  const finalVisible = buttonsHidden
+    ? false
+    : buttonsPinned
+      ? true
+      : autoHideEnabled && autoHideDelay > 0
+        ? isVisible
+        : true;
 
   return (
-    <ControlsVisibilityContext.Provider value={{ isVisible: finalVisible, showControls }}>
+    <ControlsVisibilityContext.Provider value={{ isVisible: finalVisible, showControls, buttonsHidden, buttonsPinned, setButtonsPinned: setPinned }}>
       {children}
     </ControlsVisibilityContext.Provider>
   );
@@ -196,6 +248,8 @@ interface FloatingControlsProps {
   onSettingsClick: () => void;
   onFollowClick?: () => void;
   onTip?: (coinType: 'vicoin' | 'icoin', amount: number) => void;
+  /** When false, tip UI (V/I buttons, tip sheet trigger) is hidden for non-UUID creators. */
+  tipEnabled?: boolean;
   onSaveClick?: () => void;
   onReportClick?: () => void;
   onMuteClick?: () => void;
@@ -215,22 +269,35 @@ interface FloatingControlsProps {
   /** Info about the content creator being viewed */
   creatorInfo?: CreatorInfo;
   onViewCreatorProfile?: () => void;
+  /** Optional: open messages (e.g. to start a chat with the creator) */
+  onMessageCreator?: () => void;
 }
 
 // Profile Preview Sheet Component
+const ATTENTION_ACHIEVEMENTS_TOTAL = 15;
 interface ProfilePreviewSheetProps {
   onFullProfileClick: () => void;
+  onFollowClick?: () => void;
   onAchievementsClick?: () => void;
   onWalletClick?: () => void;
+  onMessageCreator?: () => void;
   creatorInfo?: CreatorInfo;
+  isFollowing?: boolean;
+  /** Number of focus achievements unlocked (shown as badge on Achievements button) */
+  achievementsCount?: number;
 }
 
-const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({ 
+const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
   onFullProfileClick,
+  onFollowClick,
   onAchievementsClick,
   onWalletClick,
+  onMessageCreator,
   creatorInfo,
+  isFollowing = false,
+  achievementsCount,
 }) => {
+  const { t } = useLocalization();
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const startYRef = useRef(0);
@@ -282,7 +349,7 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
       {/* Swipe hint */}
       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-4">
         <ChevronDown className="w-4 h-4 animate-bounce" />
-        <span>Swipe up to view full profile</span>
+        <span>{t('profile.creatorPreview.swipeUpFullProfile')}</span>
       </div>
       
       {/* Profile preview content */}
@@ -299,20 +366,27 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
               <User className="w-8 h-8 text-foreground/70" />
             </div>
           )}
-          <div>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-foreground">{displayName}</h3>
+              <h3 className="font-semibold text-foreground truncate">{displayName}</h3>
               {creatorInfo?.isVerified && (
-                <span className="w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+                <span className="w-4 h-4 shrink-0 bg-primary rounded-full flex items-center justify-center">
                   <svg className="w-2.5 h-2.5 text-primary-foreground" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
                   </svg>
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground">
-              {creatorInfo?.username ? `@${creatorInfo.username}` : 'View creator profile'}
-            </p>
+            <button
+              type="button"
+              onClick={() => {
+                light();
+                onFullProfileClick();
+              }}
+              className="text-sm text-muted-foreground hover:text-primary transition-colors text-left truncate block"
+            >
+              {creatorInfo?.username ? `@${creatorInfo.username}` : t('profile.creatorPreview.viewCreatorProfile')}
+            </button>
           </div>
         </div>
         
@@ -320,20 +394,47 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
         <div className="grid grid-cols-3 gap-4 py-4 border-t border-border/50">
           <div className="text-center">
             <div className="text-lg font-bold text-foreground">{creatorInfo?.postsCount ?? 0}</div>
-            <div className="text-xs text-muted-foreground">Posts</div>
+            <div className="text-xs text-muted-foreground">{t('profile.creatorPreview.posts')}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-foreground">{creatorInfo?.followersCount ?? 0}</div>
-            <div className="text-xs text-muted-foreground">Followers</div>
+            <div className="text-xs text-muted-foreground">{t('profile.creatorPreview.followers')}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-foreground">{creatorInfo?.followingCount ?? 0}</div>
-            <div className="text-xs text-muted-foreground">Following</div>
+            <div className="text-xs text-muted-foreground">{t('profile.creatorPreview.followingCount')}</div>
           </div>
         </div>
         
-        {/* Quick Actions - Achievements & Wallet */}
-        <div className="grid grid-cols-2 gap-3 py-2">
+        {/* Quick Actions - Follow, Message, Achievements & Wallet */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2">
+          <button 
+            onClick={() => {
+              light();
+              onFollowClick?.();
+            }}
+            className={cn(
+              "flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-colors border",
+              isFollowing
+                ? "bg-muted/50 border-border text-muted-foreground"
+                : "bg-primary/10 hover:bg-primary/20 border-primary/20 text-primary"
+            )}
+          >
+            <UserPlus className={cn("w-4 h-4", isFollowing && "text-primary")} />
+            <span>{isFollowing ? t('profile.creatorPreview.following') : t('profile.creatorPreview.follow')}</span>
+          </button>
+          {onMessageCreator && (
+            <button 
+              onClick={() => {
+                light();
+                onMessageCreator();
+              }}
+              className="flex items-center justify-center gap-2 py-3 bg-sky-500/10 hover:bg-sky-500/20 rounded-xl text-sky-500 font-medium transition-colors border border-sky-500/20"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>{t('profile.creatorPreview.message')}</span>
+            </button>
+          )}
           <button 
             onClick={() => {
               light();
@@ -342,7 +443,12 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
             className="flex items-center justify-center gap-2 py-3 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl text-amber-500 font-medium transition-colors border border-amber-500/20"
           >
             <Trophy className="w-4 h-4" />
-            <span>Achievements</span>
+            <span>{t('profile.creatorPreview.achievements')}</span>
+            {typeof achievementsCount === 'number' && (
+              <span className="ml-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                {achievementsCount}/{ATTENTION_ACHIEVEMENTS_TOTAL}
+              </span>
+            )}
           </button>
           <button 
             onClick={() => {
@@ -352,56 +458,69 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
             className="flex items-center justify-center gap-2 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl text-emerald-500 font-medium transition-colors border border-emerald-500/20"
           >
             <Wallet className="w-4 h-4" />
-            <span>Wallet</span>
+            <span>{t('profile.creatorPreview.wallet')}</span>
           </button>
         </div>
         
+        {/* Copy profile link - when username is available */}
+        {creatorInfo?.username && (
+          <button
+            type="button"
+            onClick={() => {
+              light();
+              const url = `${window.location.origin}/profile/${encodeURIComponent(creatorInfo.username!)}`;
+              navigator.clipboard.writeText(url).then(
+                () => toast.success(t('profile.creatorPreview.profileLinkCopied')),
+                () => toast.error(t('profile.creatorPreview.profileLinkCopyFailed'))
+              );
+            }}
+            className="w-full py-2.5 rounded-xl border border-border/60 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-2"
+          >
+            <Link2 className="w-4 h-4" />
+            <span>{t('profile.creatorPreview.copyProfileLink')}</span>
+          </button>
+        )}
+        
         {/* View full profile button */}
         <button 
-          onClick={onFullProfileClick}
+          onClick={() => {
+            light();
+            onFullProfileClick();
+          }}
           className="w-full py-3 bg-primary/20 hover:bg-primary/30 rounded-xl text-primary font-medium transition-colors"
         >
-          View Full Profile
+          {t('profile.creatorPreview.viewFullProfile')}
         </button>
       </div>
     </div>
   );
 };
 
-// Visibility Toggle Button
+// Visibility Toggle Button: tap to keep buttons in place (pinned), tap again to let them auto-hide (unpinned)
 const VisibilityToggleButton: React.FC = () => {
-  const [isHidden, setIsHidden] = useState(() => getButtonsHidden());
+  const { buttonsPinned, setButtonsPinned } = useControlsVisibility();
   const [isAnimating, setIsAnimating] = useState(false);
   const { medium } = useHapticFeedback();
-  
-  useEffect(() => {
-    const handleStorage = () => setIsHidden(getButtonsHidden());
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
-  }, []);
-  
-  const toggleVisibility = () => {
+
+  const togglePinned = () => {
     medium();
     setIsAnimating(true);
     setTimeout(() => setIsAnimating(false), 300);
-    
-    const newValue = !isHidden;
-    setIsHidden(newValue);
-    setButtonsHidden(newValue);
-    window.dispatchEvent(new Event('storage'));
+    setButtonsPinned(!buttonsPinned);
   };
 
   return (
     <>
       <div className="w-6 h-px bg-white/20 my-0.5" />
-      <LongPressButtonWrapper buttonId="visibility-toggle" buttonLabel="Visibility Toggle" showAutoHideSettings={true}>
-        <NeuButton 
-          onClick={toggleVisibility}
-          variant={isHidden ? 'accent' : 'default'}
-          tooltip={isHidden ? 'Show buttons' : 'Hide buttons'}
+      <LongPressButtonWrapper buttonId="visibility-toggle" buttonLabel="Keep buttons visible" showAutoHideSettings={true}>
+        <NeuButton
+          buttonId="visibility-toggle"
+          onClick={togglePinned}
+          variant={buttonsPinned ? 'accent' : 'default'}
+          tooltip={buttonsPinned ? 'Allow buttons to auto-hide' : 'Keep buttons in place'}
         >
           <span className={cn('transition-all duration-300', isAnimating && 'rotate-180 scale-110')}>
-            {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            {buttonsPinned ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
           </span>
         </NeuButton>
       </LongPressButtonWrapper>
@@ -416,25 +535,46 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onCommentClick,
   onShareClick,
   onSettingsClick,
+  onFollowClick,
   onTip,
+  tipEnabled = true,
   onAchievementsClick,
   onSaveVideo,
   onSaveLongPress,
   onComboAction,
   isLiked = false,
+  isFollowing = false,
   likeCount = 0,
   isVideoSaved = false,
   creatorInfo,
   onViewCreatorProfile,
+  onMessageCreator,
+  achievementsCount,
 }) => {
-  const { isVisible } = useControlsVisibility();
+  const { isVisible, buttonsHidden } = useControlsVisibility();
   const { medium } = useHapticFeedback();
+  const { isMuted, toggleMute } = useVideoMute();
+  const { recordManualAction } = useScreenTargets();
+  const { themePack } = useAccessibility();
+  const { themeSettings } = useUICustomization();
   const [remoteControlEnabled, setRemoteControlEnabled] = useState(false);
   const [showRemoteSettings, setShowRemoteSettings] = useState(false);
+  const [remoteSettingsTab, setRemoteSettingsTab] = useState<'commands' | 'combos' | 'targets' | 'gaze' | 'audio' | 'settings'>('commands');
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [uiEditMode, setUiEditMode] = useState(() => {
+    try {
+      return localStorage.getItem(UI_EDIT_MODE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const saveLongPressTimer = useRef<NodeJS.Timeout | null>(null);
   const didLongPress = useRef(false);
   const touchFired = useRef(false);
+
+  const isGlassActive = useMemo(() => {
+    return themePack === 'glass' || themeSettings?.preset === 'glass';
+  }, [themePack, themeSettings?.preset]);
   
   const handleFullProfileClick = () => {
     setProfileSheetOpen(false);
@@ -447,8 +587,73 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   
   const handleRemoteControlToggle = () => {
     medium();
-    setRemoteControlEnabled(!remoteControlEnabled);
+    const nextEnabled = !remoteControlEnabled;
+    setRemoteControlEnabled(nextEnabled);
+
+    // Keep the internal remote-control settings flag in sync so the feature "just works".
+    // This is also used by hooks to decide whether to start tracking.
+    const settings = loadRemoteControlSettings();
+    saveRemoteControlSettings({ ...settings, enabled: nextEnabled });
+
+    // Trigger getUserMedia from a user gesture on mobile browsers (iOS requires this).
+    if (nextEnabled) {
+      window.dispatchEvent(new Event('remoteControlUserStart'));
+      dispatchCameraUserStart();
+    }
   };
+
+  // Allow other parts of the app to toggle remote control (e.g. target command)
+  useEffect(() => {
+    const handler = () => setRemoteControlEnabled((v) => !v);
+    window.addEventListener('toggleRemoteControl', handler);
+    return () => window.removeEventListener('toggleRemoteControl', handler);
+  }, []);
+
+  // Allow calibration (and other UI) to open Remote Control settings to a specific tab.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent)?.detail?.tab as typeof remoteSettingsTab | undefined;
+      if (tab) setRemoteSettingsTab(tab);
+      setShowRemoteSettings(true);
+      if (!remoteControlEnabled) {
+        setRemoteControlEnabled(true);
+        window.dispatchEvent(new Event('remoteControlUserStart'));
+        dispatchCameraUserStart();
+      }
+    };
+    window.addEventListener('openRemoteControlSettings', handler as EventListener);
+    return () => window.removeEventListener('openRemoteControlSettings', handler as EventListener);
+  }, [remoteControlEnabled, remoteSettingsTab]);
+
+  // Sync global UI edit mode across tabs/controls
+  useEffect(() => {
+    const read = () => {
+      try {
+        setUiEditMode(localStorage.getItem(UI_EDIT_MODE_KEY) === 'true');
+      } catch {
+        setUiEditMode(false);
+      }
+    };
+    const handler = () => read();
+    window.addEventListener('uiEditModeChanged', handler as EventListener);
+    window.addEventListener('storage', handler);
+    return () => {
+      window.removeEventListener('uiEditModeChanged', handler as EventListener);
+      window.removeEventListener('storage', handler);
+    };
+  }, []);
+
+  const toggleUiEditMode = useCallback(() => {
+    medium();
+    const next = !uiEditMode;
+    setUiEditMode(next);
+    try {
+      localStorage.setItem(UI_EDIT_MODE_KEY, String(next));
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new Event('uiEditModeChanged'));
+  }, [medium, uiEditMode]);
 
   const startSaveTimer = useCallback(() => {
     if (saveLongPressTimer.current) clearTimeout(saveLongPressTimer.current);
@@ -493,8 +698,9 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       didLongPress.current = false;
       return;
     }
+    if (remoteControlEnabled) recordManualAction('save');
     onSaveVideo?.();
-  }, [onSaveVideo]);
+  }, [onSaveVideo, recordManualAction, remoteControlEnabled]);
 
   useEffect(() => {
     return () => {
@@ -504,23 +710,55 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
   return (
     <>
-      {/* Right side button stack - thumb zone optimized, bottom to top order */}
+      {/* Right side: entire stack (including visibility toggle) hides together; tap screen to bring back */}
       <div 
         className={cn(
           'fixed right-3 z-40',
           'flex flex-col-reverse items-center gap-1.5',
           'transition-all duration-500 ease-out',
-          isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12 pointer-events-none'
+          buttonsHidden ? 'opacity-0 translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0'
         )}
         style={{ bottom: 'calc(100px + env(safe-area-inset-bottom, 0px))' }}
       >
+        {/* All buttons (including visibility toggle) share the same show/hide; visibility toggle still pins/unpins */}
+        <div
+          className={cn(
+            'flex flex-col-reverse items-center gap-1.5',
+            'transition-all duration-500 ease-out',
+            isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12 pointer-events-none'
+          )}
+        >
+        <div className="w-6 h-px bg-white/20 my-0.5" />
+        <VisibilityToggleButton />
+
+        {/* Glass-only: global "Edit" toggle (shows gears on all buttons) */}
+        {isGlassActive && (
+          <LongPressButtonWrapper buttonId="ui-edit-mode-button" buttonLabel="Edit Mode">
+            <NeuButton
+              buttonId="ui-edit-mode-button"
+              onClick={toggleUiEditMode}
+              variant={uiEditMode ? 'accent' : 'default'}
+              tooltip={uiEditMode ? 'Exit edit mode' : 'Edit buttons'}
+            >
+              <span className={cn('transition-all duration-300', uiEditMode && 'rotate-90')}>
+                <Cog className="w-4 h-4" />
+              </span>
+            </NeuButton>
+          </LongPressButtonWrapper>
+        )}
+
         {/* 1st from bottom: Like (Heart) with MorphingLikeButton */}
         <LongPressButtonWrapper buttonId="like-button" buttonLabel="Like">
           <MorphingLikeButton
+            buttonId="like-button"
             isLiked={isLiked}
             likeCount={likeCount}
-            onLike={onLikeClick}
+            onLike={() => {
+              if (remoteControlEnabled) recordManualAction('like');
+              onLikeClick();
+            }}
             onTip={onTip}
+            tipEnabled={tipEnabled}
           />
         </LongPressButtonWrapper>
 
@@ -530,57 +768,105 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
         {/* 4th from bottom: Messages */}
         <LongPressButtonWrapper buttonId="messages-button" buttonLabel="Messages">
-          <NeuButton onClick={onCommentClick} tooltip="Messages">
+          <NeuButton
+            buttonId="messages-button"
+            onClick={() => {
+              if (remoteControlEnabled) recordManualAction('comment');
+              onCommentClick();
+            }}
+            tooltip="Messages"
+          >
             <MessageCircle className="w-4 h-4" />
           </NeuButton>
         </LongPressButtonWrapper>
 
-        {/* 5th from bottom: Settings */}
+        {/* 5th from bottom: Mute / Sound - toggles video audio across all feeds */}
+        <LongPressButtonWrapper buttonId="mute-button" buttonLabel={isMuted ? 'Unmute' : 'Mute'}>
+          <NeuButton
+            buttonId="mute-button"
+            onClick={() => {
+              if (remoteControlEnabled) recordManualAction('toggleMute');
+              toggleMute();
+            }}
+            variant={isMuted ? 'default' : 'accent'}
+            tooltip={isMuted ? 'Unmute video' : 'Mute video'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </NeuButton>
+        </LongPressButtonWrapper>
+
+        {/* 6th from bottom: Settings */}
         <LongPressButtonWrapper buttonId="settings-button" buttonLabel="Settings">
-          <NeuButton onClick={onSettingsClick} tooltip="Settings">
+          <NeuButton
+            buttonId="settings-button"
+            onClick={() => {
+              if (remoteControlEnabled) recordManualAction('openSettings');
+              onSettingsClick();
+            }}
+            tooltip="Settings"
+          >
             <Settings className="w-4 h-4" />
           </NeuButton>
         </LongPressButtonWrapper>
 
-        {/* 6th from bottom: Save / Watch Later (tap=save, long-press=gallery) */}
-        <div
-          onTouchStart={handleSaveTouchStart}
-          onTouchEnd={handleSaveTouchEnd}
-          onTouchCancel={clearSaveTimer}
-          onMouseDown={handleSaveMouseDown}
-          onMouseUp={handleSaveMouseUp}
-          onMouseLeave={handleSaveMouseUp}
-        >
-          <NeuButton
-            onClick={handleSaveClick}
-            variant={isVideoSaved ? 'accent' : 'default'}
-            tooltip={isVideoSaved ? 'Saved' : 'Save'}
+        {/* 7th from bottom: Save / Watch Later (tap=save, long-press=gallery) */}
+        <LongPressButtonWrapper buttonId="save-button" buttonLabel="Save">
+          <div
+            onTouchStart={handleSaveTouchStart}
+            onTouchEnd={handleSaveTouchEnd}
+            onTouchCancel={clearSaveTimer}
+            onMouseDown={handleSaveMouseDown}
+            onMouseUp={handleSaveMouseUp}
+            onMouseLeave={handleSaveMouseUp}
           >
-            <Bookmark className={cn('w-4 h-4', isVideoSaved && 'fill-current text-primary')} />
-          </NeuButton>
-        </div>
+            <NeuButton
+              buttonId="save-button"
+              onClick={handleSaveClick}
+              variant={isVideoSaved ? 'accent' : 'default'}
+              tooltip={isVideoSaved ? 'Saved' : 'Save'}
+            >
+              <Bookmark className={cn('w-4 h-4', isVideoSaved && 'fill-current text-primary')} />
+            </NeuButton>
+          </div>
+        </LongPressButtonWrapper>
 
-        {/* 7th from bottom: Share */}
+        {/* 8th from bottom: Share */}
         <LongPressButtonWrapper buttonId="share-button" buttonLabel="Share">
-          <NeuButton onClick={onShareClick} tooltip="Share">
+          <NeuButton
+            buttonId="share-button"
+            onClick={() => {
+              if (remoteControlEnabled) recordManualAction('share');
+              onShareClick();
+            }}
+            tooltip="Share"
+          >
             <Share2 className="w-4 h-4" />
           </NeuButton>
         </LongPressButtonWrapper>
 
-        {/* 7th from bottom: Profile Preview Sheet */}
+        {/* 9th from bottom: Profile Preview Sheet */}
         <Sheet open={profileSheetOpen} onOpenChange={setProfileSheetOpen}>
           <SheetTrigger asChild>
             <div>
               <LongPressButtonWrapper buttonId="profile-preview-button" buttonLabel="Profile Preview">
-                <NeuButton tooltip="Profile Preview">
+                <NeuButton buttonId="profile-preview-button" tooltip="Profile Preview">
                   <User className="w-4 h-4" />
                 </NeuButton>
               </LongPressButtonWrapper>
             </div>
           </SheetTrigger>
-          <SheetContent side="bottom" className="h-[25vh] rounded-t-3xl pb-[env(safe-area-inset-bottom,0px)]">
+          <SheetContent side="bottom" className="h-[40vh] min-h-[280px] rounded-t-3xl pb-[env(safe-area-inset-bottom,0px)]">
             <ProfilePreviewSheet 
               onFullProfileClick={handleFullProfileClick}
+              onFollowClick={() => {
+                setProfileSheetOpen(false);
+                onFollowClick?.();
+              }}
+              onMessageCreator={onMessageCreator ? () => {
+                setProfileSheetOpen(false);
+                onMessageCreator();
+              } : undefined}
+              isFollowing={isFollowing}
               onAchievementsClick={() => {
                 setProfileSheetOpen(false);
                 onAchievementsClick?.();
@@ -590,14 +876,16 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
                 onWalletClick?.();
               }}
               creatorInfo={creatorInfo}
+              achievementsCount={achievementsCount}
             />
           </SheetContent>
         </Sheet>
 
-        {/* 8th from bottom: Remote Control with settings engine icon */}
+        {/* 10th from bottom: Remote Control with settings engine icon */}
         <div className="relative">
           <LongPressButtonWrapper buttonId="remote-control-button" buttonLabel="Remote Control">
             <NeuButton 
+              buttonId="remote-control-button"
               onClick={handleRemoteControlToggle}
               variant={remoteControlEnabled ? 'accent' : 'default'}
               tooltip="Remote Control"
@@ -616,9 +904,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
             </button>
           )}
         </div>
-
-        {/* Visibility Toggle */}
-        <VisibilityToggleButton />
+        </div>
       </div>
       
       {/* Remote Control Component */}
@@ -626,15 +912,16 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         enabled={remoteControlEnabled}
         onToggle={setRemoteControlEnabled}
         onNavigate={(action, direction) => {
-          console.log('[FloatingControls] Remote Control navigation:', action, direction);
+          logger.log('[FloatingControls] Remote Control navigation:', action, direction);
           window.dispatchEvent(new CustomEvent('gazeNavigate', { detail: { action, direction } }));
         }}
         onComboAction={(action, combo) => {
-          console.log('[FloatingControls] Combo action:', action, combo.name);
+          logger.log('[FloatingControls] Combo action:', action, combo.name);
           onComboAction?.(action);
         }}
         showSettings={showRemoteSettings}
         onCloseSettings={() => setShowRemoteSettings(false)}
+        initialTab={remoteSettingsTab}
         className="left-4 top-20"
       />
 
@@ -642,7 +929,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
       <TargetOverlay
         enabled={remoteControlEnabled}
         onTargetAction={(command) => {
-          console.log('[FloatingControls] Target action:', command);
+          logger.log('[FloatingControls] Target action:', command);
           onComboAction?.(command);
         }}
       />
@@ -683,7 +970,7 @@ export const QuickVisibilityToggle: React.FC = () => {
       title={isHidden ? 'Show buttons (or double-tap screen)' : 'Hide buttons (or double-tap screen)'}
     >
       <span className={cn('transition-all duration-300', isAnimating && 'rotate-180 scale-110')}>
-        {isHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+        {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
       </span>
     </button>
   );
@@ -693,9 +980,11 @@ export const QuickVisibilityToggle: React.FC = () => {
 interface GestureDetectorProps {
   children: React.ReactNode;
   onTripleTap?: () => void;
+  /** When provided, double-tap triggers this (e.g. like) instead of toggling visibility */
+  onDoubleTap?: () => void;
 }
 
-export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ children, onTripleTap }) => {
+export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ children, onTripleTap, onDoubleTap }) => {
   const tapTimesRef = useRef<number[]>([]);
   const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -726,15 +1015,19 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
         onTripleTap?.();
         tapTimesRef.current = [];
       } else if (recentTaps.length === 2) {
-        const currentHidden = getButtonsHidden();
-        setButtonsHidden(!currentHidden);
-        window.dispatchEvent(new Event('storage'));
+        if (onDoubleTap) {
+          onDoubleTap();
+        } else {
+          const currentHidden = getButtonsHidden();
+          setButtonsHidden(!currentHidden);
+          window.dispatchEvent(new Event('storage'));
+        }
         tapTimesRef.current = [];
       }
     }, 100);
     
     e.preventDefault();
-  }, [onTripleTap]);
+  }, [onTripleTap, onDoubleTap]);
 
   return (
     <div onPointerDown={handleTap} className="contents">

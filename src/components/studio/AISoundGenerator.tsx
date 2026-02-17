@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
-import { 
-  Wand2, Music, Volume2, Play, Pause, Download, Plus, 
+import {
+  Wand2, Music, Volume2, Play, Pause, Download, Plus,
   Sparkles, RefreshCw, Clock, Zap, Heart, Film, Drum,
-  Wind, Droplets, Flame, Bird, Car, Bell, Laugh
+  Wind, Droplets, Flame, Bird, Car, Bell, Laugh, Settings2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { generateSFX, generateMusic, AIMediaError } from '@/services/aiMedia.service';
 
 interface GeneratedAudio {
   id: string;
@@ -64,17 +67,18 @@ interface AISoundGeneratorProps {
   onAddToTimeline: (audio: GeneratedAudio) => void;
 }
 
-export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
-  onAddToTimeline,
-}) => {
+export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({ onAddToTimeline }) => {
   const [activeTab, setActiveTab] = useState<'sfx' | 'music'>('sfx');
   const [sfxPrompt, setSfxPrompt] = useState('');
   const [musicPrompt, setMusicPrompt] = useState('');
   const [sfxDuration, setSfxDuration] = useState([5]);
   const [musicDuration, setMusicDuration] = useState([30]);
+  const [sfxLoop, setSfxLoop] = useState(false);
+  const [sfxPromptInfluence, setSfxPromptInfluence] = useState([30]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedAudios, setGeneratedAudios] = useState<GeneratedAudio[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [sfxAdvancedOpen, setSfxAdvancedOpen] = useState(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const handleGenerateSFX = async (prompt: string, duration?: number) => {
@@ -82,52 +86,37 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
       toast.error('Please enter a description for the sound effect');
       return;
     }
-
     setIsGenerating(true);
     toast.info('Generating sound effect...', { description: 'This may take a few seconds.' });
-
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-sfx`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ 
-            prompt, 
-            duration: duration || sfxDuration[0] 
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to generate sound effect');
-      }
-
-      const audioUrl = `data:audio/mpeg;base64,${data.audioContent}`;
-      
+      const result = await generateSFX({
+        prompt: prompt.trim(),
+        duration: duration ?? sfxDuration[0],
+        loop: sfxLoop,
+        promptInfluence: sfxPromptInfluence[0] / 100,
+      });
+      const audioUrl = `data:audio/mpeg;base64,${result.audioContent}`;
       const newAudio: GeneratedAudio = {
         id: `sfx-${Date.now()}`,
         type: 'sfx',
-        prompt,
+        prompt: result.prompt,
         audioUrl,
-        duration: data.duration || sfxDuration[0],
+        duration: result.duration ?? sfxDuration[0],
         createdAt: new Date(),
       };
-
-      setGeneratedAudios(prev => [newAudio, ...prev]);
+      setGeneratedAudios((prev) => [newAudio, ...prev]);
       setSfxPrompt('');
       toast.success('Sound effect generated!');
-    } catch (error) {
-      console.error('SFX generation error:', error);
-      toast.error('Failed to generate sound effect', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      });
+    } catch (err) {
+      const msg = err instanceof AIMediaError ? err.message : 'Failed to generate sound effect';
+      const desc = err instanceof AIMediaError && err.code === 'CONFIG_MISSING'
+        ? 'ElevenLabs API key not configured'
+        : err instanceof AIMediaError && err.code === 'RATE_LIMIT'
+          ? 'Too many requests. Try again later.'
+          : err instanceof AIMediaError && err.code === 'CREDITS_EXHAUSTED'
+            ? 'API credits exhausted. Check your ElevenLabs account.'
+            : undefined;
+      toast.error(msg, { description: desc });
     } finally {
       setIsGenerating(false);
     }
@@ -138,52 +127,35 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
       toast.error('Please enter a description for the music');
       return;
     }
-
     setIsGenerating(true);
     toast.info('Generating music track...', { description: 'This may take up to 30 seconds.' });
-
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-music`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ 
-            prompt, 
-            duration: duration || musicDuration[0] 
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Failed to generate music');
-      }
-
-      const audioUrl = `data:audio/mpeg;base64,${data.audioContent}`;
-      
+      const result = await generateMusic({
+        prompt: prompt.trim(),
+        duration: duration ?? musicDuration[0],
+      });
+      const audioUrl = `data:audio/mpeg;base64,${result.audioContent}`;
       const newAudio: GeneratedAudio = {
         id: `music-${Date.now()}`,
         type: 'music',
-        prompt,
+        prompt: result.prompt,
         audioUrl,
-        duration: data.duration || musicDuration[0],
+        duration: result.duration,
         createdAt: new Date(),
       };
-
-      setGeneratedAudios(prev => [newAudio, ...prev]);
+      setGeneratedAudios((prev) => [newAudio, ...prev]);
       setMusicPrompt('');
       toast.success('Music track generated!');
-    } catch (error) {
-      console.error('Music generation error:', error);
-      toast.error('Failed to generate music', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      });
+    } catch (err) {
+      const msg = err instanceof AIMediaError ? err.message : 'Failed to generate music';
+      const desc = err instanceof AIMediaError && err.code === 'CONFIG_MISSING'
+        ? 'ElevenLabs API key not configured'
+        : err instanceof AIMediaError && err.code === 'RATE_LIMIT'
+          ? 'Too many requests. Try again later.'
+          : err instanceof AIMediaError && err.code === 'CREDITS_EXHAUSTED'
+            ? 'API credits exhausted. Check your ElevenLabs account.'
+            : undefined;
+      toast.error(msg, { description: desc });
     } finally {
       setIsGenerating(false);
     }
@@ -194,9 +166,7 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
       audioRef.current?.pause();
       setPlayingId(null);
     } else {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      if (audioRef.current) audioRef.current.pause();
       audioRef.current = new Audio(audio.audioUrl);
       audioRef.current.play();
       audioRef.current.onended = () => setPlayingId(null);
@@ -212,6 +182,14 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
     toast.success('Downloaded!');
   };
 
+  const handleRegenerate = (audio: GeneratedAudio) => {
+    if (audio.type === 'sfx') {
+      handleGenerateSFX(audio.prompt, audio.duration);
+    } else {
+      handleGenerateMusic(audio.prompt, audio.duration);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-3">
@@ -220,7 +198,7 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
         </div>
         <div>
           <h3 className="font-semibold text-sm">AI Sound Generator</h3>
-          <p className="text-xs text-muted-foreground">Powered by ElevenLabs</p>
+          <p className="text-xs text-muted-foreground">Powered by ElevenLabs • SFX & Music</p>
         </div>
       </div>
 
@@ -234,11 +212,9 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
           </TabsTrigger>
         </TabsList>
 
-        {/* Sound Effects Tab */}
         <TabsContent value="sfx" className="space-y-4 mt-4">
-          {/* Custom prompt */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Describe your sound</label>
+            <Label className="text-xs font-medium text-muted-foreground">Describe your sound</Label>
             <div className="flex gap-2">
               <Input
                 placeholder="e.g., Dramatic thunder rumble..."
@@ -256,25 +232,54 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
             </div>
           </div>
 
-          {/* Duration slider */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Duration</label>
+              <Label className="text-xs font-medium text-muted-foreground">Duration</Label>
               <span className="text-xs">{sfxDuration[0]}s</span>
             </div>
             <Slider
               value={sfxDuration}
               onValueChange={setSfxDuration}
               min={1}
-              max={22}
+              max={30}
               step={1}
               disabled={isGenerating}
             />
           </div>
 
-          {/* Presets */}
+          <Collapsible open={sfxAdvancedOpen} onOpenChange={setSfxAdvancedOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between text-xs">
+                <span className="flex items-center gap-2">
+                  <Settings2 className="w-3.5 h-3.5" /> Advanced
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Loop seamlessly</Label>
+                <Switch checked={sfxLoop} onCheckedChange={setSfxLoop} disabled={isGenerating} />
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span>Prompt influence</span>
+                  <span>{sfxPromptInfluence[0]}%</span>
+                </div>
+                <Slider
+                  value={sfxPromptInfluence}
+                  onValueChange={setSfxPromptInfluence}
+                  min={0}
+                  max={100}
+                  step={5}
+                  disabled={isGenerating}
+                />
+                <p className="text-[10px] text-muted-foreground">Higher = closer to prompt, less variation</p>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Quick Presets</label>
+            <Label className="text-xs font-medium text-muted-foreground">Quick Presets</Label>
             <div className="grid grid-cols-5 gap-1.5">
               {sfxPresets.map((preset) => (
                 <button
@@ -297,14 +302,12 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
           </div>
         </TabsContent>
 
-        {/* Music Tab */}
         <TabsContent value="music" className="space-y-4 mt-4">
-          {/* Custom prompt */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Describe your music</label>
+            <Label className="text-xs font-medium text-muted-foreground">Describe your music</Label>
             <div className="flex gap-2">
               <Input
-                placeholder="e.g., Upbeat tropical house..."
+                placeholder="e.g., Upbeat tropical house, 120 BPM..."
                 value={musicPrompt}
                 onChange={(e) => setMusicPrompt(e.target.value)}
                 disabled={isGenerating}
@@ -319,25 +322,23 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
             </div>
           </div>
 
-          {/* Duration slider */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">Duration</label>
+              <Label className="text-xs font-medium text-muted-foreground">Duration</Label>
               <span className="text-xs">{musicDuration[0]}s</span>
             </div>
             <Slider
               value={musicDuration}
               onValueChange={setMusicDuration}
               min={10}
-              max={60}
+              max={120}
               step={5}
               disabled={isGenerating}
             />
           </div>
 
-          {/* Music Presets */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">Genre Presets</label>
+            <Label className="text-xs font-medium text-muted-foreground">Genre Presets</Label>
             <div className="grid grid-cols-3 gap-2">
               {musicPresets.map((preset) => (
                 <button
@@ -364,10 +365,9 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
         </TabsContent>
       </Tabs>
 
-      {/* Generated Audio List */}
       {generatedAudios.length > 0 && (
         <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground">Generated Audio</label>
+          <Label className="text-xs font-medium text-muted-foreground">Generated Audio</Label>
           <div className="space-y-2 max-h-[200px] overflow-y-auto">
             {generatedAudios.map((audio) => (
               <div
@@ -381,13 +381,8 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
                     playingId === audio.id ? 'bg-primary text-primary-foreground' : 'bg-muted'
                   )}
                 >
-                  {playingId === audio.id ? (
-                    <Pause className="w-4 h-4" />
-                  ) : (
-                    <Play className="w-4 h-4 ml-0.5" />
-                  )}
+                  {playingId === audio.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
                 </button>
-                
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{audio.prompt}</p>
                   <div className="flex items-center gap-1.5">
@@ -400,14 +395,11 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
                     </span>
                   </div>
                 </div>
-
                 <div className="flex gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="w-7 h-7"
-                    onClick={() => handleDownload(audio)}
-                  >
+                  <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => handleRegenerate(audio)} title="Regenerate">
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => handleDownload(audio)}>
                     <Download className="w-3.5 h-3.5" />
                   </Button>
                   <Button
@@ -428,9 +420,8 @@ export const AISoundGenerator: React.FC<AISoundGeneratorProps> = ({
         </div>
       )}
 
-      {/* Loading state */}
       {isGenerating && (
-        <div className="flex items-center justify-center gap-2 p-4 rounded-lg bg-primary/5 border border-primary/20">
+        <div className="flex items-center gap-2 p-4 rounded-lg bg-primary/5 border border-primary/20">
           <RefreshCw className="w-4 h-4 animate-spin text-primary" />
           <span className="text-sm text-muted-foreground">
             Generating {activeTab === 'sfx' ? 'sound effect' : 'music track'}...

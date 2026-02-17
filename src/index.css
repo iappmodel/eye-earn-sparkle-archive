@@ -53,6 +53,20 @@
   50% { transform: translateY(-6px); }
 }
 
+/* Gesture tutorial: tap and swipe cues */
+@keyframes tap {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.92); opacity: 0.9; }
+}
+@keyframes slide-left {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-12px); }
+}
+@keyframes slide-right {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(12px); }
+}
+
 .animate-strobe {
   animation: strobe-soft calc(2s * var(--animation-speed, 1)) ease-in-out infinite;
 }
@@ -71,6 +85,34 @@
 
 .animate-light-leak {
   animation: light-leak calc(6s * var(--animation-speed, 1)) ease-in-out infinite;
+}
+
+/* Video preview filter–specific keyframes */
+@keyframes shake-subtle {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-1px, 0.5px); }
+  50% { transform: translate(1px, -0.5px); }
+  75% { transform: translate(-0.5px, 1px); }
+}
+
+@keyframes flicker {
+  0%, 100%, 92%, 96% { opacity: 1; }
+  93% { opacity: 0.85; }
+  94% { opacity: 0.95; }
+  95% { opacity: 0.9; }
+  97% { opacity: 0.88; }
+}
+
+.animate-shake-subtle {
+  animation: shake-subtle calc(0.15s * var(--animation-speed, 1)) ease-in-out infinite;
+}
+
+.animate-flicker {
+  animation: flicker calc(4s * var(--animation-speed, 1)) ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow calc(2s * var(--animation-speed, 1)) ease-in-out infinite;
 }
 
 /* Button-specific animation classes */
@@ -173,6 +215,50 @@
 .btn-hover-lift:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 20px hsl(var(--primary) / 0.3);
+}
+
+/* Button Shape Overrides (clip-path based for famous shapes) */
+.btn-shape-rounded { border-radius: 1.25rem !important; }
+.btn-shape-pill { border-radius: 9999px !important; }
+.btn-shape-square { border-radius: 0.75rem !important; }
+.btn-shape-circle { border-radius: 9999px !important; }
+.btn-shape-hex {
+  border-radius: 0 !important;
+  clip-path: polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0% 50%);
+}
+.btn-shape-diamond {
+  border-radius: 0 !important;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+.btn-shape-star {
+  border-radius: 0 !important;
+  clip-path: polygon(
+    50% 3%,
+    61% 35%,
+    96% 35%,
+    68% 54%,
+    79% 88%,
+    50% 68%,
+    21% 88%,
+    32% 54%,
+    4% 35%,
+    39% 35%
+  );
+}
+.btn-shape-heart {
+  border-radius: 0 !important;
+  clip-path: polygon(
+    50% 92%,
+    82% 70%,
+    92% 48%,
+    83% 28%,
+    66% 22%,
+    50% 32%,
+    34% 22%,
+    17% 28%,
+    8% 48%,
+    18% 70%
+  );
 }
 
 @tailwind base;
@@ -364,8 +450,12 @@
   
   /* Lunar button styles */
   .theme-lunar .neu-button {
-    background: linear-gradient(135deg, hsl(220 60% 75% / 0.15), hsl(240 40% 70% / 0.08));
-    border: 1px solid hsl(220 60% 75% / 0.25);
+    background: linear-gradient(
+      135deg,
+      hsl(220 60% 75% / calc(0.15 * var(--btn-alpha, 1))),
+      hsl(240 40% 70% / calc(0.08 * var(--btn-alpha, 1)))
+    );
+    border: 1px solid hsl(220 60% 75% / calc(0.25 * var(--btn-alpha, 1)));
     box-shadow: 
       0 0 25px hsl(220 60% 75% / 0.15),
       0 4px 20px hsl(225 25% 5% / 0.4),
@@ -377,7 +467,7 @@
       0 0 40px hsl(220 60% 75% / 0.25),
       0 8px 30px hsl(225 25% 5% / 0.5),
       inset 0 1px 0 hsl(220 60% 85% / 0.2);
-    border-color: hsl(220 60% 75% / 0.4);
+    border-color: hsl(220 60% 75% / calc(0.4 * var(--btn-alpha, 1)));
   }
   
   .theme-lunar .neu-card {
@@ -601,6 +691,95 @@
       box-shadow: 0 0 15px hsl(150 40% 50% / 0.6);
     }
   }
+
+  /* ===== GLASS THEME ===== */
+  /* Liquid-glass buttons: transparent, shows content beneath */
+  .theme-glass,
+  .ui-glass {
+    /* keep app palette, but slightly brighten surfaces */
+    --glass-bg: 0 0% 100%;
+    --glass-border: 210 20% 70%;
+    /* Standard mode: 33% transparent (67% opaque) */
+    --glass-default-alpha: 0.67;
+  }
+
+  .theme-glass .neu-button,
+  .ui-glass .neu-button {
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--btn-tint-hsl, var(--primary)) / calc(0.28 * var(--btn-alpha, var(--glass-default-alpha)))) 0%,
+        hsl(var(--btn-tint-hsl, var(--primary)) / calc(0.14 * var(--btn-alpha, var(--glass-default-alpha)))) 55%,
+        hsl(var(--btn-tint-hsl, var(--accent)) / calc(0.10 * var(--btn-alpha, var(--glass-default-alpha)))) 100%
+      );
+    border: 1px solid hsl(var(--btn-tint-hsl, var(--primary)) / calc(0.28 * var(--btn-alpha, var(--glass-default-alpha))));
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.25),
+      0 2px 6px rgba(0, 0, 0, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  /* Specular highlight */
+  .theme-glass .neu-button::before,
+  .ui-glass .neu-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(120% 80% at 20% 15%, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.10) 45%, transparent 60%),
+      radial-gradient(90% 70% at 80% 85%, rgba(255, 255, 255, 0.10) 0%, transparent 55%);
+    opacity: calc(0.92 * var(--btn-alpha, var(--glass-default-alpha)));
+    pointer-events: none;
+  }
+
+  /* Edge bloom */
+  .theme-glass .neu-button::after,
+  .ui-glass .neu-button::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.55),
+      rgba(255, 255, 255, 0.05) 40%,
+      rgba(255, 255, 255, 0.25)
+    );
+    opacity: calc(0.18 * var(--btn-alpha, var(--glass-default-alpha)));
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+
+  .theme-glass .neu-button:hover,
+  .ui-glass .neu-button:hover {
+    border-color: hsl(var(--btn-tint-hsl, var(--primary)) / calc(0.38 * var(--btn-alpha, var(--glass-default-alpha))));
+    box-shadow:
+      0 14px 36px rgba(0, 0, 0, 0.28),
+      0 3px 10px rgba(0, 0, 0, 0.20),
+      inset 0 1px 0 rgba(255, 255, 255, 0.42),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  .theme-glass .neu-inset,
+  .ui-glass .neu-inset {
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--btn-tint-hsl, var(--primary)) / calc(0.16 * var(--btn-alpha, var(--glass-default-alpha)))),
+        hsl(var(--btn-tint-hsl, var(--accent)) / calc(0.10 * var(--btn-alpha, var(--glass-default-alpha))))
+      );
+    border: 1px solid hsl(var(--btn-tint-hsl, var(--primary)) / calc(0.28 * var(--btn-alpha, var(--glass-default-alpha))));
+    backdrop-filter: blur(18px) saturate(170%);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    box-shadow:
+      inset 0 2px 10px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
 }
 
 @layer base {
@@ -632,8 +811,12 @@
 @layer components {
   /* Cyberpunk Neon Button */
   .neu-button {
-    background: linear-gradient(135deg, hsl(270 95% 65% / 0.2), hsl(320 90% 60% / 0.1));
-    border: 1px solid hsl(270 95% 65% / 0.3);
+    background: linear-gradient(
+      135deg,
+      hsl(270 95% 65% / calc(0.2 * var(--btn-alpha, 1))),
+      hsl(320 90% 60% / calc(0.1 * var(--btn-alpha, 1)))
+    );
+    border: 1px solid hsl(270 95% 65% / calc(0.3 * var(--btn-alpha, 1)));
     box-shadow: 
       0 0 20px hsl(270 95% 65% / 0.2),
       inset 0 1px 0 hsl(270 95% 65% / 0.2);
@@ -656,10 +839,56 @@
       0 0 15px hsl(270 95% 65% / 0.3),
       inset 0 2px 4px hsl(0 0% 0% / 0.3);
   }
+
+  /* ===== GLASS THEME (component-layer overrides) ===== */
+  .theme-glass .neu-button,
+  .ui-glass .neu-button {
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--btn-tint-hsl, var(--primary)) / 0.18) 0%,
+        hsl(var(--btn-tint-hsl, var(--primary)) / 0.08) 55%,
+        hsl(var(--btn-tint-hsl, var(--accent)) / 0.06) 100%
+      );
+    border: 1px solid hsl(var(--btn-tint-hsl, var(--primary)) / 0.22);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    box-shadow:
+      0 10px 28px rgba(0, 0, 0, 0.25),
+      0 2px 6px rgba(0, 0, 0, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  .theme-glass .neu-button:hover,
+  .ui-glass .neu-button:hover {
+    border-color: hsl(var(--btn-tint-hsl, var(--primary)) / 0.35);
+    box-shadow:
+      0 14px 36px rgba(0, 0, 0, 0.28),
+      0 3px 10px rgba(0, 0, 0, 0.20),
+      inset 0 1px 0 rgba(255, 255, 255, 0.42),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  }
+
+  .theme-glass .neu-inset,
+  .ui-glass .neu-inset {
+    background:
+      linear-gradient(
+        180deg,
+        hsl(var(--btn-tint-hsl, var(--primary)) / 0.10),
+        hsl(var(--btn-tint-hsl, var(--accent)) / 0.06)
+      );
+    border: 1px solid hsl(var(--btn-tint-hsl, var(--primary)) / 0.22);
+    backdrop-filter: blur(18px) saturate(170%);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    box-shadow:
+      inset 0 2px 10px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
   
   .neu-inset {
     background: hsl(240 15% 6% / 0.8);
-    border: 1px solid hsl(270 95% 65% / 0.2);
+    border: 1px solid hsl(270 95% 65% / calc(0.2 * var(--btn-alpha, 1)));
     box-shadow: inset 0 2px 10px hsl(0 0% 0% / 0.5);
   }
   

@@ -150,20 +150,33 @@ export const ContentManager: React.FC = () => {
                 <div className="flex">
                   {/* Thumbnail */}
                   <div className="w-24 h-24 shrink-0 bg-muted">
-                    {content.media_url ? (
-                      content.media_type === 'video' ? (
-                        <video
-                          src={content.media_url}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={content.media_url}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                      )
-                    ) : (
+                    {(() => {
+                      const urls = content.media_url?.startsWith('[')
+                        ? (() => {
+                            try {
+                              const a = JSON.parse(content.media_url!) as unknown[];
+                              return Array.isArray(a) ? (a as string[]) : [content.media_url];
+                            } catch {
+                              return [content.media_url];
+                            }
+                          })()
+                        : [content.media_url];
+                      const src = urls[0];
+                      return src ? (
+                        content.media_type === 'video' ? (
+                          <video
+                            src={src}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={src}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        )
+                      ) : null;
+                    })() ?? (
                       <div className="w-full h-full flex items-center justify-center">
                         <Image className="w-8 h-8 text-muted-foreground/50" />
                       </div>

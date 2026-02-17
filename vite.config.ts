@@ -8,13 +8,21 @@ import { VitePWA } from "vite-plugin-pwa";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    // Use a stable port for tunneling to mobile devices
+    port: 8081,
+    strictPort: true,
+    // Allow HTTPS tunnel hostnames (e.g. trycloudflare/localtunnel) during development.
+    // See: https://vitejs.dev/config/server-options#server-allowedhosts
+    allowedHosts: [".trycloudflare.com", ".loca.lt"],
   },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
+      devOptions: {
+        enabled: true,
+      },
       includeAssets: ["favicon.ico", "pwa-192x192.png", "pwa-512x512.png"],
       manifest: {
         name: "iView - Rewards App",
@@ -22,10 +30,12 @@ export default defineConfig(({ mode }) => ({
         description: "Watch videos, earn rewards. Your attention is valuable.",
         theme_color: "#0A0A0F",
         background_color: "#0A0A0F",
-        display: "standalone",
+        display: "fullscreen",
+        display_override: ["fullscreen", "standalone"],
         orientation: "portrait",
         scope: "/",
-        start_url: "/",
+        start_url: "/?source=pwa",
+        id: "/?source=pwa",
         icons: [
           {
             src: "pwa-192x192.png",

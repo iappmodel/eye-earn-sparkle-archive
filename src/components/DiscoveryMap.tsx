@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
-import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink, Bell, BellOff, History, Route, Plus, Bookmark } from 'lucide-react';
+import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, ExternalLink, Bell, BellOff, History, Route, Plus, Bookmark, ArrowDownUp, WifiOff } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -13,21 +13,20 @@ import { CategoryIcon, getCategoryInfo } from './PromotionCategories';
 import { CheckInButton } from './CheckInButton';
 import { CheckInHistory } from './CheckInHistory';
 import { RouteBuilder } from './RouteBuilder';
+import { PromoCheckInFlow } from './PromoCheckInFlow';
 import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
+import { useDiscoveryPromotions } from '@/hooks/useDiscoveryPromotions';
 import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
 import type { PromoRoute, RouteStop, TransportMode, RouteFilters } from '@/hooks/usePromoRoute';
+import {
+  generateLocalPromotions,
+  generateGlobalPromotions,
+  createMockClientSpot,
+  MOCK_CLIENT_SPOT_ID,
+  type MockPromotion,
+} from '@/constants/mockPromotions';
 
-interface Promotion {
-  id: string;
-  business_name: string;
-  description: string;
-  reward_type: 'vicoin' | 'icoin' | 'both';
-  reward_amount: number;
-  required_action: string;
-  latitude: number;
-  longitude: number;
-  address: string;
-  category: string;
+export interface Promotion extends MockPromotion {
   distance?: number;
 }
 
@@ -35,108 +34,10 @@ interface DiscoveryMapProps {
   isOpen: boolean;
   onClose: () => void;
   promoRoute?: ReturnType<typeof import('@/hooks/usePromoRoute').usePromoRoute>;
+  onOpenWallet?: () => void;
+  /** When 'checkin', map focuses on user + nearby for check-in flow (e.g. opened from remote check-in). */
+  initialMode?: 'discover' | 'checkin';
 }
-
-// Generate local pins near a location (within ~10 miles / 16km)
-const generateLocalPromotions = (centerLat: number, centerLng: number, count: number, startId: number = 0): Promotion[] => {
-  const businesses = ['Coffee House', 'Tech Store', 'Fashion Outlet', 'Restaurant', 'Gym', 'Bookstore', 'Spa', 'Cinema', 'Market', 'Bar', 'Bakery', 'Pharmacy', 'Grocery', 'Pizza Place', 'Sushi Bar', 'Nail Salon', 'Hair Studio', 'Pet Store', 'Electronics', 'Clothing'];
-  const categories = ['Food & Drink', 'Shopping', 'Entertainment', 'Health', 'Services'];
-  const actionDescriptions = [
-    'Visit the store and check-in at the counter',
-    'Make any purchase of $10 or more',
-    'Scan the QR code at the entrance',
-    'Check-in and stay for 15 minutes',
-    'Share a photo on social media with our hashtag',
-    'Leave a review after your visit',
-    'Sign up for our loyalty program',
-    'Watch our 30-second promo video',
-  ];
-  const rewardTypes: ('vicoin' | 'icoin' | 'both')[] = ['vicoin', 'icoin', 'both'];
-  const promotions: Promotion[] = [];
-  
-  const radiusDegrees = 0.145;
-  
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * 2 * Math.PI;
-    const distance = Math.sqrt(Math.random()) * radiusDegrees;
-    const lat = centerLat + distance * Math.cos(angle);
-    const lng = centerLng + distance * Math.sin(angle) / Math.cos(centerLat * Math.PI / 180);
-    
-    const business = businesses[Math.floor(Math.random() * businesses.length)];
-    
-    promotions.push({
-      id: `local-${startId + i}`,
-      business_name: `${business} #${Math.floor(Math.random() * 999) + 1}`,
-      description: `Exclusive rewards at this ${business.toLowerCase()}!`,
-      reward_type: rewardTypes[Math.floor(Math.random() * rewardTypes.length)],
-      reward_amount: Math.floor(Math.random() * 450) + 50,
-      required_action: actionDescriptions[Math.floor(Math.random() * actionDescriptions.length)],
-      latitude: lat,
-      longitude: lng,
-      address: `${Math.floor(Math.random() * 9999) + 1} ${['Main', 'Oak', 'Maple', 'Cedar', 'Pine', 'Elm', 'Park', 'Lake', 'River', 'Hill'][Math.floor(Math.random() * 10)]} St`,
-      category: categories[Math.floor(Math.random() * categories.length)],
-    });
-  }
-  
-  return promotions;
-};
-
-// Generate global mock promotions
-const generateGlobalPromotions = (): Promotion[] => {
-  const cities = [
-    { name: 'New York', lat: 40.7128, lng: -74.006 },
-    { name: 'Los Angeles', lat: 34.0522, lng: -118.2437 },
-    { name: 'Chicago', lat: 41.8781, lng: -87.6298 },
-    { name: 'Houston', lat: 29.7604, lng: -95.3698 },
-    { name: 'Phoenix', lat: 33.4484, lng: -112.074 },
-    { name: 'Philadelphia', lat: 39.9526, lng: -75.1652 },
-    { name: 'San Antonio', lat: 29.4241, lng: -98.4936 },
-    { name: 'San Diego', lat: 32.7157, lng: -117.1611 },
-    { name: 'Dallas', lat: 32.7767, lng: -96.797 },
-    { name: 'San Jose', lat: 37.3382, lng: -121.8863 },
-    { name: 'Austin', lat: 30.2672, lng: -97.7431 },
-    { name: 'Jacksonville', lat: 30.3322, lng: -81.6557 },
-    { name: 'London', lat: 51.5074, lng: -0.1278 },
-    { name: 'Paris', lat: 48.8566, lng: 2.3522 },
-    { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
-    { name: 'Sydney', lat: -33.8688, lng: 151.2093 },
-    { name: 'Dubai', lat: 25.2048, lng: 55.2708 },
-    { name: 'Singapore', lat: 1.3521, lng: 103.8198 },
-    { name: 'Mumbai', lat: 19.076, lng: 72.8777 },
-    { name: 'São Paulo', lat: -23.5505, lng: -46.6333 },
-    { name: 'Mexico City', lat: 19.4326, lng: -99.1332 },
-    { name: 'Berlin', lat: 52.52, lng: 13.405 },
-    { name: 'Moscow', lat: 55.7558, lng: 37.6173 },
-    { name: 'Seoul', lat: 37.5665, lng: 126.978 },
-    { name: 'Bangkok', lat: 13.7563, lng: 100.5018 },
-    { name: 'Cairo', lat: 30.0444, lng: 31.2357 },
-    { name: 'Lagos', lat: 6.5244, lng: 3.3792 },
-    { name: 'Buenos Aires', lat: -34.6037, lng: -58.3816 },
-    { name: 'Toronto', lat: 43.6532, lng: -79.3832 },
-    { name: 'Madrid', lat: 40.4168, lng: -3.7038 },
-    { name: 'Rome', lat: 41.9028, lng: 12.4964 },
-    { name: 'Istanbul', lat: 41.0082, lng: 28.9784 },
-    { name: 'Beijing', lat: 39.9042, lng: 116.4074 },
-    { name: 'Shanghai', lat: 31.2304, lng: 121.4737 },
-    { name: 'Hong Kong', lat: 22.3193, lng: 114.1694 },
-    { name: 'Taipei', lat: 25.033, lng: 121.5654 },
-    { name: 'Jakarta', lat: -6.2088, lng: 106.8456 },
-    { name: 'Manila', lat: 14.5995, lng: 120.9842 },
-    { name: 'Johannesburg', lat: -26.2041, lng: 28.0473 },
-    { name: 'Cape Town', lat: -33.9249, lng: 18.4241 },
-  ];
-  
-  let promotions: Promotion[] = [];
-  let idCounter = 0;
-  
-  cities.forEach((city) => {
-    const cityPromos = generateLocalPromotions(city.lat, city.lng, 50, idCounter);
-    promotions = [...promotions, ...cityPromos];
-    idCounter += 50;
-  });
-  
-  return promotions;
-};
 
 // Get gradient color based on reward amount
 const getRewardGradient = (amount: number, rewardType: 'vicoin' | 'icoin' | 'both'): string => {
@@ -163,15 +64,13 @@ const getCoinGlow = (rewardType: 'vicoin' | 'icoin' | 'both'): string => {
   }
 };
 
-export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, promoRoute: externalPromoRoute }) => {
+export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, promoRoute: externalPromoRoute, onOpenWallet, initialMode }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const popupsRef = useRef<mapboxgl.Popup[]>([]);
   
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [selectedPromo, setSelectedPromo] = useState<Promotion | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [filter, setFilter] = useState<'all' | 'vicoin' | 'icoin'>('all');
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
@@ -180,13 +79,52 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
   const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions());
   const [localPromos, setLocalPromos] = useState<Promotion[]>([]);
   
-  // Enhanced features state
+  // Enhanced features state — check-in mode defaults to sort by distance
   const [showFilters, setShowFilters] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [mapFilters, setMapFilters] = useState<MapFilters>(defaultMapFilters);
   const [nearbyAlertsEnabled, setNearbyAlertsEnabled] = useState(true);
   const [showRouteBuilder, setShowRouteBuilder] = useState(false);
   const [showCheckInHistory, setShowCheckInHistory] = useState(false);
+  const [showCheckInFlow, setShowCheckInFlow] = useState(false);
+  const [sortBy, setSortBy] = useState<'distance' | 'reward_desc' | 'reward_asc' | 'expiring_soon'>(
+    initialMode === 'checkin' ? 'distance' : 'distance'
+  );
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [checkInModeBannerDismissed, setCheckInModeBannerDismissed] = useState(false);
+
+  // Backend promotions with retry, filters, sort - falls back to mock on failure
+  const {
+    promotions: backendPromos,
+    isLoading: backendLoading,
+    error: backendError,
+    fromBackend,
+    refetch: refetchPromotions,
+  } = useDiscoveryPromotions({
+    latitude: userLocation?.lat ?? 0,
+    longitude: userLocation?.lng ?? 0,
+    filters: mapFilters,
+    rewardFilter: filter,
+    sortBy,
+    limit: 150,
+    enabled: isOpen && !!userLocation,
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      window.dispatchEvent(new CustomEvent('remoteControlSuspend', { detail: { active: true } }));
+    } catch {
+      // ignore
+    }
+    return () => {
+      try {
+        window.dispatchEvent(new CustomEvent('remoteControlSuspend', { detail: { active: false } }));
+      } catch {
+        // ignore
+      }
+    };
+  }, [isOpen]);
   
   // Completed check-in stops
   const [completedStops, setCompletedStops] = useState<Set<string>>(new Set());
@@ -270,6 +208,42 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
   const { nearbyPromotions, isWatching } = useNearbyPromotions(nearbyAlertsEnabled && isOpen);
   const { toggleFavorite, isFavorite } = useFavoriteLocation();
 
+  // Compute displayed promotions: backend + mock spot, or fallback mock when backend fails
+  const promotions = useMemo((): Promotion[] => {
+    const center = userLocation ?? mapCenter ?? { lat: 40.7128, lng: -74.006 };
+    const mockSpot = createMockClientSpot(center.lat, center.lng);
+
+    if (fromBackend && backendPromos.length >= 0) {
+      const backendList = backendPromos as Promotion[];
+      const filtered = backendList.filter((p) => p.id !== MOCK_CLIENT_SPOT_ID);
+      return [mockSpot, ...filtered];
+    }
+
+    // Fallback: use local + global mock
+    const zoom = 14;
+    const allMock = [...localPromos, ...globalPromos];
+    const byReward = (p: Promotion) =>
+      filter === 'all' || p.reward_type === filter || p.reward_type === 'both';
+    const byZoom = (p: Promotion) => {
+      const dist = Math.sqrt(
+        Math.pow(p.latitude - center.lat, 2) + Math.pow(p.longitude - center.lng, 2)
+      );
+      if (zoom < 6) return true;
+      if (zoom < 10) return dist < 3;
+      return dist < 0.5;
+    };
+    const visible = allMock.filter((p) => byReward(p) && byZoom(p));
+    return [mockSpot, ...visible];
+  }, [
+    fromBackend,
+    backendPromos,
+    userLocation,
+    mapCenter,
+    localPromos,
+    globalPromos,
+    filter,
+  ]);
+
   // Add promotion to route
   const handleAddToRoute = useCallback((promo: Promotion) => {
     if (!promoRoute.isBuilding) {
@@ -350,7 +324,12 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
     const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : 'V+I';
     const coinLabel = promo.reward_type === 'vicoin' ? 'Vicoins' : promo.reward_type === 'icoin' ? 'Icoins' : 'Both';
     const bgGradient = getRewardGradient(promo.reward_amount, promo.reward_type);
-    
+    const imgBlock =
+      promo.image_url &&
+      `
+        <div style="margin-bottom: 10px; border-radius: 10px; overflow: hidden; height: 72px; background: rgba(255,255,255,0.05);">
+          <img src="${promo.image_url}" alt="" style="width:100%;height:100%;object-fit:cover;" loading="lazy" />
+        </div>`;
     return `
       <div class="promo-popup" style="
         background: linear-gradient(135deg, rgba(15, 15, 20, 0.95), rgba(25, 25, 35, 0.95));
@@ -363,6 +342,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), ${getCoinGlow(promo.reward_type)};
         font-family: system-ui, -apple-system, sans-serif;
       ">
+        ${imgBlock || ''}
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
           <div style="
             width: 36px;
@@ -477,7 +457,8 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
 
   // Get user location and generate local promos
   useEffect(() => {
-    if (isOpen && navigator.geolocation) {
+    if (!isOpen) return;
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const loc = {
@@ -495,6 +476,11 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
           toast.info('Using default location - enable GPS for nearby promos');
         }
       );
+    } else {
+      const defaultLoc = { lat: 40.7128, lng: -74.0060 };
+      setUserLocation(defaultLoc);
+      setLocalPromos(generateLocalPromotions(defaultLoc.lat, defaultLoc.lng, 200, 10000));
+      toast.info('Using default location - enable GPS for nearby promos');
     }
   }, [isOpen]);
 
@@ -549,14 +535,19 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       }
     });
 
-    fetchPromotions();
-
     return () => {
       markersRef.current.forEach(marker => marker.remove());
       popupsRef.current.forEach(popup => popup.remove());
       map.current?.remove();
     };
   }, [isOpen, mapboxToken, userLocation]);
+
+  // Toast when backend fails (hook handles retry; we inform user)
+  useEffect(() => {
+    if (backendError && isOpen) {
+      toast.warning('Showing demo spots – real promotions will appear when connected.');
+    }
+  }, [backendError, isOpen]);
 
   // Update markers when promotions or filter changes
   useEffect(() => {
@@ -574,6 +565,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
     const hasActiveRoute = promoRoute.isBuilding && promoRoute.totalStops > 0;
 
     filteredPromos.forEach(promo => {
+      const isFeaturedMock = promo.id === MOCK_CLIENT_SPOT_ID;
       const coinIcon = promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★';
       const inRoute = promoRoute.isInRoute(promo.id);
       const isCompleted = completedStops.has(promo.id);
@@ -585,29 +577,75 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       
       const el = document.createElement('div');
       el.className = 'promo-marker-wrapper';
-      el.innerHTML = `
-        <div class="promo-marker ${style.animClass}" style="
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          background: ${style.background};
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: bold;
-          font-size: 16px;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3)${style.glow !== 'none' ? ', ' + style.glow : ''};
-          border: ${style.border};
-          opacity: ${style.opacity};
-          position: relative;
-        ">
-          ${isCompleted ? '✓' : coinIcon}
-          ${style.badgeHTML}
-        </div>
-      `;
+
+      if (isFeaturedMock) {
+        // Featured mock client spot – larger, pulsing gold ring
+        el.innerHTML = `
+          <div class="promo-marker" style="
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.6), 0 0 40px rgba(245, 158, 11, 0.3);
+            border: 3px solid #fbbf24;
+            position: relative;
+            animation: mockSpotPulse 2s ease-in-out infinite;
+          ">
+            ★
+            <span style="
+              position: absolute;
+              top: -8px;
+              right: -8px;
+              background: linear-gradient(135deg, #06b6d4, #3b82f6);
+              color: white;
+              font-size: 8px;
+              font-weight: 700;
+              padding: 2px 5px;
+              border-radius: 999px;
+              white-space: nowrap;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            ">DEMO</span>
+          </div>
+          <style>
+            @keyframes mockSpotPulse {
+              0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(245, 158, 11, 0.6); }
+              50% { transform: scale(1.08); box-shadow: 0 0 30px rgba(245, 158, 11, 0.8), 0 0 60px rgba(245, 158, 11, 0.3); }
+            }
+          </style>
+        `;
+      } else {
+        el.innerHTML = `
+          <div class="promo-marker ${style.animClass}" style="
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: ${style.background};
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3)${style.glow !== 'none' ? ', ' + style.glow : ''};
+            border: ${style.border};
+            opacity: ${style.opacity};
+            position: relative;
+          ">
+            ${isCompleted ? '✓' : coinIcon}
+            ${style.badgeHTML}
+          </div>
+        `;
+      }
 
       const markerDiv = el.querySelector('.promo-marker') as HTMLElement;
       
@@ -652,86 +690,11 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
     });
   }, [promotions, filter, createPopupHTML, promoRoute.activeRoute?.stops, completedStops, userLocation, haversineMeters, getMarkerStyle]);
 
-  const fetchPromotions = async (searchCenter?: { lat: number; lng: number }) => {
-    const center = searchCenter || userLocation;
-    if (!center) return;
-    
-    setIsLoading(true);
-    setShowSearchHere(false);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('get-nearby-promotions', {
-        body: {
-          latitude: center.lat,
-          longitude: center.lng,
-          radiusKm: 10,
-          rewardType: filter === 'all' ? undefined : filter,
-        },
-      });
-
-      if (error) throw error;
-      
-      const dbPromos = data?.promotions || [];
-      const zoom = map.current?.getZoom() || 14;
-      const allMockPromos = [...localPromos, ...globalPromos];
-      
-      if (zoom < 6) {
-        const visiblePromos = allMockPromos.filter(p => {
-          if (filter === 'all') return true;
-          return p.reward_type === filter || p.reward_type === 'both';
-        });
-        setPromotions([...dbPromos, ...visiblePromos]);
-      } else if (zoom < 10) {
-        const visiblePromos = allMockPromos.filter(p => {
-          const distance = Math.sqrt(
-            Math.pow(p.latitude - center.lat, 2) + 
-            Math.pow(p.longitude - center.lng, 2)
-          );
-          const inRange = distance < 3;
-          if (filter === 'all') return inRange;
-          return inRange && (p.reward_type === filter || p.reward_type === 'both');
-        });
-        setPromotions([...dbPromos, ...visiblePromos]);
-      } else {
-        const nearbyPromos = allMockPromos.filter(p => {
-          const distance = Math.sqrt(
-            Math.pow(p.latitude - center.lat, 2) + 
-            Math.pow(p.longitude - center.lng, 2)
-          );
-          const inRange = distance < 0.5;
-          if (filter === 'all') return inRange;
-          return inRange && (p.reward_type === filter || p.reward_type === 'both');
-        });
-        setPromotions([...dbPromos, ...nearbyPromos]);
-      }
-      
-      toast.success(`Found ${dbPromos.length + allMockPromos.length} promotions nearby`);
-    } catch (error) {
-      console.error('[DiscoveryMap] Fetch error:', error);
-      const zoom = map.current?.getZoom() || 14;
-      const allMockPromos = [...localPromos, ...globalPromos];
-      const visiblePromos = allMockPromos.filter(p => {
-        if (filter !== 'all' && p.reward_type !== filter && p.reward_type !== 'both') return false;
-        if (zoom >= 6) {
-          const center2 = searchCenter || userLocation;
-          if (!center2) return true;
-          const distance = Math.sqrt(
-            Math.pow(p.latitude - center2.lat, 2) + 
-            Math.pow(p.longitude - center2.lng, 2)
-          );
-          return distance < (zoom < 10 ? 3 : 0.5);
-        }
-        return true;
-      });
-      setPromotions(visiblePromos);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleSearchHere = () => {
     if (mapCenter) {
-      fetchPromotions(mapCenter);
+      setShowSearchHere(false);
+      refetchPromotions(mapCenter, true);
+      toast.success('Searching promotions here...');
     }
   };
 
@@ -768,7 +731,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
   };
 
   const applyFilters = () => {
-    fetchPromotions();
+    refetchPromotions(undefined, true);
     toast.success('Filters applied');
   };
 
@@ -830,7 +793,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         style={{ touchAction: 'auto', pointerEvents: 'auto' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <h1 className="font-display text-xl font-bold">Discovery Map</h1>
+          <h1 className="font-display text-xl font-bold">iGO</h1>
           <div className="flex gap-1.5 flex-shrink-0">
             {/* Route Builder Toggle */}
             <NeuButton 
@@ -927,6 +890,47 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
           >
             <span className="w-4 h-4 rounded-full bg-blue-500/20 inline-flex items-center justify-center text-[10px] font-bold">I</span>
           </button>
+          {/* Sort */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="px-3 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 bg-background/80 backdrop-blur-sm neu-button"
+            >
+              <ArrowDownUp className="w-4 h-4" />
+              Sort
+            </button>
+            {showSortMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowSortMenu(false)}
+                  aria-hidden
+                />
+                <div className="absolute right-0 top-full mt-1 py-1 rounded-xl bg-background/95 backdrop-blur-lg border border-border shadow-xl z-20 min-w-[160px]">
+                  {[
+                    { id: 'distance' as const, label: 'Closest first' },
+                    { id: 'reward_desc' as const, label: 'Highest rewards' },
+                    { id: 'reward_asc' as const, label: 'Lowest rewards' },
+                    { id: 'expiring_soon' as const, label: 'Expiring soon' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        setSortBy(opt.id);
+                        setShowSortMenu(false);
+                      }}
+                      className={cn(
+                        'w-full px-4 py-2 text-left text-sm',
+                        sortBy === opt.id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted/50'
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -934,7 +938,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       <div ref={mapContainer} className="absolute inset-0 z-0" />
 
       {/* Loading Overlay */}
-      {(!mapboxToken || !userLocation || isLoading) && (
+      {(!mapboxToken || !userLocation || backendLoading) && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="text-center">
             <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
@@ -954,11 +958,11 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
           <Navigation className="w-5 h-5" />
         </button>
         <button
-          onClick={() => fetchPromotions()}
-          disabled={isLoading}
+          onClick={() => refetchPromotions(undefined, true)}
+          disabled={backendLoading}
           className="w-12 h-12 rounded-full neu-button flex items-center justify-center"
         >
-          <RefreshCw className={cn('w-5 h-5', isLoading && 'animate-spin')} />
+          <RefreshCw className={cn('w-5 h-5', backendLoading && 'animate-spin')} />
         </button>
       </div>
 
@@ -967,7 +971,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         <div className="absolute top-32 left-1/2 transform -translate-x-1/2 z-20 animate-slide-down">
           <button
             onClick={handleSearchHere}
-            disabled={isLoading}
+            disabled={backendLoading}
             className="flex items-center gap-2 px-5 py-3 rounded-full bg-primary text-primary-foreground font-medium shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           >
             <Search className="w-4 h-4" />
@@ -989,9 +993,65 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         </div>
       )}
 
+      {/* Banners: stacked below header (top-44 clears header) so neither is overlooked */}
+      <div className="absolute top-44 left-4 right-4 z-20 flex flex-col gap-2 max-h-[40vh] overflow-y-auto">
+        {/* Fallback mode banner — prominent when backend failed and map uses mock promotions */}
+        {!fromBackend && !backendLoading && (
+          <div
+            className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-amber-500/70 bg-amber-500/20 backdrop-blur-sm shadow-lg ring-2 ring-amber-500/30 animate-in fade-in slide-in-from-top-2"
+            role="alert"
+            aria-live="assertive"
+          >
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500/40 flex items-center justify-center">
+              <WifiOff className="w-5 h-5 text-amber-700 dark:text-amber-300" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-amber-900 dark:text-amber-100 text-sm">Demo mode</p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-200/90 mt-0.5">
+                Showing sample spots. Real promotions will appear when connected.
+              </p>
+            </div>
+            <button
+              onClick={() => refetchPromotions(undefined, true)}
+              disabled={backendLoading}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/50 hover:bg-amber-500/60 text-amber-900 dark:text-amber-100 text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={cn('w-4 h-4', backendLoading && 'animate-spin')} />
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Check-in mode banner (when opened from remote check-in) */}
+        {initialMode === 'checkin' && !checkInModeBannerDismissed && (
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary/90 text-primary-foreground text-sm shadow-lg animate-in fade-in slide-in-from-top-2">
+            <MapPin className="w-4 h-4 shrink-0" />
+            <span className="flex-1">Check-in mode — use the sheet to verify your location and earn rewards.</span>
+            <button
+              onClick={() => setCheckInModeBannerDismissed(true)}
+              className="p-1 rounded-full hover:bg-white/20"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Promotion Count Badge */}
-      <div className="absolute left-4 bottom-24 bg-background/90 backdrop-blur-sm rounded-2xl px-4 py-3 neu-card">
-        <span className="text-sm font-medium block mb-2">{promotions.length} promos nearby</span>
+      <div className={cn(
+        'absolute left-4 bottom-24 rounded-2xl px-4 py-3 neu-card',
+        fromBackend ? 'bg-background/90 backdrop-blur-sm' : 'bg-amber-500/10 backdrop-blur-sm border border-amber-500/30'
+      )}>
+        <span className="text-sm font-medium block mb-2">
+          {promotions.length} {fromBackend ? 'promos' : 'demo spots'} nearby
+        </span>
+        {!fromBackend && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-2 flex items-center gap-1.5">
+            <WifiOff className="w-3.5 h-3.5" />
+            Demo mode
+          </p>
+        )}
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <div className="w-3 h-3 rounded-full bg-gradient-to-br from-green-400 to-green-600" />
           <span>Low</span>
@@ -1045,21 +1105,31 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
             </div>
 
             <div className="flex gap-2 flex-wrap">
-              <CheckInButton
-                promotion={{
-                  id: selectedPromo.id,
-                  business_name: selectedPromo.business_name,
-                  latitude: selectedPromo.latitude,
-                  longitude: selectedPromo.longitude,
-                  reward_amount: selectedPromo.reward_amount,
-                  reward_type: selectedPromo.reward_type,
-                }}
-                className="flex-1 min-w-0"
-                onSuccess={() => {
-                  setCompletedStops(prev => new Set([...prev, selectedPromo.id]));
-                  setSelectedPromo(null);
-                }}
-              />
+              {selectedPromo.id === MOCK_CLIENT_SPOT_ID ? (
+                <button
+                  onClick={() => setShowCheckInFlow(true)}
+                  className="flex-1 min-w-0 py-3 px-4 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                >
+                  <Coins className="w-4 h-4" /> Start Check-In Flow
+                </button>
+              ) : (
+                <CheckInButton
+                  promotion={{
+                    id: selectedPromo.id,
+                    business_name: selectedPromo.business_name,
+                    latitude: selectedPromo.latitude,
+                    longitude: selectedPromo.longitude,
+                    reward_amount: selectedPromo.reward_amount,
+                    reward_type: selectedPromo.reward_type,
+                  }}
+                  className="flex-1 min-w-0"
+                  onSuccess={() => {
+                    setCompletedStops(prev => new Set([...prev, selectedPromo.id]));
+                    setSelectedPromo(null);
+                  }}
+                />
+              )}
               {/* Add to Route button */}
               <button
                 onClick={() => handleAddToRoute(selectedPromo)}
@@ -1139,7 +1209,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
                     >
                       {promo.reward_type === 'vicoin' ? 'V' : promo.reward_type === 'icoin' ? 'I' : '★'}
                     </div>
-                    <span>{promo.distance?.toFixed(1)} km</span>
+                    <span>{typeof promo.distance === 'number' ? promo.distance.toFixed(1) : '?'} km</span>
                   </div>
                   <span 
                     className="font-semibold"
@@ -1168,7 +1238,8 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
       <FavoriteLocations
         open={showFavorites}
         onOpenChange={setShowFavorites}
-        onNavigate={(lat, lng, name) => {
+        userLocation={userLocation}
+        onNavigate={(lat, lng) => {
           if (map.current) {
             map.current.flyTo({
               center: [lng, lat],
@@ -1177,12 +1248,21 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
             });
           }
         }}
+        onOpenPromotionDetails={(promotionId) => {
+          const promo = promotions.find((p) => p.id === promotionId);
+          if (promo) {
+            setSelectedPromo(promo);
+            map.current?.flyTo({ center: [promo.longitude, promo.latitude], zoom: 16, pitch: 45 });
+            setShowFavorites(false);
+          }
+        }}
       />
 
       {/* Check-In History - controlled mode */}
       <CheckInHistory
         open={showCheckInHistory}
         onOpenChange={setShowCheckInHistory}
+        onDiscover={() => setShowCheckInHistory(false)}
       />
 
       {/* Route Builder */}
@@ -1237,9 +1317,29 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
             toast.success('Smart route generated!');
           } else { toast.error('Location needed'); }
         }}
+        onOptimizeOrder={(lat, lng) => promoRoute.optimizeOrder(lat ?? userLocation?.lat, lng ?? userLocation?.lng)}
         onDuplicateRoute={promoRoute.duplicateRoute}
         onOpenSavedRouteInMaps={(routeId) => promoRoute.openSavedRouteInMaps(routeId, userLocation?.lat, userLocation?.lng)}
+        routesSyncing={promoRoute.routesSyncing}
+        lastRoutesSyncAt={promoRoute.lastRoutesSyncAt}
+        activeRouteEstimate={promoRoute.activeRouteEstimate}
+        isCloudSynced={promoRoute.isCloudSynced}
+        onAddSavedRoute={promoRoute.addSavedRoute}
       />
+
+      {/* Featured Promo Check-In Flow */}
+      {selectedPromo && selectedPromo.id === MOCK_CLIENT_SPOT_ID && (
+        <PromoCheckInFlow
+          isOpen={showCheckInFlow}
+          onClose={() => setShowCheckInFlow(false)}
+          promotion={selectedPromo}
+          onOpenWallet={() => {
+            setShowCheckInFlow(false);
+            setSelectedPromo(null);
+            onOpenWallet?.();
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -25,6 +25,7 @@ const routeLabels: Record<string, string> = {
   '/my-page': 'My Page',
   '/install': 'Install',
   '/auth': 'Login',
+  '/content': 'Content',
 };
 
 export const BreadcrumbNavigation: React.FC = () => {

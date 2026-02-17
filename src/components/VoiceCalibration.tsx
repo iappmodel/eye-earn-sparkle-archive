@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Mic, MicOff, Volume2, Play, Pause, Check, X, ChevronRight, 
-  Sparkles, Waves, AlertCircle, RotateCcw, Music
+  Sparkles, Waves, AlertCircle, RotateCcw, Music, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -9,6 +9,10 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { useAuth } from '@/contexts/AuthContext';
+import { saveVoiceCalibration } from '@/services/voice.service';
+import { VOICE_COMMAND_DEFS } from '@/constants/voiceCommands';
+import { matchVoiceCommand } from '@/constants/voiceCommands';
 
 export interface VoiceCalibrationResult {
   samplesRecorded: number;
@@ -19,6 +23,10 @@ export interface VoiceCalibrationResult {
     sampleUrls: string[];
     toneSamples: Record<string, string>;
   };
+  /** Custom phrases per command id (what user said), for better recognition. */
+  customPhrases?: Record<string, string>;
+  /** Whether profile was saved to backend. */
+  savedToBackend?: boolean;
 }
 
 interface VoiceCalibrationProps {
@@ -49,19 +57,18 @@ const VOICE_TONES = [
   { id: 'confident', name: 'Confident', emoji: '😎', phrase: 'I know exactly what I am doing' },
 ];
 
-// Voice commands to train
-const VOICE_COMMANDS = [
-  { id: 'next', command: 'Next', description: 'Go to next content' },
-  { id: 'back', command: 'Go back', description: 'Return to previous' },
-  { id: 'like', command: 'Like this', description: 'Like current content' },
-  { id: 'share', command: 'Share', description: 'Open share menu' },
-  { id: 'comment', command: 'Add comment', description: 'Open comments' },
-  { id: 'pause', command: 'Pause', description: 'Pause playback' },
-  { id: 'play', command: 'Play', description: 'Resume playback' },
-  { id: 'scroll', command: 'Scroll down', description: 'Scroll content' },
-];
+// Use shared command definitions (first 8 for calibration; full list used by recognition)
+const VOICE_COMMANDS = VOICE_COMMAND_DEFS.slice(0, 8);
 
-type CalibrationPhase = 'intro' | 'phrases' | 'tones' | 'commands' | 'complete';
+// Delay (ms) after stopping recording before auto-playing so user hears stop/success beep first
+const AUTO_PLAYBACK_DELAY_MS = 600;
+
+type CalibrationPhase = 'intro' | 'phrases' | 'tones' | 'commands' | 'test' | 'complete';
+
+const SpeechRecognitionCtor =
+  typeof window !== 'undefined'
+    ? (window.SpeechRecognition || (window as any).webkitSpeechRecognition)
+    : null;
 
 export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
   isOpen,
@@ -71,6 +78,7 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
 }) => {
   const haptics = useHapticFeedback();
   const voiceRecorder = useVoiceRecorder();
+  const { user } = useAuth();
   
   const [phase, setPhase] = useState<CalibrationPhase>('intro');
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
@@ -85,10 +93,29 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  
+  // Test phase: one-shot recognition
+  const [testListening, setTestListening] = useState(false);
+  const [testTranscript, setTestTranscript] = useState<string | null>(null);
+  const [testMatchedCommand, setTestMatchedCommand] = useState<string | null>(null);
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const testRecognitionRef = useRef<{ start(): void; stop(): void } | null>(null);
+
+  const stopTestListening = useCallback(() => {
+    if (testRecognitionRef.current) {
+      try {
+        testRecognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      testRecognitionRef.current = null;
+    }
+    setTestListening(false);
+  }, []);
 
   // Reset state when closed
   useEffect(() => {
@@ -101,8 +128,11 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
       setRecordedTones({});
       setRecordedCommands({});
       setError(null);
+      setTestTranscript(null);
+      setTestMatchedCommand(null);
+      stopTestListening();
     }
-  }, [isOpen]);
+  }, [isOpen, stopTestListening]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -112,6 +142,14 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
       }
       if (audioContextRef.current) {
         audioContextRef.current.close();
+      }
+      if (testRecognitionRef.current) {
+        try {
+          testRecognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+        testRecognitionRef.current = null;
       }
     };
   }, []);
@@ -175,12 +213,12 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
       cancelAnimationFrame(animationFrameRef.current);
     }
     setVolumeLevel(0);
-    
-    const blob = await voiceRecorder.stopRecording();
+
+    const result = await voiceRecorder.stopRecording();
     playSound('stop');
     haptics.light();
-    
-    return blob;
+
+    return result?.blob ?? null;
   };
 
   const handleRecordPhrase = async () => {
@@ -191,6 +229,8 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
         setRecordedPhrases(prev => ({ ...prev, [phrase.id]: blob }));
         playSound('success');
         haptics.success();
+        // Auto-play back so user can hear what was recorded
+        setTimeout(() => playRecording(blob, phrase.id), AUTO_PLAYBACK_DELAY_MS);
       }
     } else {
       await startRecording();
@@ -205,6 +245,8 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
         setRecordedTones(prev => ({ ...prev, [tone.id]: blob }));
         playSound('success');
         haptics.success();
+        // Auto-play back so user can hear what was recorded
+        setTimeout(() => playRecording(blob, tone.id), AUTO_PLAYBACK_DELAY_MS);
       }
     } else {
       await startRecording();
@@ -219,13 +261,15 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
         setRecordedCommands(prev => ({ ...prev, [command.id]: blob }));
         playSound('success');
         haptics.success();
+        // Auto-play back so user can hear what was recorded
+        setTimeout(() => playRecording(blob, command.id), AUTO_PLAYBACK_DELAY_MS);
       }
     } else {
       await startRecording();
     }
   };
 
-  const playRecording = async (blob: Blob, id: string) => {
+  const playRecording = useCallback(async (blob: Blob, id: string) => {
     if (isPlaying && playingId === id) {
       setIsPlaying(false);
       setPlayingId(null);
@@ -234,17 +278,23 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
 
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    setIsPlaying(true);
-    setPlayingId(id);
-    
-    audio.onended = () => {
+    const cleanup = () => {
       setIsPlaying(false);
       setPlayingId(null);
       URL.revokeObjectURL(url);
     };
-    
-    await audio.play();
-  };
+
+    setIsPlaying(true);
+    setPlayingId(id);
+    audio.onended = cleanup;
+    audio.onerror = cleanup;
+
+    try {
+      await audio.play();
+    } catch {
+      cleanup();
+    }
+  }, [isPlaying, playingId]);
 
   const nextPhrase = () => {
     if (currentPhraseIndex < SAMPLE_PHRASES.length - 1) {
@@ -268,11 +318,50 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
     if (currentCommandIndex < VOICE_COMMANDS.length - 1) {
       setCurrentCommandIndex(prev => prev + 1);
     } else {
-      setPhase('complete');
+      setPhase('test');
     }
   };
 
-  const handleComplete = () => {
+  const startTestListening = useCallback(() => {
+    if (!SpeechRecognitionCtor) {
+      setError('Voice recognition not supported in this browser.');
+      return;
+    }
+    setError(null);
+    setTestTranscript(null);
+    setTestMatchedCommand(null);
+    const rec = new SpeechRecognitionCtor();
+    testRecognitionRef.current = rec;
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = navigator.language || 'en-US';
+    rec.onresult = (e: any) => {
+      const result = e.results[e.resultIndex];
+      const item = result?.[0];
+      const transcript = (item && typeof item.transcript === 'string') ? item.transcript : '';
+      setTestTranscript(transcript);
+      const matched = matchVoiceCommand(transcript);
+      setTestMatchedCommand(matched);
+      if (matched) {
+        playSound('success');
+        haptics.success();
+      }
+    };
+    rec.onend = () => {
+      setTestListening(false);
+      testRecognitionRef.current = null;
+    };
+    rec.onerror = () => setTestListening(false);
+    try {
+      rec.start();
+      setTestListening(true);
+      playSound('start');
+    } catch {
+      setError('Could not start microphone.');
+    }
+  }, [haptics]);
+
+  const handleComplete = useCallback(async () => {
     const result: VoiceCalibrationResult = {
       samplesRecorded: Object.keys(recordedPhrases).length,
       tonesRecorded: Object.keys(recordedTones),
@@ -282,11 +371,26 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
         sampleUrls: [],
         toneSamples: {},
       },
+      savedToBackend: false,
     };
+    
+    if (user?.id) {
+      setSaving(true);
+      const { error: saveError } = await saveVoiceCalibration(user.id, {
+        completedAt: result.completedAt,
+        samplesRecorded: result.samplesRecorded,
+        tonesRecorded: result.tonesRecorded,
+        commandsRecorded: result.commandsRecorded,
+        customPhrases: result.customPhrases,
+        voicePrint: result.voicePrint,
+      });
+      result.savedToBackend = !saveError;
+      setSaving(false);
+    }
     
     haptics.success();
     onComplete(result);
-  };
+  }, [user?.id, recordedPhrases, recordedTones, recordedCommands, onComplete, haptics]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -735,7 +839,77 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
                   className="flex-1"
                   disabled={!recordedCommands[currentCommand.id]}
                 >
-                  {currentCommandIndex === VOICE_COMMANDS.length - 1 ? 'Finish Training' : 'Next Command'}
+                  {currentCommandIndex === VOICE_COMMANDS.length - 1 ? 'Next: Test recognition' : 'Next Command'}
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Test recognition phase */}
+          {phase === 'test' && (
+            <div className="flex-1 flex flex-col p-4 space-y-4">
+              <div className="text-center space-y-2">
+                <p className="text-sm text-muted-foreground">Step 4 of 4 • Test recognition</p>
+                <p className="text-xs text-muted-foreground">
+                  Say any command to verify voice recognition works
+                </p>
+              </div>
+
+              <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+                <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+                  <Waves className="w-8 h-8 text-primary" />
+                </div>
+                {!SpeechRecognitionCtor ? (
+                  <p className="text-sm text-muted-foreground text-center">
+                    Voice recognition is not supported in this browser. You can still use your saved commands.
+                  </p>
+                ) : (
+                  <>
+                    <Button
+                      variant={testListening ? 'destructive' : 'default'}
+                      size="lg"
+                      onClick={testListening ? stopTestListening : startTestListening}
+                      disabled={saving}
+                    >
+                      {testListening ? (
+                        <>Listening... Click to stop</>
+                      ) : (
+                        <>Say a command</>
+                      )}
+                    </Button>
+                    {testTranscript !== null && (
+                      <div className="w-full max-w-sm space-y-2 rounded-lg bg-muted/50 p-4 text-center">
+                        <p className="text-sm text-muted-foreground">Heard:</p>
+                        <p className="font-medium">&quot;{testTranscript}&quot;</p>
+                        {testMatchedCommand ? (
+                          <p className="text-sm text-green-600 dark:text-green-400 flex items-center justify-center gap-1">
+                            <Check className="w-4 h-4" /> Matched: {VOICE_COMMAND_DEFS.find(c => c.id === testMatchedCommand)?.command ?? testMatchedCommand}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-amber-600 dark:text-amber-400">No command matched. Try saying &quot;next&quot; or &quot;like&quot;.</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPhase('commands');
+                    setCurrentCommandIndex(VOICE_COMMANDS.length - 1);
+                  }}
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={() => setPhase('complete')}
+                  className="flex-1"
+                >
+                  Continue to finish
                   <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
@@ -781,9 +955,12 @@ export const VoiceCalibration: React.FC<VoiceCalibrationProps> = ({
                 </ul>
               </div>
 
-              <Button onClick={handleComplete} className="w-full max-w-sm">
-                <Sparkles className="w-4 h-4 mr-2" />
-                Done
+              <Button onClick={handleComplete} className="w-full max-w-sm" disabled={saving}>
+                {saving ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                ) : (
+                  <><Sparkles className="w-4 h-4 mr-2" /> Done</>
+                )}
               </Button>
             </div>
           )}

@@ -43,7 +43,7 @@ export const ContentComparison: React.FC = () => {
         .from('user_content')
         .select('id, title, thumbnail_url, content_type, views_count, likes_count, shares_count, comments_count, created_at')
         .eq('user_id', user.id)
-        .eq('status', 'published')
+        .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(20);
 

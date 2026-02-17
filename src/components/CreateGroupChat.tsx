@@ -19,7 +19,7 @@ interface User {
 interface CreateGroupChatProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreated: (conversationId: string) => void;
+  onCreated: (conversationId: string, groupName?: string) => void;
 }
 
 export const CreateGroupChat: React.FC<CreateGroupChatProps> = ({ isOpen, onClose, onCreated }) => {
@@ -117,7 +117,7 @@ export const CreateGroupChat: React.FC<CreateGroupChatProps> = ({ isOpen, onClos
       );
 
       toast.success('Group created!');
-      onCreated(conversation.id);
+      onCreated(conversation.id, groupName);
       onClose();
     } catch (error) {
       console.error('Error creating group:', error);

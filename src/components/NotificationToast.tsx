@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Gift, MessageCircle, Sparkles, Trophy, X } from 'lucide-react';
+import { Bell, Gift, MessageCircle, Sparkles, Trophy, X, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Notification } from '@/hooks/useNotifications';
 
@@ -20,6 +20,8 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
         return <MessageCircle className="w-5 h-5" />;
       case 'promotion':
         return <Gift className="w-5 h-5" />;
+      case 'earnings':
+        return <DollarSign className="w-5 h-5" />;
       default:
         return <Bell className="w-5 h-5" />;
     }
@@ -30,6 +32,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
       case 'engagement':
         return 'bg-primary/20 text-primary';
       case 'promotion':
+      case 'earnings':
         return 'bg-icoin/20 text-icoin';
       default:
         return 'bg-muted text-muted-foreground';

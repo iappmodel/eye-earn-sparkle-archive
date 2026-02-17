@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SwipeDismissOverlay } from './SwipeDismissOverlay';
-import { X, Bell, Mail, Smartphone, DollarSign, Shield, Heart, Gift } from 'lucide-react';
+import { X, Bell, Mail, Smartphone, DollarSign, Shield, Heart, Gift, Moon } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useLocalization } from '@/contexts/LocalizationContext';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 interface NotificationPreferencesProps {
   isOpen: boolean;
@@ -43,11 +45,28 @@ const categoryConfig = [
   },
 ];
 
+/** Time from DB may be "HH:mm:ss" or "HH:mm"; normalize to "HH:mm" for input. */
+function toInputTime(t: string | null): string {
+  if (!t) return '';
+  const parts = t.split(':');
+  return `${parts[0] ?? '00'}:${parts[1] ?? '00'}`;
+}
+
 export const NotificationPreferences: React.FC<NotificationPreferencesProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { t } = useLocalization();
   const { preferences, updatePreferences, isLoading } = useNotifications();
+  const [quietStart, setQuietStart] = useState('');
+  const [quietEnd, setQuietEnd] = useState('');
+
+  useEffect(() => {
+    if (preferences) {
+      setQuietStart(toInputTime(preferences.quiet_hours_start));
+      setQuietEnd(toInputTime(preferences.quiet_hours_end));
+    }
+  }, [preferences?.quiet_hours_start, preferences?.quiet_hours_end]);
 
   const toggleChannel = (channel: 'push_enabled' | 'email_enabled' | 'in_app_enabled') => {
     if (!preferences) return;
@@ -63,12 +82,38 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
     updatePreferences({ categories: newCategories });
   };
 
+  const quietHoursEnabled = !!(preferences?.quiet_hours_start && preferences?.quiet_hours_end);
+
+  const toggleQuietHours = (enabled: boolean) => {
+    if (!preferences) return;
+    if (enabled) {
+      updatePreferences({
+        quiet_hours_start: quietStart || '22:00',
+        quiet_hours_end: quietEnd || '08:00',
+      });
+      if (!quietStart) setQuietStart('22:00');
+      if (!quietEnd) setQuietEnd('08:00');
+    } else {
+      updatePreferences({ quiet_hours_start: null, quiet_hours_end: null });
+      setQuietStart('');
+      setQuietEnd('');
+    }
+  };
+
+  const saveQuietHours = () => {
+    if (!preferences || !quietStart || !quietEnd) return;
+    updatePreferences({
+      quiet_hours_start: quietStart,
+      quiet_hours_end: quietEnd,
+    });
+  };
+
   return (
     <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
       <div className="max-w-md mx-auto h-full flex flex-col p-6 overflow-y-auto pb-24">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="font-display text-2xl font-bold">Notification Settings</h1>
+          <h1 className="font-display text-2xl font-bold">{t('notifications.settingsTitle')}</h1>
           <NeuButton onClick={onClose} size="sm">
             <X className="w-5 h-5" />
           </NeuButton>
@@ -151,10 +196,61 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
               </div>
             </div>
 
+            {/* Quiet Hours */}
+            <div className="mb-8">
+              <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">
+                {t('notifications.quietHours')}
+              </h2>
+              <div className="neu-card rounded-2xl p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl neu-inset flex items-center justify-center">
+                      <Moon className="w-5 h-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <Label className="font-medium">{t('notifications.quietHoursLabel')}</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t('notifications.quietHoursDescription')}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={quietHoursEnabled}
+                    onCheckedChange={toggleQuietHours}
+                  />
+                </div>
+                {quietHoursEnabled && (
+                  <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">{t('notifications.quietHoursStart')}</Label>
+                      <Input
+                        type="time"
+                        value={quietStart}
+                        onChange={(e) => setQuietStart(e.target.value)}
+                        onBlur={saveQuietHours}
+                        className="mt-1"
+                      />
+                    </div>
+                    <span className="text-muted-foreground pt-5">–</span>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">{t('notifications.quietHoursEnd')}</Label>
+                      <Input
+                        type="time"
+                        value={quietEnd}
+                        onChange={(e) => setQuietEnd(e.target.value)}
+                        onBlur={saveQuietHours}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Categories Section */}
             <div>
               <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">
-                Notification Categories
+                {t('notifications.categoriesTitle')}
               </h2>
               <div className="space-y-3">
                 {categoryConfig.map(category => {
@@ -194,7 +290,7 @@ export const NotificationPreferences: React.FC<NotificationPreferencesProps> = (
 
             {/* Info text */}
             <p className="text-xs text-muted-foreground text-center mt-8">
-              You can update these settings at any time. We'll never send spam.
+              {t('notifications.settingsFooter')}
             </p>
           </>
         )}

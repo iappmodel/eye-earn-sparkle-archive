@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { format, subDays, eachDayOfInterval, startOfDay, endOfDay } from 'date-fns';
 
 interface ContentAnalyticsProps {
@@ -18,6 +19,7 @@ interface InteractionData {
 }
 
 export const ContentAnalytics: React.FC<ContentAnalyticsProps> = ({ contentId }) => {
+  const { user } = useAuth();
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
   const [content, setContent] = useState<any>(null);
   const [interactions, setInteractions] = useState<InteractionData[]>([]);
@@ -25,15 +27,16 @@ export const ContentAnalytics: React.FC<ContentAnalyticsProps> = ({ contentId })
 
   useEffect(() => {
     loadAnalytics();
-  }, [contentId, period]);
+  }, [contentId, period, user?.id]);
 
   const loadAnalytics = async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const daysBack = period === '7d' ? 7 : 30;
       const startDate = subDays(new Date(), daysBack);
 
-      // Load content stats
+      // Load content stats (RLS: user can only read own content)
       const { data: contentData } = await supabase
         .from('user_content')
         .select('views_count, likes_count, shares_count, comments_count, created_at')
@@ -42,11 +45,12 @@ export const ContentAnalytics: React.FC<ContentAnalyticsProps> = ({ contentId })
 
       setContent(contentData);
 
-      // Load interactions
+      // RLS-safe: only interactions on this content where current user is the content owner
       const { data: interactionData } = await supabase
         .from('content_interactions')
         .select('created_at, liked, shared, watch_duration')
         .eq('content_id', contentId)
+        .eq('content_owner_id', user.id)
         .gte('created_at', startDate.toISOString());
 
       setInteractions((interactionData || []) as InteractionData[]);

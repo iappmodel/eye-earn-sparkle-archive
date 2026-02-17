@@ -1,17 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAdmin, AdminAction } from '@/hooks/useAdmin';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   Shield, 
   Ban, 
   UserCheck, 
   Flag,
   AlertTriangle,
-  Settings
+  Settings,
+  Download,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format, subDays, startOfDay } from 'date-fns';
 
 interface AdminProfile {
   user_id: string;
@@ -19,9 +30,31 @@ interface AdminProfile {
   display_name: string | null;
 }
 
+const ACTION_TYPES = ['all', 'ban_user', 'unban_user', 'resolve_flag', 'resolve_report', 'update_role', 'feature_flag_updated', 'content_status_change'];
+
 const AdminActionsLog: React.FC = () => {
-  const { adminActions } = useAdmin();
+  const { adminActions, hasMoreAdminActions, loadMoreAdminActions, refreshAdminActions } = useAdmin();
   const [adminProfiles, setAdminProfiles] = useState<Record<string, AdminProfile>>({});
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [actionFilter, setActionFilter] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<string>('7');
+
+  const filteredActions = useMemo(() => {
+    let list = adminActions;
+    if (actionFilter !== 'all') {
+      list = list.filter((a) => a.action_type === actionFilter);
+    }
+    if (dateRange !== 'all') {
+      const days = parseInt(dateRange, 10);
+      const since =
+        days === 1
+          ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+          : startOfDay(subDays(new Date(), days)).toISOString();
+      list = list.filter((a) => a.created_at >= since);
+    }
+    return list;
+  }, [adminActions, actionFilter, dateRange]);
 
   useEffect(() => {
     fetchAdminProfiles();
@@ -94,51 +127,146 @@ const AdminActionsLog: React.FC = () => {
     }
   };
 
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    await loadMoreAdminActions();
+    setIsLoadingMore(false);
+  };
+
+  const handleExportCsv = () => {
+    if (filteredActions.length === 0) return;
+    setIsExporting(true);
+    const header = 'Date,Time,Action Type,Target Type,Target ID,Admin,Details\n';
+    const rows = filteredActions.map((action) => {
+      const adminProfile = adminProfiles[action.admin_id];
+      const adminName = adminProfile?.display_name || adminProfile?.username || action.admin_id;
+      const details = formatActionDetails(action).replace(/"/g, '""');
+      const d = new Date(action.created_at);
+      return [
+        format(d, 'yyyy-MM-dd'),
+        format(d, 'HH:mm:ss'),
+        action.action_type,
+        action.target_type,
+        action.target_id,
+        adminName,
+        `"${details}"`,
+      ].join(',');
+    });
+    const csv = header + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `admin-audit-log-${format(new Date(), 'yyyy-MM-dd-HHmm')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setIsExporting(false);
+  };
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="w-5 h-5" />
-          Admin Actions Audit Log
-        </CardTitle>
+      <CardHeader className="flex flex-col gap-4">
+        <div className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5" />
+            Admin Actions Audit Log
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => refreshAdminActions?.()}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+            {filteredActions.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCsv}
+                disabled={isExporting}
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
+                Export CSV
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Select value={actionFilter} onValueChange={setActionFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Action type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All actions</SelectItem>
+              {ACTION_TYPES.filter((t) => t !== 'all').map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t.replace(/_/g, ' ')}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue placeholder="Period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">Last 24h</SelectItem>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </CardHeader>
       <CardContent>
-        {adminActions.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">No admin actions recorded</p>
+        {filteredActions.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">No admin actions in this range</p>
         ) : (
-          <div className="space-y-3">
-            {adminActions.map((action) => {
-              const adminProfile = adminProfiles[action.admin_id];
-              return (
-                <div 
-                  key={action.id}
-                  className="flex items-start gap-4 p-4 border rounded-lg"
-                >
-                  <div className="mt-1">
-                    {getActionIcon(action.action_type)}
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {getActionBadge(action.action_type)}
-                      <span className="text-sm font-medium">
-                        {adminProfile?.display_name || adminProfile?.username || action.admin_id.slice(0, 8)}
-                      </span>
-                      <span className="text-sm text-muted-foreground">→</span>
-                      <span className="text-sm">
-                        {action.target_type}: {action.target_id.slice(0, 8)}...
-                      </span>
+          <>
+            <div className="space-y-3">
+              {filteredActions.map((action) => {
+                const adminProfile = adminProfiles[action.admin_id];
+                return (
+                  <div 
+                    key={action.id}
+                    className="flex items-start gap-4 p-4 border rounded-lg"
+                  >
+                    <div className="mt-1">
+                      {getActionIcon(action.action_type)}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {formatActionDetails(action)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(action.created_at), { addSuffix: true })}
-                    </p>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {getActionBadge(action.action_type)}
+                        <span className="text-sm font-medium">
+                          {adminProfile?.display_name || adminProfile?.username || action.admin_id.slice(0, 8)}
+                        </span>
+                        <span className="text-sm text-muted-foreground">→</span>
+                        <span className="text-sm">
+                          {action.target_type}: {action.target_id.slice(0, 8)}...
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {formatActionDetails(action)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(action.created_at), { addSuffix: true })}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            {hasMoreAdminActions && (
+              <div className="mt-4 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Load more
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -9,6 +9,10 @@ interface ComparisonSliderProps {
   className?: string;
   /** If true, renders as a standalone panel with preview area */
   standalone?: boolean;
+  /** Optional image URL for "before" side in standalone mode */
+  beforeImageUrl?: string;
+  /** Optional image URL for "after" side in standalone mode */
+  afterImageUrl?: string;
 }
 
 export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
@@ -16,6 +20,8 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
   onToggle,
   className,
   standalone = false,
+  beforeImageUrl,
+  afterImageUrl,
 }) => {
   const [position, setPosition] = useState(50);
   const [isDragging, setIsDragging] = useState(false);
@@ -136,15 +142,18 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
             className="absolute inset-0 bg-gradient-to-br from-muted via-muted/90 to-muted/80"
             style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
           >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center space-y-2 opacity-70">
-                <div className="w-20 h-20 mx-auto rounded-full bg-foreground/10 flex items-center justify-center border-2 border-dashed border-foreground/20">
-                  <span className="text-3xl">👤</span>
+            {beforeImageUrl ? (
+              <img src={beforeImageUrl} alt="Before" className="absolute inset-0 w-full h-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center space-y-2 opacity-70">
+                  <div className="w-20 h-20 mx-auto rounded-full bg-foreground/10 flex items-center justify-center border-2 border-dashed border-foreground/20">
+                    <span className="text-3xl">👤</span>
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground">Original</span>
                 </div>
-                <span className="text-xs font-medium text-muted-foreground">Original</span>
               </div>
-            </div>
-            {/* Before Label */}
+            )}
             <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-background/90 backdrop-blur-sm border border-border/50">
               <span className="text-[10px] font-bold uppercase tracking-wider">Before</span>
             </div>
@@ -155,15 +164,18 @@ export const ComparisonSlider: React.FC<ComparisonSliderProps> = ({
             className="absolute inset-0 bg-gradient-to-br from-primary/10 via-pink-500/10 to-purple-500/10"
             style={{ clipPath: `inset(0 0 0 ${position}%)` }}
           >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center space-y-2">
-                <div className="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center ring-2 ring-primary/40 shadow-lg shadow-primary/20">
-                  <span className="text-3xl">✨</span>
+            {afterImageUrl ? (
+              <img src={afterImageUrl} alt="After" className="absolute inset-0 w-full h-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center space-y-2">
+                  <div className="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center ring-2 ring-primary/40 shadow-lg shadow-primary/20">
+                    <span className="text-3xl">✨</span>
+                  </div>
+                  <span className="text-xs font-medium text-primary">Enhanced</span>
                 </div>
-                <span className="text-xs font-medium text-primary">Enhanced</span>
               </div>
-            </div>
-            {/* After Label */}
+            )}
             <div className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-primary backdrop-blur-sm">
               <span className="text-[10px] font-bold text-primary-foreground uppercase tracking-wider">After</span>
             </div>

@@ -11,6 +11,8 @@ interface LiveAttentionGraphProps {
   currentScore: number;
   progress: number;
   isVisible: boolean;
+  /** Current focus streak in seconds; shown in header when >= 1 */
+  attentionStreakSec?: number;
   className?: string;
 }
 
@@ -18,6 +20,7 @@ export const LiveAttentionGraph: React.FC<LiveAttentionGraphProps> = ({
   currentScore,
   progress,
   isVisible,
+  attentionStreakSec = 0,
   className,
 }) => {
   const [dataPoints, setDataPoints] = useState<AttentionDataPoint[]>([]);
@@ -169,6 +172,11 @@ export const LiveAttentionGraph: React.FC<LiveAttentionGraphProps> = ({
             <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Live Focus</span>
           </div>
           <div className="flex items-center gap-2">
+            {attentionStreakSec >= 1 && (
+              <span className="text-[10px] font-medium text-green-600 dark:text-green-400 tabular-nums">
+                {Math.floor(attentionStreakSec)}s streak
+              </span>
+            )}
             <span className={cn(
               "text-xs font-bold",
               currentScore >= 80 ? "text-green-500" :

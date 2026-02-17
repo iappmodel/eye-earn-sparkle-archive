@@ -11,6 +11,7 @@ import {
   GestureStep,
   COMBO_ACTION_LABELS,
 } from '@/hooks/useGestureCombos';
+import { TRIGGER_LABELS } from '@/hooks/useScreenTargets';
 import { GazeDirection } from '@/hooks/useGazeDirection';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { useVoiceFeedback } from '@/hooks/useVoiceFeedback';
@@ -22,6 +23,8 @@ interface ComboPracticeModeProps {
   currentSteps: GestureStep[];
   matchProgress: number;
   lastMatchedCombo: GestureCombo | null;
+  /** When set, practice this combo first instead of a random one. */
+  initialComboId?: string | null;
 }
 
 interface PracticeStats {
@@ -46,6 +49,7 @@ export const ComboPracticeMode: React.FC<ComboPracticeModeProps> = ({
   currentSteps,
   matchProgress,
   lastMatchedCombo,
+  initialComboId,
 }) => {
   const haptics = useHapticFeedback();
   const voiceFeedback = useVoiceFeedback();
@@ -62,18 +66,29 @@ export const ComboPracticeMode: React.FC<ComboPracticeModeProps> = ({
 
   const enabledCombos = combos.filter(c => c.enabled);
 
-  // Pick a random target combo
-  const pickNewTarget = useCallback(() => {
+  // Pick a target combo: prefer initialComboId if provided and enabled, else random
+  const pickNewTarget = useCallback((preferComboId?: string | null) => {
     if (enabledCombos.length === 0) return;
-    
-    const randomIndex = Math.floor(Math.random() * enabledCombos.length);
-    const newTarget = enabledCombos[randomIndex];
+    let newTarget: GestureCombo;
+    if (preferComboId) {
+      const found = enabledCombos.find(c => c.id === preferComboId);
+      newTarget = found ?? enabledCombos[Math.floor(Math.random() * enabledCombos.length)];
+    } else {
+      const randomIndex = Math.floor(Math.random() * enabledCombos.length);
+      newTarget = enabledCombos[randomIndex];
+    }
     setTargetCombo(newTarget);
     setShowSuccess(false);
     setShowFail(false);
-    
     voiceFeedback.speak(`Practice: ${newTarget.name}`, true);
   }, [enabledCombos, voiceFeedback]);
+
+  // When initialComboId is set and we're active, use that combo as target
+  useEffect(() => {
+    if (isActive && initialComboId && enabledCombos.length > 0) {
+      pickNewTarget(initialComboId);
+    }
+  }, [isActive, initialComboId]); // eslint-disable-line react-hooks/exhaustive-deps -- only when starting or switching combo
 
   // Check if user matched the target
   useEffect(() => {
@@ -148,11 +163,11 @@ export const ComboPracticeMode: React.FC<ComboPracticeModeProps> = ({
     }
   }, [isActive, targetCombo, currentSteps, showFail, showSuccess, haptics, voiceFeedback]);
 
-  // Start practice
+  // Start practice (use initialComboId if provided)
   const handleStart = () => {
     onToggle(true);
-    pickNewTarget();
     setStats({ attempted: 0, successful: 0, streak: 0, bestStreak: 0 });
+    pickNewTarget(initialComboId);
   };
 
   // Stop practice
@@ -184,6 +199,9 @@ export const ComboPracticeMode: React.FC<ComboPracticeModeProps> = ({
             ))}
             <span>{step.count}× blink</span>
           </div>
+        )}
+        {step.type === 'gesture' && (
+          <span>{TRIGGER_LABELS[step.trigger] || step.trigger}</span>
         )}
         {step.type === 'hold' && (
           <span>Hold {step.duration}ms</span>
@@ -283,7 +301,7 @@ export const ComboPracticeMode: React.FC<ComboPracticeModeProps> = ({
             ))}
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
             <span className="text-sm font-medium text-primary">
-              {COMBO_ACTION_LABELS[targetCombo.action]}
+              {COMBO_ACTION_LABELS[targetCombo.action] ?? targetCombo.action}
             </span>
           </div>
 

@@ -10,27 +10,50 @@ const corsHeaders = {
 // Daily limits
 const DAILY_LIMITS = {
   icoin: 100,
-  vicoin: 50,
+  vicoin: 150, // raised to allow login + engagement rewards (VICOIN per usage)
   promo_views: 20,
 };
 
-// Reward amounts by type
-const REWARD_AMOUNTS = {
+// Reward amounts by type — VICOIN for usage & engagement (platform rewards user for beneficial actions)
+const REWARD_AMOUNTS: Record<string, { amount?: number; min?: number; max?: number; coinType: 'vicoin' | 'icoin' }> = {
   promo_view: { min: 1, max: 10, coinType: 'icoin' },
   task_complete: { min: 3, max: 20, coinType: 'icoin' },
   referral: { amount: 10, coinType: 'vicoin' },
   milestone: { amount: 20, coinType: 'vicoin' },
   daily_bonus: { min: 1, max: 5, coinType: 'icoin' },
+  // Platform VICOIN rewards: login + simple usage + engagement
+  login: { amount: 3, coinType: 'vicoin' },
+  session_usage: { amount: 1, coinType: 'vicoin' },
+  like: { amount: 1, coinType: 'vicoin' },
+  share: { amount: 2, coinType: 'vicoin' },
+  post: { amount: 5, coinType: 'vicoin' },
+  save: { amount: 1, coinType: 'vicoin' },
+  comment: { amount: 1, coinType: 'vicoin' },
+};
+
+// Per-type daily caps (count of rewards of this type per user per day)
+const DAILY_REWARD_TYPE_CAPS: Record<string, number> = {
+  login: 1,
+  session_usage: 12, // e.g. once per 5 min over 1 hour max per day
+  like: 30,
+  share: 15,
+  post: 10,
+  save: 20,
+  comment: 25,
 };
 
 const VALID_REWARD_TYPES = Object.keys(REWARD_AMOUNTS) as [string, ...string[]];
 
+const MIN_WATCH_RATIO = 0.7; // Require at least 70% of video watched for promo_view
+
 const IssueRewardSchema = z.object({
   rewardType: z.enum(VALID_REWARD_TYPES as [string, ...string[]]),
-  contentId: z.string().uuid('Invalid content ID'),
+  contentId: z.string().min(1, 'Content ID is required'),
   amount: z.number().int().min(1).max(1000).optional(),
   attentionScore: z.number().min(0).max(100).optional(),
   coinType: z.enum(['vicoin', 'icoin']).optional(),
+  watchDuration: z.number().min(0).optional(),
+  totalDuration: z.number().min(0).optional(),
 });
 
 serve(async (req) => {
@@ -73,8 +96,24 @@ serve(async (req) => {
       );
     }
 
-    const { rewardType, contentId, amount, attentionScore, coinType } = parseResult.data;
-    console.log('[IssueReward] Request:', { userId: user.id, rewardType, contentId, amount, attentionScore, coinType });
+    const { rewardType, contentId, amount, attentionScore, coinType, watchDuration, totalDuration } = parseResult.data;
+    console.log('[IssueReward] Request:', { userId: user.id, rewardType, contentId, amount, attentionScore, coinType, watchDuration, totalDuration });
+
+    // Validate watch duration for promo_view - require at least 70% watched if duration provided
+    if (rewardType === 'promo_view' && totalDuration != null && totalDuration > 0 && watchDuration != null) {
+      const watchRatio = watchDuration / totalDuration;
+      if (watchRatio < MIN_WATCH_RATIO) {
+        console.log('[IssueReward] Insufficient watch time:', { watchDuration, totalDuration, watchRatio });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Watch more of the video to earn this reward',
+            code: 'insufficient_watch_time',
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     // Check for replay attack - has this content already been rewarded?
     const { data: existingReward, error: checkError } = await supabase
@@ -100,6 +139,32 @@ serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Per-type daily cap (e.g. login 1/day, like 30/day)
+    const typeCap = DAILY_REWARD_TYPE_CAPS[rewardType];
+    if (typeCap != null) {
+      const todayStart = new Date().toISOString().split('T')[0];
+      const nextDayStart = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const { count: typeCount, error: typeCountError } = await supabase
+        .from('reward_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('reward_type', rewardType)
+        .gte('created_at', `${todayStart}T00:00:00.000Z`)
+        .lt('created_at', `${nextDayStart}T00:00:00.000Z`);
+
+      if (!typeCountError && typeCount != null && typeCount >= typeCap) {
+        console.log('[IssueReward] Daily type cap reached:', { rewardType, typeCount, typeCap });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Daily limit for ${rewardType} rewards reached`,
+            code: 'daily_type_cap',
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Get or create today's daily cap record

@@ -1,8 +1,9 @@
+import React from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OfflineProvider } from "@/contexts/OfflineContext";
 import { LocalizationProvider } from "@/contexts/LocalizationContext";
@@ -10,11 +11,15 @@ import { AccessibilityProvider } from "@/contexts/AccessibilityContext";
 import { UICustomizationProvider } from "@/contexts/UICustomizationContext";
 import { DragContextProvider } from "@/components/DraggableButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AdminRoute from "@/components/AdminRoute";
 import { SplashScreen } from "@/components/SplashScreen";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { BreadcrumbNavigation } from "@/components/BreadcrumbNavigation";
 import { useSwipeBack } from "@/hooks/useSwipeBack";
+import { useAuth } from "@/contexts/AuthContext";
+import { getAndClearRedirectPath } from "@/services/auth.service";
+import { rewardsService } from "@/services/rewards.service";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
@@ -23,8 +28,57 @@ import Create from "./pages/Create";
 import Studio from "./pages/Studio";
 import MyPage from "./pages/MyPage";
 import NotFound from "./pages/NotFound";
+import ProfileByUsername from "./pages/ProfileByUsername";
+import Content from "./pages/Content";
 import SocialConnect from "./pages/SocialConnect";
 import { PromotionDetails } from "./components/PromotionDetails";
+import DevRuntimeErrorOverlay from "@/components/DevRuntimeErrorOverlay";
+import { VideoMuteProvider } from "@/contexts/VideoMuteContext";
+import { GestureTutorialProvider } from "@/contexts/GestureTutorialContext";
+import { VisionProvider } from "@/contexts/VisionContext";
+
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, message: error instanceof Error ? error.message : String(error) };
+  }
+
+  componentDidCatch(error: unknown) {
+    // Also forward to window error handler so DevRuntimeErrorOverlay can pick it up.
+    try {
+      const err = error instanceof Error ? error : new Error(String(error));
+      window.dispatchEvent(new ErrorEvent('error', { error: err, message: err.message }));
+    } catch {
+      // ignore
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-6">
+          <div className="max-w-md w-full text-center space-y-3">
+            <div className="text-2xl font-bold">Something went wrong</div>
+            <div className="text-sm text-muted-foreground">
+              {this.state.message || 'A runtime error occurred.'}
+            </div>
+            <button
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold"
+              onClick={() => window.location.reload()}
+            >
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient();
 
@@ -34,6 +88,39 @@ const AppContent = () => {
     threshold: 150,
     edgeWidth: 25,
   });
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  React.useEffect(() => {
+    if (loading || !user) return;
+    const intended = getAndClearRedirectPath();
+    if (intended && intended.startsWith('/') && intended !== '/') navigate(intended);
+  }, [loading, user, navigate]);
+  // Redirect legacy ?content=id to /content/:id for shared content links
+  React.useEffect(() => {
+    const contentId = searchParams.get('content');
+    if (contentId && location.pathname === '/') {
+      navigate(`/content/${contentId}`, { replace: true });
+    }
+  }, [searchParams, location.pathname, navigate]);
+
+  // Platform rewards VICOIN for simple usage (logged-in session); drip every 5 min, backend caps per day
+  React.useEffect(() => {
+    if (!user) return;
+    const fiveMinMs = 5 * 60 * 1000;
+    const tick = () => {
+      const now = Date.now();
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const bucket = Math.floor((now - startOfDay.getTime()) / fiveMinMs);
+      const today = startOfDay.toISOString().split('T')[0];
+      const contentId = `session_usage:${today}:${bucket}`;
+      rewardsService.issueReward('session_usage', contentId, {}).catch(() => {});
+    };
+    const id = setInterval(tick, fiveMinMs);
+    return () => clearInterval(id);
+  }, [user?.id]);
 
   return (
     <>
@@ -70,7 +157,9 @@ const AppContent = () => {
           path="/admin"
           element={
             <ProtectedRoute>
-              <Admin />
+              <AdminRoute>
+                <Admin />
+              </AdminRoute>
             </ProtectedRoute>
           }
         />
@@ -99,6 +188,22 @@ const AppContent = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/profile/:username"
+          element={
+            <ProtectedRoute>
+              <ProfileByUsername />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/content/:id"
+          element={
+            <ProtectedRoute>
+              <Content />
+            </ProtectedRoute>
+          }
+        />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
@@ -117,11 +222,20 @@ const App = () => (
               <Toaster />
               <Sonner />
               <BrowserRouter>
-                <AuthProvider>
-                  <OfflineProvider>
-                    <AppContent />
-                  </OfflineProvider>
-                </AuthProvider>
+                <AppErrorBoundary>
+                  {import.meta.env.DEV && <DevRuntimeErrorOverlay />}
+                  <AuthProvider>
+                    <OfflineProvider>
+                      <VideoMuteProvider>
+                        <GestureTutorialProvider>
+                          <VisionProvider>
+                            <AppContent />
+                          </VisionProvider>
+                        </GestureTutorialProvider>
+                      </VideoMuteProvider>
+                    </OfflineProvider>
+                  </AuthProvider>
+                </AppErrorBoundary>
               </BrowserRouter>
             </TooltipProvider>
           </DragContextProvider>

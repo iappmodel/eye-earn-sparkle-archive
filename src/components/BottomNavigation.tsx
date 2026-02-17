@@ -11,18 +11,28 @@ interface NavItem {
   icon: React.ReactNode;
   label: string;
   isLogo?: boolean;
-  shortcuts?: { label: string; icon: React.ReactNode; action: () => void }[];
+  shortcuts?: { label: string; icon: React.ReactNode; action: () => void; badge?: number }[];
 }
 
 interface BottomNavigationProps {
   activeTab: string;
-  onTabChange: (tab: string) => void;
+  onTabChange: (tab: string, options?: { openNewChat?: boolean }) => void;
+  messagesUnreadCount?: number;
+  notificationsUnreadCount?: number;
+  /** Total count for Bookmarks shortcut badge (saved + watch later + liked, or just saved + watch later) */
+  bookmarksCount?: number;
+  /** Home long-press "Refresh" calls this for a soft refresh (e.g. refetch feed). If omitted, Refresh does nothing (no full page reload). */
+  onHomeRefresh?: () => void | Promise<void>;
   className?: string;
 }
 
 export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   activeTab,
   onTabChange,
+  messagesUnreadCount = 0,
+  notificationsUnreadCount = 0,
+  bookmarksCount = 0,
+  onHomeRefresh,
   className,
 }) => {
   const { isVisible } = useControlsVisibility();
@@ -32,20 +42,27 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggered = useRef(false);
 
+  const homeRefreshAction = useCallback(() => {
+    if (onHomeRefresh) {
+      Promise.resolve(onHomeRefresh()).catch(() => {});
+    }
+    // No full page reload when onHomeRefresh is not provided (e.g. AppShell)
+  }, [onHomeRefresh]);
+
   const navItems: NavItem[] = [
     { 
       id: 'home', 
       icon: <Home className="w-5 h-5" />, 
       label: 'Home',
       shortcuts: [
-        { label: 'Refresh', icon: <Zap className="w-4 h-4" />, action: () => window.location.reload() },
-        { label: 'Bookmarks', icon: <Bookmark className="w-4 h-4" />, action: () => onTabChange('bookmarks') },
+        { label: 'Refresh', icon: <Zap className="w-4 h-4" />, action: homeRefreshAction },
+        { label: 'Bookmarks', icon: <Bookmark className="w-4 h-4" />, action: () => onTabChange('bookmarks'), badge: bookmarksCount > 0 ? bookmarksCount : undefined },
       ]
     },
     { 
       id: 'discover', 
       icon: <Compass className="w-5 h-5" />, 
-      label: 'Discover',
+      label: 'iGO',
       shortcuts: [
         { label: 'Near Me', icon: <Compass className="w-4 h-4" />, action: () => onTabChange('discover') },
       ]
@@ -56,8 +73,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       icon: <MessageCircle className="w-5 h-5" />, 
       label: 'Messages',
       shortcuts: [
-        { label: 'New Chat', icon: <Plus className="w-4 h-4" />, action: () => onTabChange('messages') },
-        { label: 'Notifications', icon: <Bell className="w-4 h-4" />, action: () => onTabChange('notifications') },
+        { label: 'New Chat', icon: <Plus className="w-4 h-4" />, action: () => onTabChange('messages', { openNewChat: true }) },
+        { label: 'Notifications', icon: <Bell className="w-4 h-4" />, action: () => onTabChange('notifications'), badge: notificationsUnreadCount },
       ]
     },
     { 
@@ -142,6 +159,11 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 </button>
               ) : (
                 <div className="relative">
+                  {item.id === 'messages' && messagesUnreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {messagesUnreadCount > 99 ? '99+' : messagesUnreadCount}
+                    </span>
+                  )}
                   <button
                     onClick={() => handleClick(item)}
                     onTouchStart={() => handleLongPressStart(item.id)}
@@ -189,7 +211,12 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                           )}
                         >
                           {shortcut.icon}
-                          {shortcut.label}
+                          <span className="flex-1 text-left">{shortcut.label}</span>
+                          {shortcut.badge != null && shortcut.badge > 0 && (
+                            <span className="min-w-[18px] h-[18px] px-1 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
+                              {shortcut.badge > 99 ? '99+' : shortcut.badge}
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>

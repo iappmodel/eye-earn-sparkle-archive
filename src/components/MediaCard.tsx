@@ -10,7 +10,10 @@ import { AttentionHeatmap, useAttentionHeatmap } from './AttentionHeatmap';
 
 import { useAttentionAchievements } from './AttentionAchievements';
 import { useEyeTracking } from '@/hooks/useEyeTracking';
+import { useVideoMute } from '@/contexts/VideoMuteContext';
 import { useMediaSettings } from './MediaSettings';
+import { isIOS, dispatchCameraUserStart } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { notificationSoundService } from '@/services/notificationSound.service';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,7 +26,7 @@ interface MediaCardProps {
   videoSrc?: string;
   duration?: number;
   reward?: { amount: number; type: 'vicoin' | 'icoin' };
-  onComplete?: (attentionValidated: boolean) => void;
+  onComplete?: (attentionValidated: boolean, attentionScore?: number, watchDuration?: number) => void;
   onProgress?: (progress: number) => void;
   onSkip?: () => void;
   isActive?: boolean;
@@ -44,7 +47,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 }) => {
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const { isMuted, toggleMute: contextToggleMute } = useVideoMute();
   const [showRewardBadge, setShowRewardBadge] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [attentionWarning, setAttentionWarning] = useState(false);
@@ -52,7 +55,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(duration);
   const [showEndStats, setShowEndStats] = useState(false);
-  const [endStats, setEndStats] = useState<{ score: number; totalTime: number; attentiveTime: number; eligible: boolean } | null>(null);
+  const [endStats, setEndStats] = useState<{
+    score: number;
+    totalTime: number;
+    attentiveTime: number;
+    eligible: boolean;
+    bestStreakSec?: number;
+    sessionStats?: { minScore: number; maxScore: number; avgScore: number; sampleCount: number };
+  } | null>(null);
   const [showFocusChallenge, setShowFocusChallenge] = useState(false);
   const [attentionLostCount, setAttentionLostCount] = useState(0);
   const [showPerfectCelebration, setShowPerfectCelebration] = useState(false);
@@ -67,22 +77,35 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   const attentionLostTimeRef = useRef(0);
   const lastAttentionCheckRef = useRef(Date.now());
 
-  const { attentionThreshold, eyeTrackingEnabled, soundEffects } = useMediaSettings();
+  const { attentionThreshold, eyeTrackingEnabled, soundEffects, attentionPreset, requiredAttentionOverride } = useMediaSettings();
   const haptic = useHapticFeedback();
   const { user } = useAuth();
   const { segments: heatmapSegments, recordAttention, reset: resetHeatmap, finalizeCurrentSegment } = useAttentionHeatmap();
   const { recordVideoCompletion } = useAttentionAchievements();
 
-  // Eye tracking for promo content
+  /** Minimum ms of lost attention before auto-pause can trigger (avoids pausing on brief glitches). */
+  const MIN_ATTENTION_LOST_MS = 4000;
+  /** Score (0–100) above which user counts as "attentive" for lost-time accumulation. */
+  const ATTENTIVE_SCORE_CUTOFF = 50;
+
+  // Eye tracking for promo content (uses preset's requiredAttentionThreshold so Strict/Normal/Relaxed apply)
   const isPromoContent = type === 'promo' && !!reward;
   const {
     isTracking,
     isFaceDetected,
     attentionScore,
+    attentionStreakSec,
+    totalAttentiveMs,
+    sessionStats,
+    lastFlags,
+    visionStatus,
+    needsUserGesture,
     resetAttention,
+    retryTracking,
     getAttentionResult,
   } = useEyeTracking({
     enabled: isPromoContent && isActive && isPlaying && eyeTrackingEnabled,
+    preset: attentionPreset,
     onAttentionLost: () => {
       if (isPromoContent) {
         setAttentionWarning(true);
@@ -113,10 +136,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     onAttentionRestored: () => {
       setAttentionWarning(false);
     },
-    requiredAttentionThreshold: 85,
+    // Use custom override from Media Settings if set, otherwise preset (strict 90, normal 85, relaxed 75)
+    ...(requiredAttentionOverride > 0 ? { requiredAttentionThreshold: requiredAttentionOverride } : {}),
   });
 
-  // Handle auto-pause when attention lost for too long (>10% of video time)
+  const [attentionLostPercent, setAttentionLostPercent] = useState<number | null>(null);
+
+  // Handle auto-pause when attention lost exceeds user's threshold (from Media Settings)
   const handleAttentionLostTooLong = useCallback(() => {
     if (isPromoContent && isPlaying && !attentionPaused) {
       setAttentionPaused(true);
@@ -127,7 +153,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [isPromoContent, isPlaying, attentionPaused]);
 
-  // Track attention lost time and trigger auto-pause if > threshold %
+  // Track attention lost time and trigger auto-pause when lost % > settings threshold
   useEffect(() => {
     if (!isTracking || videoDuration <= 0) return;
 
@@ -135,29 +161,33 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     const elapsed = now - lastAttentionCheckRef.current;
     lastAttentionCheckRef.current = now;
 
-    const isAttentive = isFaceDetected && attentionScore >= 50;
+    const isAttentive = isFaceDetected && attentionScore >= ATTENTIVE_SCORE_CUTOFF;
 
     if (!isAttentive) {
       attentionLostTimeRef.current += elapsed;
     }
 
     const totalWatchedTime = currentTime * 1000;
-    // Only check after at least 5 seconds of watch time to prevent early triggering
-    if (totalWatchedTime > 5000) {
-      const lostPercentage = (attentionLostTimeRef.current / totalWatchedTime) * 100;
-      
-      // Use a much higher threshold (50%) and require significant lost time
-      if (lostPercentage > 50 && attentionLostTimeRef.current > 8000 && !isAttentive) {
+    const lostPercentage = totalWatchedTime > 0 ? (attentionLostTimeRef.current / totalWatchedTime) * 100 : 0;
+
+    // Expose for UI (approaching-threshold warning)
+    setAttentionLostPercent(totalWatchedTime >= 3000 ? lostPercentage : null);
+
+    // Only consider auto-pause after minimum watch time and minimum lost duration
+    if (totalWatchedTime > 5000 && attentionLostTimeRef.current > MIN_ATTENTION_LOST_MS) {
+      if (lostPercentage > attentionThreshold && !isAttentive) {
         handleAttentionLostTooLong();
       }
     }
   }, [isTracking, isFaceDetected, attentionScore, videoDuration, currentTime, attentionThreshold, handleAttentionLostTooLong]);
 
-  // Reset attention lost time when tracking starts fresh
+  // Reset attention lost time and display when tracking starts fresh
   useEffect(() => {
     if (isTracking) {
       attentionLostTimeRef.current = 0;
       lastAttentionCheckRef.current = Date.now();
+    } else {
+      setAttentionLostPercent(null);
     }
   }, [isTracking]);
 
@@ -168,39 +198,49 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     }
   }, [isPromoContent, isPlaying, isTracking, eyeTrackingEnabled, progress, attentionScore, recordAttention]);
 
-  // Resume from attention pause
+  // Resume from attention pause (reset lost-percent display)
   const handleResumeFromAttentionPause = useCallback(() => {
     if (attentionPaused) {
       setAttentionPaused(false);
       setAttentionWarning(false);
+      setAttentionLostPercent(null);
+      attentionLostTimeRef.current = 0;
+      lastAttentionCheckRef.current = Date.now();
       setIsPlaying(true);
       if (videoRef.current) {
         videoRef.current.play().catch(console.error);
       }
+      if (isPromoContent && eyeTrackingEnabled) {
+        dispatchCameraUserStart();
+      }
     }
-  }, [attentionPaused]);
+  }, [attentionPaused, isPromoContent, eyeTrackingEnabled]);
 
   // Handle focus challenge completion
   const handleFocusChallengeComplete = useCallback(() => {
     setShowFocusChallenge(false);
     setAttentionWarning(false);
     setAttentionLostCount(0);
-    // Resume video
     setIsPlaying(true);
     if (videoRef.current) {
       videoRef.current.play().catch(console.error);
     }
+    if (isPromoContent && eyeTrackingEnabled) {
+      dispatchCameraUserStart();
+    }
     haptic.success();
-  }, [haptic]);
+  }, [haptic, isPromoContent, eyeTrackingEnabled]);
 
   const handleFocusChallengeDismiss = useCallback(() => {
     setShowFocusChallenge(false);
-    // Resume video without resetting counts
     setIsPlaying(true);
     if (videoRef.current) {
       videoRef.current.play().catch(console.error);
     }
-  }, []);
+    if (isPromoContent && eyeTrackingEnabled) {
+      dispatchCameraUserStart();
+    }
+  }, [isPromoContent, eyeTrackingEnabled]);
 
   // Reset state when media changes
   useEffect(() => {
@@ -243,7 +283,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     const watchDuration = duration > 0 ? Math.min(rawWatchDuration, duration * 1.4) : rawWatchDuration;
     const attentionResult = getAttentionResult();
     
-    console.log('[MediaCard] Promo complete, validating attention...', attentionResult);
+    logger.log('[MediaCard] Promo complete, validating attention...', attentionResult);
 
     // Finalize heatmap data
     finalizeCurrentSegment();
@@ -268,6 +308,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       totalTime: watchDuration,
       attentiveTime: attentiveTime,
       eligible: isEligible || !eyeTrackingEnabled, // Always eligible if eye tracking disabled
+      bestStreakSec: Math.round(attentionStreakSec),
+      sessionStats: sessionStats,
     });
     
     // Delay showing end stats if celebrating perfect attention
@@ -290,8 +332,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     try {
       // Only validate with backend if user is authenticated
       if (!user) {
-        console.log('[MediaCard] User not authenticated, skipping backend validation');
-        onComplete?.(isEligible);
+        logger.log('[MediaCard] User not authenticated, skipping backend validation');
+        onComplete?.(isEligible, attentionResult.score, watchDuration);
         return;
       }
 
@@ -299,8 +341,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       const resolvedContentId = contentId || src;
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(resolvedContentId)) {
-        console.log('[MediaCard] contentId is not a UUID, skipping backend validation:', resolvedContentId);
-        onComplete?.(isEligible);
+        logger.log('[MediaCard] contentId is not a UUID, skipping backend validation:', resolvedContentId);
+        onComplete?.(isEligible, attentionResult.score, watchDuration);
         return;
       }
 
@@ -318,21 +360,21 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       });
 
       if (error) {
-        console.error('[MediaCard] Validation error:', error);
-        onComplete?.(false);
+        logger.error('[MediaCard] Validation error:', error);
+        onComplete?.(false, attentionResult.score);
         return;
       }
 
-      console.log('[MediaCard] Validation result:', data);
+      logger.log('[MediaCard] Validation result:', data);
 
       if (data?.validated) {
-        onComplete?.(true);
+        onComplete?.(true, attentionResult.score, watchDuration);
       } else {
-        onComplete?.(false);
+        onComplete?.(false, attentionResult.score);
       }
     } catch (err) {
-      console.error('[MediaCard] Validation failed:', err);
-      onComplete?.(false);
+      logger.error('[MediaCard] Validation failed:', err);
+      onComplete?.(false, attentionResult.score);
     }
   }, [contentId, src, duration, getAttentionResult, onComplete, eyeTrackingEnabled, recordVideoCompletion, user]);
 
@@ -395,9 +437,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     };
   }, [isActive, isPromoContent, handlePromoComplete, onComplete, onProgress]);
 
-  // Auto-start promo/video content
+  // Auto-start promo/video content. On iOS with eye tracking, require tap first (no gesture for getUserMedia otherwise).
+  const shouldRequireTapOnIOS = type === 'promo' && isActive && eyeTrackingEnabled && isIOS();
   useEffect(() => {
-    if ((type === 'promo' || type === 'video') && isActive) {
+    if ((type === 'promo' || type === 'video') && isActive && !shouldRequireTapOnIOS) {
       const timer = setTimeout(() => {
         setIsPlaying(true);
         startTimeRef.current = Date.now();
@@ -407,7 +450,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [type, isActive]);
+  }, [type, isActive, shouldRequireTapOnIOS]);
 
   // Sync video mute state
   useEffect(() => {
@@ -442,7 +485,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       videoRef.current.play().catch(console.error);
     }
     resetControlsTimeout();
-  }, [resetControlsTimeout]);
+    // iOS requires getUserMedia from user gesture – dispatch so camera starts in same event turn
+    if (isPromoContent && eyeTrackingEnabled) {
+      dispatchCameraUserStart();
+    }
+  }, [resetControlsTimeout, isPromoContent, eyeTrackingEnabled]);
 
   const handlePause = useCallback(() => {
     setIsPlaying(false);
@@ -457,15 +504,15 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     if (isPlaying) {
       handlePause();
     } else {
-      handlePlay();
+      handlePlay(); // handlePlay already dispatches cameraUserStart
     }
   }, [isPlaying, handlePlay, handlePause]);
 
-  const toggleMute = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsMuted(prev => !prev);
+  const toggleMute = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    contextToggleMute();
     resetControlsTimeout();
-  }, [resetControlsTimeout]);
+  }, [contextToggleMute, resetControlsTimeout]);
 
 
   // Cleanup timeout on unmount
@@ -515,6 +562,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           isTracking={isTracking}
           isFaceDetected={isFaceDetected}
           attentionScore={attentionScore}
+          attentionStreakSec={attentionStreakSec}
+          visionStatus={visionStatus}
           position="top-center"
         />
       )}
@@ -533,21 +582,34 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         <div className="absolute inset-0 bg-destructive/10 pointer-events-none z-10 animate-pulse" />
       )}
 
-      {/* Attention pause state - subtle indicator without blocking overlay */}
+      {/* Approaching auto-pause threshold - warn when lost % is close to settings threshold */}
+      {isPromoContent && isPlaying && !attentionPaused && attentionLostPercent != null && attentionThreshold > 0 && attentionLostPercent >= attentionThreshold * 0.5 && attentionLostPercent < attentionThreshold && (
+        <div className="absolute inset-x-0 top-14 z-20 flex justify-center pointer-events-none">
+          <div className="px-3 py-1.5 rounded-full bg-amber-500/20 backdrop-blur-sm border border-amber-500/40 text-amber-600 dark:text-amber-400 text-xs font-medium">
+            Attention lost: {Math.round(attentionLostPercent)}% of video — auto-pause at {attentionThreshold}%
+          </div>
+        </div>
+      )}
+
+      {/* Attention pause state - uses slider threshold; show lost % and tap to resume */}
       {attentionPaused && (
         <div 
           className="absolute inset-x-0 top-16 z-30 flex justify-center animate-fade-in"
           onClick={handleResumeFromAttentionPause}
         >
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/20 backdrop-blur-sm border border-red-500/40 cursor-pointer hover:bg-red-500/30 transition-colors">
-            <div className="w-8 h-8 rounded-full bg-red-500/30 flex items-center justify-center">
-              <svg viewBox="0 0 40 40" className="w-5 h-5 stroke-red-500" fill="none" strokeWidth="2">
-                <circle cx="20" cy="20" r="14" />
-                <circle cx="20" cy="20" r="7" />
-              </svg>
-              <div className="absolute w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <div className="flex flex-col items-center gap-1.5 px-4 py-3 rounded-2xl bg-red-500/20 backdrop-blur-sm border border-red-500/40 cursor-pointer hover:bg-red-500/30 transition-colors max-w-[90%]">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-red-500/30 flex items-center justify-center shrink-0">
+                <svg viewBox="0 0 40 40" className="w-5 h-5 stroke-red-500" fill="none" strokeWidth="2">
+                  <circle cx="20" cy="20" r="14" />
+                  <circle cx="20" cy="20" r="7" />
+                </svg>
+              </div>
+              <span className="text-sm text-red-400 font-medium">Video paused</span>
             </div>
-            <span className="text-sm text-red-400 font-medium">Tap to resume</span>
+            <p className="text-xs text-muted-foreground text-center">
+              Looking away exceeded your auto-pause limit ({attentionThreshold}%). Tap to resume.
+            </p>
           </div>
         </div>
       )}
@@ -603,22 +665,42 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
           {/* Stats cards */}
           {eyeTrackingEnabled && (
-            <div className="grid grid-cols-3 gap-2 px-4 w-full max-w-sm">
-              <div className="bg-muted/50 rounded-xl p-2 text-center">
-                <Eye className="w-4 h-4 mx-auto mb-1 text-primary" />
-                <p className="text-base font-bold">{Math.round(endStats.score)}%</p>
-                <p className="text-[9px] text-muted-foreground">Attention</p>
+            <div className="space-y-2 px-4 w-full max-w-sm">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-muted/50 rounded-xl p-2 text-center">
+                  <Eye className="w-4 h-4 mx-auto mb-1 text-primary" />
+                  <p className="text-base font-bold">{Math.round(endStats.score)}%</p>
+                  <p className="text-[9px] text-muted-foreground">Attention</p>
+                </div>
+                <div className="bg-muted/50 rounded-xl p-2 text-center">
+                  <Clock className="w-4 h-4 mx-auto mb-1 text-primary" />
+                  <p className="text-base font-bold">{Math.round(endStats.attentiveTime)}s</p>
+                  <p className="text-[9px] text-muted-foreground">Focused</p>
+                </div>
+                <div className="bg-muted/50 rounded-xl p-2 text-center">
+                  <Clock className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
+                  <p className="text-base font-bold">{Math.round(endStats.totalTime)}s</p>
+                  <p className="text-[9px] text-muted-foreground">Total</p>
+                </div>
               </div>
-              <div className="bg-muted/50 rounded-xl p-2 text-center">
-                <Clock className="w-4 h-4 mx-auto mb-1 text-primary" />
-                <p className="text-base font-bold">{Math.round(endStats.attentiveTime)}s</p>
-                <p className="text-[9px] text-muted-foreground">Focused</p>
-              </div>
-              <div className="bg-muted/50 rounded-xl p-2 text-center">
-                <Clock className="w-4 h-4 mx-auto mb-1 text-muted-foreground" />
-                <p className="text-base font-bold">{Math.round(endStats.totalTime)}s</p>
-                <p className="text-[9px] text-muted-foreground">Total</p>
-              </div>
+              {(endStats.bestStreakSec != null && endStats.bestStreakSec > 0) || endStats.sessionStats?.sampleCount ? (
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  {endStats.bestStreakSec != null && endStats.bestStreakSec > 0 && (
+                    <div className="bg-muted/30 rounded-lg px-2 py-1.5">
+                      <p className="text-xs font-bold text-green-600 dark:text-green-400">{endStats.bestStreakSec}s</p>
+                      <p className="text-[9px] text-muted-foreground">Best focus streak</p>
+                    </div>
+                  )}
+                  {endStats.sessionStats && endStats.sessionStats.sampleCount > 0 && (
+                    <div className="bg-muted/30 rounded-lg px-2 py-1.5">
+                      <p className="text-xs font-bold">
+                        {endStats.sessionStats.minScore}–{endStats.sessionStats.maxScore}%
+                      </p>
+                      <p className="text-[9px] text-muted-foreground">Score range (avg {endStats.sessionStats.avgScore}%)</p>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -653,15 +735,42 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         />
       )}
 
+      {/* Tap to enable camera - iOS requires user gesture for getUserMedia */}
+      {isPromoContent && isPlaying && eyeTrackingEnabled && needsUserGesture && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            dispatchCameraUserStart();
+            retryTracking();
+          }}
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-30 bg-background/80 backdrop-blur-sm"
+        >
+          <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
+            <Eye className="w-8 h-8 text-primary" />
+          </div>
+          <p className="text-sm font-medium text-foreground px-4 text-center">
+            Tap to enable attention tracking
+          </p>
+          <p className="text-xs text-muted-foreground px-4 text-center max-w-[220px]">
+            Your browser requires a tap to access the camera
+          </p>
+        </button>
+      )}
+
       {/* Initial play button overlay - shown before playing starts */}
       {!isPlaying && type !== 'image' && !showControls && !attentionPaused && (
         <button
           onClick={handlePlay}
-          className="absolute inset-0 flex items-center justify-center z-10"
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10"
         >
           <div className="w-24 h-24 rounded-full neu-button flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
             <Play className="w-10 h-10 text-foreground ml-1" />
           </div>
+          {shouldRequireTapOnIOS && (
+            <p className="text-xs text-muted-foreground px-4 text-center max-w-[200px]">
+              Tap to start (enables camera for attention tracking)
+            </p>
+          )}
         </button>
       )}
 

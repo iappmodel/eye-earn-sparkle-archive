@@ -9,6 +9,7 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { severityFromReason } from '@/services/moderation.service';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -119,6 +120,8 @@ export const ContentReportFlow: React.FC<ContentReportFlowProps> = ({
           reason: selectedReason,
           description: additionalDetails || null,
           status: 'pending',
+          severity: severityFromReason(selectedReason),
+          source: 'user_report',
         });
 
       if (error) throw error;

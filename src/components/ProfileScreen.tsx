@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SwipeDismissOverlay } from './SwipeDismissOverlay';
-import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe, Crown, Gift, QrCode, UserX, History } from 'lucide-react';
+import { X, Camera, Upload, Video, BarChart3, Shield, Wifi, Globe, Crown, Gift, QrCode, UserX, History, ExternalLink } from 'lucide-react';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { VerificationBadge, RoleBadge, KycStatusBadge } from './VerificationBadge';
@@ -70,45 +70,55 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const displayName = profile?.display_name || profile?.username || 'User';
   const username = profile?.username || user?.email?.split('@')[0] || 'user';
   const avatarUrl = profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
+  const coverUrl = profile?.cover_photo_url || null;
   const isVerified = profile?.is_verified || false;
   const vicoins = profile?.vicoin_balance || 0;
   const icoins = profile?.icoin_balance || 0;
   const kycStatus = (profile?.kyc_status as 'pending' | 'submitted' | 'verified' | 'rejected') || 'pending';
+  const publicProfilePath = `/profile/${encodeURIComponent(username)}`;
+
+  const handleViewPublicProfile = () => {
+    onClose();
+    navigate(publicProfilePath);
+  };
 
   return (
     <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
-      <div className="max-w-md mx-auto h-full flex flex-col p-4 sm:p-6 overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <h1 className="font-display text-2xl font-bold">Profile</h1>
-            <ConnectionStatusDot showLabel size="sm" />
+      <div className="max-w-md mx-auto h-full flex flex-col overflow-y-auto" style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}>
+        {/* Cover + Header */}
+        <div className="relative shrink-0">
+          <div className="h-28 sm:h-32 bg-gradient-to-br from-primary/30 via-icoin/20 to-primary/10 overflow-hidden">
+            {coverUrl && (
+              <img src={coverUrl} alt="" className="w-full h-full object-cover" />
+            )}
           </div>
-          <NeuButton onClick={onClose} size="sm">
-            <X className="w-5 h-5" />
-          </NeuButton>
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3">
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-lg font-bold text-foreground drop-shadow-md">Profile</h1>
+              <ConnectionStatusDot showLabel size="sm" />
+            </div>
+            <NeuButton onClick={onClose} size="sm">
+              <X className="w-5 h-5" />
+            </NeuButton>
+          </div>
         </div>
 
-        {/* Avatar & Name */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="relative mb-4">
-            <div className="w-24 h-24 rounded-full neu-card overflow-hidden">
-              <img 
-                src={avatarUrl} 
+        {/* Avatar & Name - overlapping cover */}
+        <div className="flex flex-col items-center px-4 -mt-12 mb-4">
+          <div className="relative mb-3">
+            <div className="w-24 h-24 rounded-full neu-card overflow-hidden ring-4 ring-background shadow-xl">
+              <img
+                src={avatarUrl}
                 alt={displayName}
                 className="w-full h-full object-cover"
               />
             </div>
-            <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full neu-button flex items-center justify-center">
-              <Camera className="w-4 h-4 text-primary" />
-            </button>
             {isVerified && (
               <div className="absolute -top-1 -right-1">
                 <VerificationBadge type="verified" size="lg" />
               </div>
             )}
           </div>
-          
           <div className="flex items-center gap-2 mb-1">
             <h2 className="font-display text-xl font-bold">{displayName}</h2>
             {isCreator && <VerificationBadge type="creator" size="md" />}
@@ -116,14 +126,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             {isModerator && !isAdmin && <VerificationBadge type="moderator" size="md" />}
           </div>
           <p className="text-muted-foreground text-sm mb-2">@{username}</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-center">
             <RoleBadge role={role} />
             <KycStatusBadge status={kycStatus} />
           </div>
         </div>
 
+        <div className="px-4 sm:px-6 space-y-6">
+
         {/* Balance Cards */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3">
           <div className="neu-card rounded-2xl p-4">
             <CoinDisplay type="vicoin" amount={vicoins} size="md" />
           </div>
@@ -132,18 +144,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </div>
         </div>
 
-        {/* Engagement Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        {/* Engagement Stats - tappable to view lists later */}
+        <div className="grid grid-cols-3 gap-3">
           <div className="neu-inset rounded-xl p-3 text-center">
-            <p className="text-lg font-bold text-foreground">{profile?.followers_count || 0}</p>
+            <p className="text-lg font-bold text-foreground">{profile?.followers_count ?? 0}</p>
             <p className="text-xs text-muted-foreground">Followers</p>
           </div>
           <div className="neu-inset rounded-xl p-3 text-center">
-            <p className="text-lg font-bold text-foreground">{profile?.following_count || 0}</p>
+            <p className="text-lg font-bold text-foreground">{profile?.following_count ?? 0}</p>
             <p className="text-xs text-muted-foreground">Following</p>
           </div>
           <div className="neu-inset rounded-xl p-3 text-center">
-            <p className="text-lg font-bold text-foreground">{profile?.total_likes || 0}</p>
+            <p className="text-lg font-bold text-foreground">{profile?.total_likes ?? 0}</p>
             <p className="text-xs text-muted-foreground">Likes</p>
           </div>
         </div>
@@ -151,9 +163,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         {/* Menu Items */}
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground uppercase tracking-wider px-2 mb-2">Account</p>
-          
+
           <EditProfileButton onClick={() => setShowEditProfile(true)} />
-          <MenuButton 
+          <MenuButton
+            icon={<ExternalLink className="w-5 h-5 text-primary" />}
+            label="View public profile"
+            description="How others see you"
+            onClick={handleViewPublicProfile}
+          />
+          <MenuButton
             icon={<QrCode className="w-5 h-5 text-primary" />}
             label="Profile QR Code"
             description="Share your profile via QR"
@@ -270,6 +288,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <div className="pt-4">
             <LogOutButton onClick={handleSignOut} />
           </div>
+        </div>
         </div>
       </div>
 

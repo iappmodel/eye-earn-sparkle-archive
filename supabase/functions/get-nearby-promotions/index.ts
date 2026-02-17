@@ -7,12 +7,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Haversine formula to calculate distance between two points
+// Haversine formula to calculate distance between two points (km)
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth's radius in kilometers
+  const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
@@ -20,12 +20,19 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+type SortOption = 'distance' | 'reward_desc' | 'reward_asc' | 'expiring_soon';
+
 const NearbyPromotionsSchema = z.object({
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  radiusKm: z.number().min(0.1).max(100).default(10),
+  radiusKm: z.number().min(0.1).max(200).default(16), // ~10 miles default
   category: z.string().max(100).optional(),
+  categories: z.array(z.string().max(100)).max(20).optional(), // multiple categories
   rewardType: z.string().max(50).optional(),
+  minReward: z.number().min(0).max(10000).optional(),
+  sortBy: z.enum(['distance', 'reward_desc', 'reward_asc', 'expiring_soon']).optional(),
+  limit: z.number().min(1).max(200).default(100),
+  offset: z.number().min(0).max(1000).default(0),
 });
 
 serve(async (req) => {
@@ -38,8 +45,17 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Validate input with zod
-    const parseResult = NearbyPromotionsSchema.safeParse(await req.json());
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const parseResult = NearbyPromotionsSchema.safeParse(body);
     if (!parseResult.success) {
       console.warn('[GetNearbyPromos] Validation failed:', parseResult.error.flatten());
       return new Response(
@@ -48,22 +64,53 @@ serve(async (req) => {
       );
     }
 
-    const { latitude, longitude, radiusKm, category, rewardType } = parseResult.data;
-    console.log('[GetNearbyPromos] Request:', { latitude, longitude, radiusKm, category, rewardType });
+    const {
+      latitude,
+      longitude,
+      radiusKm,
+      category,
+      categories,
+      rewardType,
+      minReward,
+      sortBy = 'distance',
+      limit,
+      offset,
+    } = parseResult.data;
 
-    // Fetch all active promotions
+    const categoryList = categories?.length
+      ? categories
+      : category
+        ? [category]
+        : null;
+
+    console.log('[GetNearbyPromos] Request:', {
+      latitude,
+      longitude,
+      radiusKm,
+      categoryList,
+      rewardType,
+      minReward,
+      sortBy,
+      limit,
+      offset,
+    });
+
     let query = supabase
       .from('promotions')
       .select('*')
       .eq('is_active', true)
       .or('expires_at.is.null,expires_at.gt.now()');
 
-    if (category) {
-      query = query.eq('category', category);
+    if (categoryList?.length) {
+      query = query.in('category', categoryList);
     }
 
     if (rewardType && rewardType !== 'all') {
       query = query.or(`reward_type.eq.${rewardType},reward_type.eq.both`);
+    }
+
+    if (minReward != null && minReward > 0) {
+      query = query.gte('reward_amount', minReward);
     }
 
     const { data: promotions, error } = await query;
@@ -73,28 +120,44 @@ serve(async (req) => {
       throw error;
     }
 
-    // Filter by distance and add distance to each promotion
-    const nearbyPromotions = (promotions || [])
-      .map(promo => {
-        const distance = haversineDistance(
-          latitude,
-          longitude,
-          promo.latitude,
-          promo.longitude
-        );
-        return { ...promo, distance: Math.round(distance * 100) / 100 };
-      })
-      .filter(promo => promo.distance <= radiusKm)
-      .sort((a, b) => a.distance - b.distance);
+    const withDistance = (promotions || [])
+      .map((p) => ({
+        ...p,
+        distance: Math.round(haversineDistance(latitude, longitude, p.latitude, p.longitude) * 100) / 100,
+      }))
+      .filter((p) => p.distance <= radiusKm);
 
-    console.log('[GetNearbyPromos] Found:', nearbyPromotions.length, 'promotions');
+    const now = Date.now();
+    const sortFn = (a: { distance: number; reward_amount: number; expires_at: string | null }, b: typeof a) => {
+      switch (sortBy) {
+        case 'reward_desc':
+          return b.reward_amount - a.reward_amount;
+        case 'reward_asc':
+          return a.reward_amount - b.reward_amount;
+        case 'expiring_soon': {
+          const expA = a.expires_at ? new Date(a.expires_at).getTime() : Infinity;
+          const expB = b.expires_at ? new Date(b.expires_at).getTime() : Infinity;
+          return expA - expB;
+        }
+        default:
+          return a.distance - b.distance;
+      }
+    };
+
+    const sorted = withDistance.sort(sortFn);
+    const paginated = sorted.slice(offset, offset + limit);
+
+    console.log('[GetNearbyPromos] Found:', sorted.length, 'within radius, returning', paginated.length);
 
     return new Response(
       JSON.stringify({
-        promotions: nearbyPromotions,
-        count: nearbyPromotions.length,
+        promotions: paginated,
+        count: paginated.length,
+        total: sorted.length,
         center: { latitude, longitude },
         radius: radiusKm,
+        sortBy,
+        hasMore: offset + paginated.length < sorted.length,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

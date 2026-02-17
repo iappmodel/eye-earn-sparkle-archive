@@ -1,13 +1,31 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Send, Sparkles, MoreVertical, Search } from 'lucide-react';
+import { useLocalization } from '@/contexts/LocalizationContext';
+import { ArrowLeft, Send, Sparkles, MoreVertical, Search, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { formatDistanceToNow } from 'date-fns';
 import { useTypingIndicator } from '@/hooks/useTypingIndicator';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
+import { uploadVoiceMessage } from '@/services/voiceMessage.service';
+import { parseVoiceDuration } from '@/services/voiceMessage.service';
+import { useAiSuggestions, type SuggestionTone } from '@/hooks/useAiSuggestions';
+import { useChatRealtime } from '@/hooks/useChatRealtime';
 import {
   TypingIndicator,
   MessageReactions,
@@ -18,7 +36,9 @@ import {
   MediaPreview,
   ChatSearch,
   VoiceMessage,
+  ConnectionStatus,
 } from '@/components/chat';
+import type { ConnectionStatus as RealtimeConnectionStatus } from '@/hooks/useChatRealtime';
 
 interface MessageReaction {
   emoji: string;
@@ -37,6 +57,9 @@ interface Message {
   read_by: string[];
   created_at: string;
   reactions?: MessageReaction[];
+  /** Optimistic message: not yet confirmed by server */
+  _pending?: boolean;
+  _tempId?: string;
 }
 
 interface Conversation {
@@ -58,27 +81,70 @@ interface ChatScreenProps {
 
 export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) => {
   const { user } = useAuth();
+  const { t } = useLocalization();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionTone, setSuggestionTone] = useState<SuggestionTone>('friendly');
+
+  const {
+    suggestions: aiSuggestions,
+    isLoading: loadingSuggestions,
+    generateSuggestions,
+    clearSuggestions,
+    retry,
+  } = useAiSuggestions({
+    onSuccess: () => setShowSuggestions(true),
+  });
   const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [longPressMessageId, setLongPressMessageId] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<RealtimeConnectionStatus>('closed');
+  const [otherUserLastReadAt, setOtherUserLastReadAt] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const messageIdsRef = useRef<Set<string>>(new Set());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 50;
+  const [pendingVoiceMessage, setPendingVoiceMessage] = useState<{ blob: Blob; durationSeconds: number } | null>(null);
 
   // Typing indicator
   const { typingUsers, startTyping, stopTyping } = useTypingIndicator(conversation.id);
 
   // Voice recording
-  const { isRecording, recordingDuration, startRecording, stopRecording, cancelRecording } = useVoiceRecorder();
+  const {
+    isRecording,
+    isPaused,
+    recordingDuration,
+    audioLevel,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    pauseRecording,
+    resumeRecording,
+  } = useVoiceRecorder({ maxDuration: 300 });
+
+  const handleVoiceStop = useCallback(async () => {
+    const result = await stopRecording();
+    if (result) setPendingVoiceMessage(result);
+  }, [stopRecording]);
+
+  const handleVoiceCancel = useCallback(() => {
+    cancelRecording();
+    setPendingVoiceMessage(null);
+  }, [cancelRecording]);
+
+  const handleVoiceStart = useCallback(async () => {
+    setPendingVoiceMessage(null);
+    await startRecording();
+  }, [startRecording]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -161,32 +227,15 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
     ];
   };
 
-  const loadMessages = useCallback(async () => {
-    // Check if this is a mock conversation
-    if (conversation.id.startsWith('mock-')) {
-      setMessages(getMockMessages());
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversation.id)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      
-      // Load reactions for messages
-      const messagesWithReactions = await Promise.all(
-        (data || []).map(async (msg) => {
+  const loadReactionsForMessages = useCallback(
+    async (msgs: Message[]): Promise<Message[]> => {
+      if (msgs.length === 0) return msgs;
+      return Promise.all(
+        msgs.map(async (msg) => {
           const { data: reactions } = await supabase
             .from('message_reactions')
             .select('emoji, user_id')
             .eq('message_id', msg.id);
-
           const reactionMap = new Map<string, { count: number; userReacted: boolean }>();
           reactions?.forEach((r: { emoji: string; user_id: string }) => {
             const existing = reactionMap.get(r.emoji) || { count: 0, userReacted: false };
@@ -195,103 +244,232 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
               userReacted: existing.userReacted || r.user_id === user?.id,
             });
           });
-
           return {
             ...msg,
-            reactions: Array.from(reactionMap.entries()).map(([emoji, data]) => ({
-              emoji,
-              ...data,
-            })),
+            reactions: Array.from(reactionMap.entries()).map(([emoji, data]) => ({ emoji, ...data })),
           };
         })
       );
+    },
+    [user?.id]
+  );
 
-      // Use mock messages if no real messages exist
-      setMessages(messagesWithReactions.length > 0 ? messagesWithReactions : getMockMessages());
-
-      // Mark messages as read
-      if (user) {
-        await supabase
-          .from('conversation_participants')
-          .update({ unread_count: 0, last_read_at: new Date().toISOString() })
-          .eq('conversation_id', conversation.id)
-          .eq('user_id', user.id);
+  const loadMessages = useCallback(
+    async (olderThan?: string) => {
+      if (conversation.id.startsWith('mock-')) {
+        setMessages(getMockMessages());
+        setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error('Error loading messages:', error);
-      // Fallback to mock messages on error
-      setMessages(getMockMessages());
-    } finally {
-      setLoading(false);
-    }
-  }, [conversation.id, user]);
+
+      if (!olderThan) setLoading(true);
+      else setLoadingMore(true);
+
+      try {
+        let query = supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversation.id)
+          .order('created_at', { ascending: false })
+          .limit(PAGE_SIZE);
+
+        if (olderThan) {
+          query = query.lt('created_at', olderThan);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const raw = (data || []) as Message[];
+        const chronological = raw.reverse();
+        const withReactions = await loadReactionsForMessages(chronological);
+
+        if (!olderThan) {
+          setMessages(withReactions.length > 0 ? withReactions : getMockMessages());
+          setHasMore(raw.length === PAGE_SIZE);
+        } else {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newOnes = withReactions.filter((m) => !existingIds.has(m.id));
+            return [...newOnes, ...prev];
+          });
+          setHasMore(raw.length === PAGE_SIZE);
+        }
+
+        if (!olderThan && user) {
+          await supabase
+            .from('conversation_participants')
+            .update({ unread_count: 0, last_read_at: new Date().toISOString() })
+            .eq('conversation_id', conversation.id)
+            .eq('user_id', user.id);
+          const { data: participants } = await supabase
+            .from('conversation_participants')
+            .select('user_id, last_read_at')
+            .eq('conversation_id', conversation.id)
+            .neq('user_id', user.id);
+          const other = participants?.[0] as { last_read_at: string | null } | undefined;
+          if (other) setOtherUserLastReadAt(other.last_read_at ?? null);
+        }
+      } catch (error) {
+        console.error('Error loading messages:', error);
+        if (!olderThan) setMessages(getMockMessages());
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [conversation.id, user, loadReactionsForMessages]
+  );
+
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return;
+    const msgs = messages.filter((m) => !m._pending);
+    const oldest = msgs[0]?.created_at;
+    if (oldest) loadMessages(oldest);
+  }, [loadMessages, loadingMore, hasMore, messages]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
 
+  // Keep messageIdsRef in sync for realtime reaction filtering
+  useEffect(() => {
+    messageIdsRef.current = new Set(messages.filter((m) => !m._pending).map((m) => m.id));
+  }, [messages]);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // Real-time subscription for new messages
-  useEffect(() => {
-    const channel = supabase
-      .channel(`messages-${conversation.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversation.id}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          setMessages(prev => [...prev, { ...newMsg, reactions: [] }]);
-          
-          if (newMsg.sender_id !== user?.id) {
-            supabase
-              .from('conversation_participants')
-              .update({ unread_count: 0, last_read_at: new Date().toISOString() })
-              .eq('conversation_id', conversation.id)
-              .eq('user_id', user?.id);
+  // Real-time: messages, reactions (incremental), read receipts, connection status
+  useChatRealtime(conversation.id.startsWith('mock-') ? undefined : conversation.id, {
+    currentUserId: user?.id,
+    messageIdsRef,
+    onMessageInsert: useCallback(
+      (msg) => {
+        setMessages((prev) => {
+          const asMessage: Message = {
+            ...msg,
+            read_by: msg.read_by ?? [],
+            reactions: [],
+          };
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          const fromMe = msg.sender_id === user?.id;
+          if (fromMe) {
+            const idx = prev.findIndex((m) => m._pending);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...asMessage, reactions: next[idx].reactions ?? [] };
+              return next;
+            }
           }
+          return [...prev, asMessage];
+        });
+        if (msg.sender_id !== user?.id) {
+          supabase
+            .from('conversation_participants')
+            .update({ unread_count: 0, last_read_at: new Date().toISOString() })
+            .eq('conversation_id', conversation.id)
+            .eq('user_id', user?.id);
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'message_reactions',
-        },
-        () => {
-          // Reload reactions
-          loadMessages();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [conversation.id, user?.id, loadMessages]);
+      },
+      [conversation.id, user?.id]
+    ),
+    onMessageUpdate: useCallback((msg) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, ...msg, read_by: msg.read_by ?? m.read_by } : m))
+      );
+    }, []),
+    onMessageDelete: useCallback((messageId) => {
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    }, []),
+    onReactionAdd: useCallback(
+      (messageId, emoji, userId) => {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) return m;
+            const reactions = m.reactions ?? [];
+            const existing = reactions.find((r) => r.emoji === emoji);
+            if (existing)
+              return {
+                ...m,
+                reactions: reactions.map((r) =>
+                  r.emoji === emoji
+                    ? { ...r, count: r.count + 1, userReacted: r.userReacted || userId === user?.id }
+                    : r
+                ),
+              };
+            return {
+              ...m,
+              reactions: [
+                ...reactions,
+                { emoji, count: 1, userReacted: userId === user?.id },
+              ],
+            };
+          })
+        );
+      },
+      [user?.id]
+    ),
+    onReactionRemove: useCallback(
+      (messageId, emoji, userId) => {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== messageId) return m;
+            const reactions = (m.reactions ?? []).map((r) =>
+              r.emoji === emoji
+                ? { ...r, count: Math.max(0, r.count - 1), userReacted: r.userReacted && userId !== user?.id }
+                : r
+            ).filter((r) => r.count > 0);
+            return { ...m, reactions };
+          })
+        );
+      },
+      [user?.id]
+    ),
+    onParticipantUpdate: useCallback(
+      (participant) => {
+        if (participant.user_id !== user?.id)
+          setOtherUserLastReadAt(participant.last_read_at ?? null);
+      },
+      [user?.id]
+    ),
+    onConnectionStatus: setConnectionStatus,
+  });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewMessage(e.target.value);
     startTyping();
   };
 
-  const sendMessage = async (type: string = 'text', mediaUrl?: string) => {
+  const sendMessage = async (type: string = 'text', mediaUrl?: string, contentOverride?: string) => {
     if ((!newMessage.trim() && !mediaUrl) || !user || sending) return;
+    if (conversation.id.startsWith('mock-')) return; // Mock convos: read-only demo
 
     setSending(true);
     stopTyping();
-    const messageContent = newMessage.trim();
+    const messageContent = contentOverride ?? newMessage.trim();
     setNewMessage('');
     setShowSuggestions(false);
+    clearSuggestions();
     setSelectedMedia(null);
+
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Message = {
+      id: tempId,
+      conversation_id: conversation.id,
+      sender_id: user.id,
+      content: messageContent || null,
+      type,
+      media_url: mediaUrl || null,
+      is_ai_generated: false,
+      read_by: [],
+      created_at: new Date().toISOString(),
+      reactions: [],
+      _pending: true,
+      _tempId: tempId,
+    };
+    setMessages((prev) => [...prev, optimistic]);
 
     try {
       const { error } = await supabase.from('messages').insert({
@@ -305,7 +483,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
       if (error) throw error;
     } catch (error) {
       console.error('Error sending message:', error);
-      setNewMessage(messageContent);
+      setMessages((prev) => prev.filter((m) => m._tempId !== tempId));
+      if (type === 'text') setNewMessage(messageContent);
     } finally {
       setSending(false);
       inputRef.current?.focus();
@@ -344,33 +523,44 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
     }
   };
 
-  const handleVoiceSend = async () => {
-    const audioBlob = await stopRecording();
-    if (!audioBlob || !user) return;
+  const handleVoiceSend = useCallback(async () => {
+    let blob: Blob;
+    let durationSeconds: number;
+
+    if (pendingVoiceMessage) {
+      blob = pendingVoiceMessage.blob;
+      durationSeconds = pendingVoiceMessage.durationSeconds;
+      setPendingVoiceMessage(null);
+    } else {
+      const result = await stopRecording();
+      if (!result || !user) return;
+      blob = result.blob;
+      durationSeconds = result.durationSeconds;
+    }
+
+    if (!user) return;
 
     setSending(true);
     try {
-      const fileName = `${user.id}/${Date.now()}-voice.webm`;
-      const { data, error } = await supabase.storage
-        .from('content-uploads')
-        .upload(fileName, audioBlob);
+      const publicUrl = await uploadVoiceMessage({
+        userId: user.id,
+        conversationId: conversation.id,
+        blob,
+        durationSeconds,
+      });
 
-      if (error) throw error;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('content-uploads')
-        .getPublicUrl(data.path);
-
-      await sendMessage('voice', publicUrl);
+      await sendMessage('voice', publicUrl, String(durationSeconds));
     } catch (error) {
       console.error('Error uploading voice message:', error);
+      toast.error(t('messages.voiceUploadFailed') || 'Failed to send voice message');
+      setPendingVoiceMessage({ blob, durationSeconds });
     } finally {
       setSending(false);
     }
-  };
+  }, [pendingVoiceMessage, stopRecording, user, conversation.id, t]);
 
   const addReaction = async (messageId: string, emoji: string) => {
-    if (!user) return;
+    if (!user || messageId.startsWith('temp-')) return;
     
     try {
       await supabase.from('message_reactions').insert({
@@ -385,7 +575,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
   };
 
   const removeReaction = async (messageId: string, emoji: string) => {
-    if (!user) return;
+    if (!user || messageId.startsWith('temp-')) return;
     
     try {
       await supabase
@@ -400,6 +590,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
   };
 
   const handleMessageLongPress = (messageId: string) => {
+    if (messageId.startsWith('temp-')) return; // No reactions on optimistic messages
     longPressTimerRef.current = setTimeout(() => {
       setLongPressMessageId(messageId);
     }, 500);
@@ -411,34 +602,43 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
     }
   };
 
-  const generateAiSuggestions = async () => {
-    const lastMessage = messages.filter(m => m.sender_id !== user?.id).slice(-1)[0];
-    if (!lastMessage?.content) return;
+  const getLastIncomingMessage = useCallback(() => {
+    return messages.filter((m) => m.sender_id !== user?.id).slice(-1)[0];
+  }, [messages, user?.id]);
 
-    setLoadingSuggestions(true);
-    setShowSuggestions(true);
+  const buildConversationContext = useCallback(() => {
+    return messages.slice(-12).map((m) => ({
+      role: m.sender_id === user?.id ? 'user' : 'assistant',
+      content: m.content ?? (m.type !== 'text' ? `[${m.type}]` : ''),
+    }));
+  }, [messages, user?.id]);
 
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-reply', {
-        body: { message: lastMessage.content, tone: 'friendly' },
-      });
-
-      if (error) throw error;
-      if (data?.suggestions) {
-        setAiSuggestions(data.suggestions);
-      }
-    } catch (error) {
-      console.error('Error generating suggestions:', error);
-      setShowSuggestions(false);
-    } finally {
-      setLoadingSuggestions(false);
+  const generateAiSuggestions = useCallback(async () => {
+    const lastMessage = getLastIncomingMessage();
+    if (!lastMessage?.content?.trim()) {
+      toast.info(t('messages.aiSuggestionsNoMessage'));
+      return;
     }
-  };
+
+    setShowSuggestions(true);
+    const history = buildConversationContext();
+    await generateSuggestions(lastMessage.content, {
+      tone: suggestionTone,
+      conversationHistory: history,
+      recipientName: conversation.other_user?.display_name ?? conversation.other_user?.username ?? undefined,
+    });
+  }, [getLastIncomingMessage, buildConversationContext, generateSuggestions, suggestionTone, conversation, t]);
 
   const useSuggestion = (suggestion: string) => {
     setNewMessage(suggestion);
     setShowSuggestions(false);
+    clearSuggestions();
     inputRef.current?.focus();
+  };
+
+  const handleCloseSuggestions = () => {
+    setShowSuggestions(false);
+    clearSuggestions();
   };
 
   const getDisplayName = () => {
@@ -456,7 +656,10 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
 
   const getMessageStatus = (msg: Message): 'sending' | 'sent' | 'delivered' | 'read' => {
     if (msg.sender_id !== user?.id) return 'sent';
-    if (msg.read_by && msg.read_by.some(id => id !== user?.id)) return 'read';
+    if (msg._pending) return 'sending';
+    if (msg.read_by?.length) return 'read';
+    if (otherUserLastReadAt && new Date(otherUserLastReadAt).getTime() >= new Date(msg.created_at).getTime())
+      return 'read';
     return 'delivered';
   };
 
@@ -479,7 +682,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
 
   const renderMessageContent = (msg: Message) => {
     if (msg.type === 'voice' && msg.media_url) {
-      return <VoiceMessage src={msg.media_url} />;
+      const duration = parseVoiceDuration(msg.content);
+      return <VoiceMessage src={msg.media_url} duration={duration} />;
     }
     
     if (msg.type === 'image' && msg.media_url) {
@@ -516,14 +720,15 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
           <AvatarImage src={conversation.other_user?.avatar_url || undefined} />
           <AvatarFallback>{getInitials()}</AvatarFallback>
         </Avatar>
-        <div className="flex-1">
-          <h2 className="font-semibold">{getDisplayName()}</h2>
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold truncate">{getDisplayName()}</h2>
           {typingUsers.length > 0 ? (
             <p className="text-xs text-primary">typing...</p>
           ) : (
             <p className="text-xs text-muted-foreground">● Online</p>
           )}
         </div>
+        <ConnectionStatus status={connectionStatus} className="shrink-0" />
         <Button variant="ghost" size="icon" onClick={() => setShowSearch(!showSearch)}>
           <Search className="w-5 h-5" />
         </Button>
@@ -542,7 +747,19 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto p-4"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (el.scrollTop < 80 && hasMore && !loadingMore && !loading) loadMore();
+        }}
+      >
+        {loadingMore && (
+          <div className="flex justify-center py-2">
+            <span className="text-xs text-muted-foreground">Loading older messages…</span>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
@@ -577,13 +794,40 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
                         onMouseUp={handleMessageTouchEnd}
                         onMouseLeave={handleMessageTouchEnd}
                       >
-                        {/* Quick reaction picker */}
+                        {/* Quick reaction picker + Suggest reply (for incoming messages) */}
                         {longPressMessageId === msg.id && (
-                          <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} -top-12 z-10`}>
+                          <div className={`absolute ${isOwn ? 'right-0' : 'left-0'} -top-12 z-10 flex items-center gap-1`}>
                             <QuickReactionPicker
                               onSelect={(emoji) => addReaction(msg.id, emoji)}
                               onClose={() => setLongPressMessageId(null)}
                             />
+                            {!isOwn && msg.content?.trim() && (
+                              <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="secondary"
+                                      size="icon"
+                                      className="h-9 w-9 rounded-full"
+                                      onClick={() => {
+                                        setLongPressMessageId(null);
+                                        setShowSuggestions(true);
+                                        generateSuggestions(msg.content!, {
+                                          tone: suggestionTone,
+                                          conversationHistory: buildConversationContext(),
+                                          recipientName: conversation.other_user?.display_name ?? conversation.other_user?.username ?? undefined,
+                                        });
+                                      }}
+                                    >
+                                      <Sparkles className="w-4 h-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p>{t('messages.aiSuggestions')}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                           </div>
                         )}
                         
@@ -635,31 +879,71 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
 
       {/* AI Suggestions */}
       {showSuggestions && (
-        <div className="px-4 py-2 border-t border-border bg-muted/50">
+        <div className="px-4 py-3 border-t border-border bg-muted/50">
           {loadingSuggestions ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Sparkles className="w-4 h-4 animate-pulse" />
-              <span>Generating suggestions...</span>
+              <span>{t('messages.aiSuggestionsGenerating')}</span>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> AI Suggestions
-                </span>
-                <button onClick={() => setShowSuggestions(false)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0">
+                    <Sparkles className="w-3 h-3" /> {t('messages.aiSuggestions')}
+                  </span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                        {t(`messages.aiTone${suggestionTone.charAt(0).toUpperCase() + suggestionTone.slice(1)}`)}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {(['friendly', 'professional', 'enthusiastic', 'concise'] as const).map((tone) => (
+                        <DropdownMenuItem
+                          key={tone}
+                          onClick={() => {
+                            setSuggestionTone(tone);
+                            const last = getLastIncomingMessage();
+                            if (last?.content?.trim()) {
+                              setShowSuggestions(true);
+                              generateSuggestions(last.content, {
+                                tone,
+                                conversationHistory: buildConversationContext(),
+                                recipientName: conversation.other_user?.display_name ?? conversation.other_user?.username ?? undefined,
+                              });
+                            }
+                          }}
+                        >
+                          {t(`messages.aiTone${tone.charAt(0).toUpperCase() + tone.slice(1)}`)}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <button onClick={handleCloseSuggestions} className="text-xs text-muted-foreground hover:text-foreground shrink-0">✕</button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {aiSuggestions.map((suggestion, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => useSuggestion(suggestion)}
-                    className="text-sm bg-background border border-border rounded-full px-3 py-1 hover:bg-muted transition-colors text-left"
-                  >
-                    {suggestion.length > 50 ? suggestion.slice(0, 50) + '...' : suggestion}
-                  </button>
-                ))}
-              </div>
+              {aiSuggestions.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {aiSuggestions.map((suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => useSuggestion(suggestion)}
+                      className="text-sm bg-background border border-border rounded-full px-3 py-1.5 hover:bg-muted transition-colors text-left max-w-full truncate"
+                    >
+                      {suggestion.length > 60 ? suggestion.slice(0, 60) + '…' : suggestion}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>{t('messages.aiSuggestionsEmpty')}</span>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1" onClick={retry}>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    {t('messages.aiSuggestionsRetry')}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -683,33 +967,67 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ conversation, onBack }) 
           {isRecording ? (
             <VoiceRecorder
               isRecording={isRecording}
+              isPaused={isPaused}
               duration={recordingDuration}
-              onStart={startRecording}
-              onStop={stopRecording}
-              onCancel={cancelRecording}
+              audioLevel={audioLevel}
+              onStart={handleVoiceStart}
+              onStop={handleVoiceStop}
+              onCancel={handleVoiceCancel}
               onSend={handleVoiceSend}
+              onPause={pauseRecording}
+              onResume={resumeRecording}
             />
+          ) : pendingVoiceMessage ? (
+            <div className="flex items-center gap-3 flex-1 px-1">
+              <span className="text-sm text-muted-foreground shrink-0">
+                {Math.floor(pendingVoiceMessage.durationSeconds / 60)}:{(pendingVoiceMessage.durationSeconds % 60).toString().padStart(2, '0')}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPendingVoiceMessage(null)}
+                className="shrink-0 text-muted-foreground"
+              >
+                Discard
+              </Button>
+              <Button size="sm" onClick={handleVoiceSend} disabled={sending} className="shrink-0">
+                {sending ? 'Sending...' : 'Send'}
+              </Button>
+            </div>
           ) : (
             <>
               <MediaPicker onSelect={handleMediaSelect} disabled={sending} />
               <VoiceRecorder
                 isRecording={isRecording}
+                isPaused={isPaused}
                 duration={recordingDuration}
-                onStart={startRecording}
-                onStop={stopRecording}
-                onCancel={cancelRecording}
+                audioLevel={audioLevel}
+                onStart={handleVoiceStart}
+                onStop={handleVoiceStop}
+                onCancel={handleVoiceCancel}
                 onSend={handleVoiceSend}
+                onPause={pauseRecording}
+                onResume={resumeRecording}
                 disabled={sending}
               />
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="shrink-0"
-                onClick={generateAiSuggestions}
-                disabled={loadingSuggestions}
-              >
-                <Sparkles className={`w-5 h-5 ${loadingSuggestions ? 'animate-pulse' : ''}`} />
-              </Button>
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={generateAiSuggestions}
+                      disabled={loadingSuggestions}
+                    >
+                      <Sparkles className={`w-5 h-5 ${loadingSuggestions ? 'animate-pulse' : ''}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p>{t('messages.aiSuggestions')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Input
                 ref={inputRef}
                 placeholder="Type a message..."

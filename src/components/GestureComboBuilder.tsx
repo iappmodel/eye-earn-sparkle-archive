@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   Eye, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Target, Plus, X, 
-  Check, ChevronRight, Trash2, GripVertical, Clock, Sparkles
+  Check, ChevronRight, Trash2, GripVertical, Clock, Sparkles, Copy, AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,9 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter 
 } from '@/components/ui/sheet';
 import { 
-  GestureStep, ComboAction, GestureCombo, addCombo, COMBO_ACTION_LABELS 
+  GestureStep, ComboAction, GestureCombo, addCombo, updateCombo, duplicateCombo, getConflictingCombo, COMBO_ACTION_LABELS 
 } from '@/hooks/useGestureCombos';
+import { TRIGGER_CATEGORIES, TRIGGER_LABELS, SimpleGestureTrigger } from '@/hooks/useScreenTargets';
 import { GazeDirection } from '@/hooks/useGazeDirection';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
@@ -39,6 +40,7 @@ const HOLD_OPTIONS: { duration: number; label: string }[] = [
   { duration: 500, label: '0.5s Hold' },
   { duration: 1000, label: '1s Hold' },
   { duration: 1500, label: '1.5s Hold' },
+  { duration: 2000, label: '2s Hold' },
 ];
 
 const ACTION_OPTIONS: { value: ComboAction; label: string }[] = [
@@ -63,6 +65,9 @@ const ACTION_OPTIONS: { value: ComboAction; label: string }[] = [
   { value: 'toggleRemoteControl', label: 'Toggle Remote' },
   { value: 'checkIn', label: 'Check In' },
   { value: 'tipCreator', label: 'Tip Creator' },
+  { value: 'viewCreatorProfile', label: 'View Creator Profile' },
+  { value: 'report', label: 'Report Content' },
+  { value: 'none', label: 'No Action' },
 ];
 
 const StepIcon: React.FC<{ step: GestureStep }> = ({ step }) => {
@@ -79,6 +84,9 @@ const StepIcon: React.FC<{ step: GestureStep }> = ({ step }) => {
       </div>
     );
   }
+  if (step.type === 'gesture') {
+    return <Target className="w-5 h-5" />;
+  }
   if (step.type === 'hold') {
     return <Clock className="w-5 h-5" />;
   }
@@ -91,6 +99,9 @@ const StepLabel: React.FC<{ step: GestureStep }> = ({ step }) => {
   }
   if (step.type === 'blink') {
     return <span>{step.count}× Blink</span>;
+  }
+  if (step.type === 'gesture') {
+    return <span>{TRIGGER_LABELS[step.trigger] || step.trigger}</span>;
   }
   if (step.type === 'hold') {
     return <span>Hold {step.duration}ms</span>;
@@ -111,7 +122,24 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
   const [steps, setSteps] = useState<GestureStep[]>(editingCombo?.steps || []);
   const [action, setAction] = useState<ComboAction>(editingCombo?.action || 'like');
   const [showStepPicker, setShowStepPicker] = useState(false);
-  const [stepPickerTab, setStepPickerTab] = useState<'direction' | 'blink' | 'hold'>('direction');
+  const [stepPickerTab, setStepPickerTab] = useState<'direction' | 'blink' | 'gesture' | 'hold'>('direction');
+
+  // Sync form when opening for edit
+  useEffect(() => {
+    if (isOpen && editingCombo) {
+      setName(editingCombo.name);
+      setDescription(editingCombo.description || '');
+      setSteps(editingCombo.steps);
+      setAction(editingCombo.action);
+    }
+    if (isOpen && !editingCombo) {
+      setName('');
+      setDescription('');
+      setSteps([]);
+      setAction('like');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when isOpen or combo id changes
+  }, [isOpen, editingCombo?.id]);
 
   const resetForm = useCallback(() => {
     setName('');
@@ -125,6 +153,8 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
     resetForm();
     onClose();
   };
+
+  const conflictCombo = steps.length >= 1 ? getConflictingCombo(steps, editingCombo?.id) : null;
 
   const addStep = (step: GestureStep) => {
     if (steps.length >= 5) {
@@ -155,31 +185,42 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
     return steps.map((step, i) => {
       if (step.type === 'direction') return `Look ${step.direction}`;
       if (step.type === 'blink') return `blink ${step.count}×`;
+      if (step.type === 'gesture') return TRIGGER_LABELS[step.trigger] || step.trigger;
       if (step.type === 'hold') return `hold for ${step.duration}ms`;
       return '';
     }).join(', then ');
   };
 
   const handleCreate = () => {
-    if (!name.trim() || steps.length < 2) {
+    if (!name.trim() || steps.length < 1) {
       haptics.error();
       return;
     }
 
-    const newCombo = addCombo({
-      name: name.trim(),
-      description: description.trim() || generateDescription(),
-      steps,
-      action,
-      enabled: true,
-    });
-
-    haptics.success();
-    onComboCreated?.(newCombo);
-    handleClose();
+    if (editingCombo) {
+      updateCombo(editingCombo.id, {
+        name: name.trim(),
+        description: description.trim() || generateDescription(),
+        steps,
+        action,
+      });
+      haptics.success();
+      handleClose();
+    } else {
+      const newCombo = addCombo({
+        name: name.trim(),
+        description: description.trim() || generateDescription(),
+        steps,
+        action,
+        enabled: true,
+      });
+      haptics.success();
+      onComboCreated?.(newCombo);
+      handleClose();
+    }
   };
 
-  const isValid = name.trim().length > 0 && steps.length >= 2;
+  const isValid = name.trim().length > 0 && steps.length >= 1;
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && handleClose()}>
@@ -189,6 +230,9 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
             <Sparkles className="w-5 h-5 text-amber-500" />
             {editingCombo ? 'Edit Combo' : 'Create Custom Combo'}
           </SheetTitle>
+          {editingCombo && (
+            <p className="text-sm text-muted-foreground">Change name, steps, or action and save.</p>
+          )}
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto space-y-6 py-4">
@@ -227,10 +271,16 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
             </div>
 
             {/* Steps display */}
+            {conflictCombo && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm mb-3">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>Same sequence as &quot;{conflictCombo.name}&quot; — only one will trigger.</span>
+              </div>
+            )}
             <div className="min-h-[80px] p-4 rounded-lg border-2 border-dashed border-border bg-muted/30">
               {steps.length === 0 ? (
                 <div className="text-center text-muted-foreground text-sm py-4">
-                  Add at least 2 gesture steps to create a combo
+                  Add at least 1 gesture step to create a combo
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +368,7 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
                 </div>
 
                 {/* Step type tabs */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setStepPickerTab('direction')}
                     className={cn(
@@ -340,6 +390,17 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
                     )}
                   >
                     Blink Pattern
+                  </button>
+                  <button
+                    onClick={() => setStepPickerTab('gesture')}
+                    className={cn(
+                      'px-3 py-2 rounded-lg text-sm font-medium transition-all',
+                      stepPickerTab === 'gesture' 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-muted hover:bg-muted/80'
+                    )}
+                  >
+                    Face Gesture
                   </button>
                   <button
                     onClick={() => setStepPickerTab('hold')}
@@ -394,6 +455,28 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
                         </div>
                         <span className="text-xs">{label}</span>
                       </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Gesture options */}
+                {stepPickerTab === 'gesture' && (
+                  <div className="space-y-3">
+                    {TRIGGER_CATEGORIES.map(cat => (
+                      <div key={cat.label}>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{cat.label}</div>
+                        <div className="flex flex-wrap gap-2">
+                          {cat.triggers.map(trigger => (
+                            <button
+                              key={trigger}
+                              onClick={() => addStep({ type: 'gesture', trigger: trigger as SimpleGestureTrigger })}
+                              className="px-2 py-1 rounded border border-border hover:border-primary/50 text-xs"
+                            >
+                              {TRIGGER_LABELS[trigger as SimpleGestureTrigger]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -492,20 +575,37 @@ export const GestureComboBuilder: React.FC<GestureComboBuilderProps> = ({
                   </div>
                 ))}
                 <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                <span className="text-sm font-medium text-primary">{COMBO_ACTION_LABELS[action]}</span>
+                <span className="text-sm font-medium text-primary">{COMBO_ACTION_LABELS[action] ?? action}</span>
               </div>
             </div>
           )}
         </div>
 
-        <SheetFooter className="flex gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={handleClose} className="flex-1">
+        <SheetFooter className="flex gap-2 pt-4 border-t flex-wrap">
+          {editingCombo && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const copied = duplicateCombo(editingCombo.id);
+                if (copied) {
+                  haptics.success();
+                  onComboCreated?.(copied);
+                  handleClose();
+                }
+              }}
+              className="flex-1 min-w-[100px]"
+            >
+              <Copy className="w-4 h-4 mr-2" />
+              Duplicate
+            </Button>
+          )}
+          <Button variant="outline" onClick={handleClose} className="flex-1 min-w-[100px]">
             Cancel
           </Button>
           <Button 
             onClick={handleCreate} 
             disabled={!isValid}
-            className="flex-1"
+            className="flex-1 min-w-[100px]"
           >
             <Check className="w-4 h-4 mr-2" />
             {editingCombo ? 'Save Changes' : 'Create Combo'}

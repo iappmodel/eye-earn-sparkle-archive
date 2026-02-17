@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
-import { X, Camera, Mic, MicOff, Video, VideoOff, Radio, Users, Settings, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Camera, Mic, MicOff, Video, VideoOff, Radio, Users, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { createStream, endStream } from '@/services/live.service';
+import { supabase } from '@/integrations/supabase/client';
 
 interface GoLiveScreenProps {
   isOpen: boolean;
@@ -13,35 +16,94 @@ interface GoLiveScreenProps {
 }
 
 export const GoLiveScreen: React.FC<GoLiveScreenProps> = ({ isOpen, onClose }) => {
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [isLive, setIsLive] = useState(false);
+  const [streamId, setStreamId] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [viewerCount, setViewerCount] = useState(0);
   const [allowComments, setAllowComments] = useState(true);
   const [allowGifts, setAllowGifts] = useState(true);
 
-  const handleGoLive = () => {
+  // Realtime viewer count while live
+  useEffect(() => {
+    if (!streamId || !isLive) return;
+    const channel = supabase
+      .channel(`go-live-viewer-count:${streamId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_streams',
+          filter: `id=eq.${streamId}`,
+        },
+        (payload: { new: { viewer_count: number } }) => {
+          setViewerCount(payload.new.viewer_count);
+        }
+      )
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [streamId, isLive]);
+
+  const handleGoLive = async () => {
     if (!title.trim()) {
       toast.error('Please add a title for your stream');
       return;
     }
-    
-    setIsLive(true);
-    toast.success('You are now live!');
-    
-    // Simulate viewers joining
-    const interval = setInterval(() => {
-      setViewerCount(prev => prev + Math.floor(Math.random() * 3) + 1);
-    }, 2000);
-
-    setTimeout(() => clearInterval(interval), 30000);
+    if (!user?.id) {
+      toast.error('Sign in to go live');
+      return;
+    }
+    setIsStarting(true);
+    const { data, error } = await createStream(user.id, {
+      title: title.trim(),
+      allowComments,
+      allowGifts,
+    });
+    setIsStarting(false);
+    if (error) {
+      toast.error(error.message || 'Failed to start stream');
+      return;
+    }
+    if (data) {
+      setStreamId(data.id);
+      setViewerCount(data.viewer_count);
+      setIsLive(true);
+      toast.success('You are now live!');
+    }
   };
 
-  const handleEndStream = () => {
+  const handleEndStream = async () => {
+    if (!streamId || !user?.id) {
+      setIsLive(false);
+      setStreamId(null);
+      setViewerCount(0);
+      onClose();
+      return;
+    }
+    setIsEnding(true);
+    const { error } = await endStream(streamId, user.id);
+    setIsEnding(false);
     setIsLive(false);
+    setStreamId(null);
     setViewerCount(0);
-    toast.info('Stream ended');
+    if (error) toast.error(error.message || 'Failed to end stream');
+    else toast.info('Stream ended');
+    onClose();
+  };
+
+  const handleClose = () => {
+    if (isLive && streamId && user?.id) {
+      handleEndStream();
+    } else {
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
@@ -65,7 +127,7 @@ export const GoLiveScreen: React.FC<GoLiveScreenProps> = ({ isOpen, onClose }) =
 
       {/* Header */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-white bg-black/50">
+        <Button variant="ghost" size="icon" onClick={handleClose} className="text-white bg-black/50">
           <X className="w-6 h-6" />
         </Button>
         
@@ -129,6 +191,7 @@ export const GoLiveScreen: React.FC<GoLiveScreenProps> = ({ isOpen, onClose }) =
 
               <Button
                 onClick={handleGoLive}
+                disabled={!user?.id || isStarting}
                 className="rounded-full w-20 h-20 bg-red-500 hover:bg-red-600"
               >
                 <Radio className="w-8 h-8" />
@@ -157,10 +220,11 @@ export const GoLiveScreen: React.FC<GoLiveScreenProps> = ({ isOpen, onClose }) =
 
             <Button
               onClick={handleEndStream}
+              disabled={isEnding}
               variant="destructive"
               className="rounded-full px-8 py-6"
             >
-              End Stream
+              {isEnding ? 'Ending…' : 'End Stream'}
             </Button>
 
             <Button

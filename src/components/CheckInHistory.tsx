@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { History, MapPin, Clock, Coins, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { History, MapPin, Clock, Coins, CheckCircle2, XCircle, AlertCircle, RefreshCw, Filter } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { format } from 'date-fns';
+import { format, subDays, isAfter } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 interface CheckIn {
   id: string;
@@ -22,40 +23,41 @@ interface CheckIn {
   longitude: number;
 }
 
+type StatusFilter = 'all' | 'verified' | 'failed';
+type DateFilter = '7' | '30' | 'all';
+
 interface CheckInHistoryProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Called when user taps "Discover nearby" in empty state */
+  onDiscover?: () => void;
 }
 
-export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CheckInHistoryProps) {
+export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange, onDiscover }: CheckInHistoryProps) {
   const { user } = useAuth();
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [internalOpen, setInternalOpen] = useState(false);
 
-  // Support both controlled and uncontrolled modes
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
   const setOpen = isControlled ? (controlledOnOpenChange || (() => {})) : setInternalOpen;
 
-  useEffect(() => {
-    if (open && user?.id) {
-      loadCheckIns();
-    }
-  }, [open, user?.id]);
-
-  const loadCheckIns = async () => {
+  const loadCheckIns = useCallback(async (isRefresh = false) => {
     if (!user?.id) return;
-
-    setLoading(true);
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const { data, error } = await supabase
         .from('promotion_checkins')
         .select('*')
         .eq('user_id', user.id)
         .order('checked_in_at', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
       setCheckIns(data || []);
@@ -63,8 +65,26 @@ export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: co
       console.error('Error loading check-ins:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (open && user?.id) {
+      loadCheckIns();
+    }
+  }, [open, user?.id, loadCheckIns]);
+
+  const filteredCheckIns = useMemo(() => {
+    let list = checkIns;
+    if (dateFilter !== 'all') {
+      const since = subDays(new Date(), parseInt(dateFilter, 10));
+      list = list.filter((c) => isAfter(new Date(c.checked_in_at), since));
+    }
+    if (statusFilter === 'verified') list = list.filter((c) => c.status === 'verified');
+    if (statusFilter === 'failed') list = list.filter((c) => c.status === 'failed');
+    return list;
+  }, [checkIns, dateFilter, statusFilter]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -101,21 +121,31 @@ export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: co
     </Button>
   );
 
-  // In controlled mode without a trigger, render just the Sheet (no SheetTrigger)
   const sheetContent = (
-    <SheetContent side="bottom" className="h-[85vh]">
-      <SheetHeader className="pb-4">
-        <SheetTitle className="flex items-center gap-2">
-          <History className="h-5 w-5" />
-          Check-In History
-        </SheetTitle>
+    <SheetContent side="bottom" className="h-[85vh] flex flex-col">
+      <SheetHeader className="pb-2 flex-shrink-0">
+        <div className="flex items-center justify-between w-full">
+          <SheetTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Check-In History
+          </SheetTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => loadCheckIns(true)}
+            disabled={loading || refreshing}
+            aria-label="Refresh"
+          >
+            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+          </Button>
+        </div>
       </SheetHeader>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-3 flex-shrink-0">
         <div className="bg-muted/50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold">{checkIns.length}</div>
-          <div className="text-xs text-muted-foreground">Total Check-ins</div>
+          <div className="text-xs text-muted-foreground">Total</div>
         </div>
         <div className="bg-muted/50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-green-500">
@@ -128,11 +158,45 @@ export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: co
             <Coins className="h-4 w-4" />
             {totalEarned}
           </div>
-          <div className="text-xs text-muted-foreground">Coins Earned</div>
+          <div className="text-xs text-muted-foreground">Earned</div>
         </div>
       </div>
 
-      <ScrollArea className="h-[calc(85vh-200px)]">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-3 flex-shrink-0">
+        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+        {(['all', 'verified', 'failed'] as StatusFilter[]).map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={cn(
+              'px-2.5 py-1 rounded-full text-xs font-medium transition',
+              statusFilter === s
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted/50 text-muted-foreground hover:bg-muted',
+            )}
+          >
+            {s === 'all' ? 'All' : s === 'verified' ? 'Verified' : 'Failed'}
+          </button>
+        ))}
+        <span className="text-muted-foreground text-xs mx-1">|</span>
+        {(['7', '30', 'all'] as DateFilter[]).map((d) => (
+          <button
+            key={d}
+            onClick={() => setDateFilter(d)}
+            className={cn(
+              'px-2.5 py-1 rounded-full text-xs font-medium transition',
+              dateFilter === d
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted/50 text-muted-foreground hover:bg-muted',
+            )}
+          >
+            {d === 'all' ? 'All time' : `Last ${d} days`}
+          </button>
+        ))}
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0">
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -146,18 +210,32 @@ export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: co
             ))}
           </div>
         ) : checkIns.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-              <MapPin className="h-8 w-8 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+              <MapPin className="h-10 w-10 text-primary" />
             </div>
-            <h3 className="font-semibold mb-1">No Check-ins Yet</h3>
-            <p className="text-sm text-muted-foreground max-w-[250px]">
-              Visit promotion locations and check in to start earning rewards!
+            <h3 className="font-semibold text-lg mb-1">No Check-ins Yet</h3>
+            <p className="text-sm text-muted-foreground max-w-[280px] mb-6">
+              Visit promotion locations and check in to earn rewards. Use the map to discover nearby spots!
             </p>
+            {onDiscover && (
+              <Button onClick={() => { setOpen(false); onDiscover(); }} className="gap-2">
+                <MapPin className="h-4 w-4" />
+                Discover Nearby
+              </Button>
+            )}
+          </div>
+        ) : filteredCheckIns.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+            <p className="text-sm text-muted-foreground">No check-ins match the current filters.</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => { setStatusFilter('all'); setDateFilter('all'); }}>
+              Clear filters
+            </Button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {checkIns.map((checkIn) => (
+          <div className="space-y-3 pb-4">
+            <p className="text-xs text-muted-foreground">Showing {filteredCheckIns.length} check-in{filteredCheckIns.length !== 1 ? 's' : ''}</p>
+            {filteredCheckIns.map((checkIn) => (
               <div
                 key={checkIn.id}
                 className="flex gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors"
@@ -201,7 +279,6 @@ export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: co
     </SheetContent>
   );
 
-  // Controlled mode: no trigger needed
   if (isControlled) {
     return (
       <Sheet open={open} onOpenChange={setOpen}>
@@ -210,7 +287,6 @@ export function CheckInHistory({ trigger, open: controlledOpen, onOpenChange: co
     );
   }
 
-  // Uncontrolled mode: use trigger
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>

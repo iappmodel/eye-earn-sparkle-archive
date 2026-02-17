@@ -37,7 +37,7 @@ const pageContentTypes = [
   { id: 'main', label: 'Main Feed', icon: Home, color: '270 95% 65%' },
   { id: 'friends', label: 'Friends', icon: Users, color: '200 100% 50%' },
   { id: 'promotions', label: 'Promotions', icon: Video, color: '320 90% 60%' },
-  { id: 'discovery', label: 'Discover', icon: Compass, color: '45 100% 55%' },
+  { id: 'discovery', label: 'iGO', icon: Compass, color: '45 100% 55%' },
   { id: 'rewards', label: 'Rewards', icon: Gift, color: '150 80% 45%' },
   { id: 'favorites', label: 'Favorites', icon: Heart, color: '0 85% 55%' },
   { id: 'following', label: 'Following', icon: Star, color: '260 80% 60%' },

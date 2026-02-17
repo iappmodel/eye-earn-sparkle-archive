@@ -11,12 +11,17 @@ import {
   Pause,
   ChevronLeft,
   ChevronRight,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { useVideoMute } from '@/contexts/VideoMuteContext';
 import { toast } from 'sonner';
 import type { SavedVideo } from '@/hooks/useSavedVideos';
+
+const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2] as const;
 
 interface SavedVideoPlayerProps {
   video: SavedVideo;
@@ -25,7 +30,7 @@ interface SavedVideoPlayerProps {
   likedIds: Set<string>;
   onBack: () => void;
   onToggleLike: (contentId: string) => void;
-  onComment: (contentId: string) => void;
+  onComment: (contentId: string, contentType?: 'user_content' | 'promotion') => void;
   onShare: (video: SavedVideo) => void;
   onUnsave: (contentId: string) => void;
   onAddToRoute?: (video: SavedVideo) => void;
@@ -46,9 +51,19 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
   onNavigate,
 }) => {
   const { light, medium } = useHapticFeedback();
+  const { isMuted, toggleMute } = useVideoMute();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showPlayIcon, setShowPlayIcon] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [showProgressBar, setShowProgressBar] = useState(false);
+  const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(1); // 1x
+  const [showDoubleTapHeart, setShowDoubleTapHeart] = useState(false);
+
+  // Double-tap to like: delay single-tap so we can detect second tap
+  const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapRef = useRef(0);
 
   // Swipe tracking
   const touchStartX = useRef(0);
@@ -57,6 +72,32 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
 
   const isLiked = likedIds.has(video.contentId);
   const hasVideo = !!video.videoSrc;
+  const playbackSpeed = PLAYBACK_SPEEDS[playbackSpeedIndex];
+
+  // Sync playback speed to video element
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.playbackRate = playbackSpeed;
+  }, [playbackSpeed]);
+
+  // Progress and duration from video
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !hasVideo) return;
+    const onTimeUpdate = () => setProgress(el.currentTime);
+    const onDurationChange = () => setDuration(el.duration || 0);
+    const onLoadedMetadata = () => setDuration(el.duration || 0);
+    el.addEventListener('timeupdate', onTimeUpdate);
+    el.addEventListener('durationchange', onDurationChange);
+    el.addEventListener('loadedmetadata', onLoadedMetadata);
+    setDuration(el.duration || 0);
+    return () => {
+      el.removeEventListener('timeupdate', onTimeUpdate);
+      el.removeEventListener('durationchange', onDurationChange);
+      el.removeEventListener('loadedmetadata', onLoadedMetadata);
+    };
+  }, [hasVideo, video.contentId]);
 
   // Auto-play on mount / video change
   useEffect(() => {
@@ -64,6 +105,7 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
       videoRef.current.currentTime = 0;
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
+      setProgress(0);
     }
   }, [video.contentId, hasVideo]);
 
@@ -78,6 +120,37 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
     }
     setShowPlayIcon(true);
     setTimeout(() => setShowPlayIcon(false), 600);
+  }, []);
+
+  const handleMediaTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 350) {
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+      lastTapRef.current = 0;
+      medium();
+      onToggleLike(video.contentId);
+      setShowDoubleTapHeart(true);
+      setTimeout(() => setShowDoubleTapHeart(false), 800);
+      return;
+    }
+    lastTapRef.current = now;
+    setShowProgressBar(true);
+    setTimeout(() => setShowProgressBar(false), 4000);
+    tapTimeoutRef.current = setTimeout(() => {
+      tapTimeoutRef.current = null;
+      togglePlayPause();
+    }, 300);
+  }, [onToggleLike, video.contentId, medium, togglePlayPause]);
+
+  const handleSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const el = videoRef.current;
+    if (!el) return;
+    const t = Number(e.target.value);
+    el.currentTime = t;
+    setProgress(t);
   }, []);
 
   /* ── Swipe handlers ── */
@@ -131,12 +204,34 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
           </p>
           <p className="text-white/60 text-xs truncate">{video.title}</p>
         </div>
+
+        {/* Volume (video only) */}
+        {hasVideo && (
+          <button
+            onClick={(e) => { e.stopPropagation(); light(); toggleMute(); }}
+            className="w-9 h-9 rounded-full bg-black/40 flex items-center justify-center shrink-0"
+          >
+            {isMuted ? <VolumeX className="w-5 h-5 text-white" /> : <Volume2 className="w-5 h-5 text-white" />}
+          </button>
+        )}
+
+        {/* Playback speed (video only) */}
+        {hasVideo && (
+          <button
+            onClick={(e) => { e.stopPropagation(); light(); setPlaybackSpeedIndex((i) => (i + 1) % PLAYBACK_SPEEDS.length); }}
+            className="shrink-0 px-2 py-1 rounded-md bg-black/40 text-white text-xs font-medium min-w-[3rem]"
+          >
+            {playbackSpeed}x
+          </button>
+        )}
       </div>
 
       {/* ── Media area ── */}
       <div
         className="flex-1 relative overflow-hidden"
-        onClick={hasVideo ? togglePlayPause : undefined}
+        onClick={hasVideo ? handleMediaTap : undefined}
+        onMouseEnter={() => setShowProgressBar(true)}
+        onMouseLeave={() => setShowProgressBar(false)}
         style={{ transform: `translateX(${swipeOffset * 0.3}px)`, transition: swipeOffset === 0 ? 'transform 0.25s ease' : 'none' }}
       >
         {hasVideo ? (
@@ -147,7 +242,7 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
             className="absolute inset-0 w-full h-full object-cover"
             loop
             playsInline
-            muted={false}
+            muted={isMuted}
           />
         ) : (
           <img
@@ -157,12 +252,34 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
           />
         )}
 
+        {/* Double-tap heart */}
+        {showDoubleTapHeart && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <Heart className="w-24 h-24 text-white fill-red-500 drop-shadow-lg animate-fade-in scale-125" />
+          </div>
+        )}
+
         {/* Play / Pause icon */}
         {showPlayIcon && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-16 h-16 rounded-full bg-black/50 flex items-center justify-center animate-fade-in">
               {isPlaying ? <Play className="w-8 h-8 text-white ml-1" /> : <Pause className="w-8 h-8 text-white" />}
             </div>
+          </div>
+        )}
+
+        {/* Progress bar (video only); show on hover or when not playing */}
+        {hasVideo && duration > 0 && (showProgressBar || !isPlaying) && (
+          <div className="absolute bottom-0 left-0 right-0 z-20 p-2 bg-gradient-to-t from-black/70 to-transparent" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              value={progress}
+              step={0.1}
+              onChange={handleSeek}
+              className="w-full h-1.5 rounded-full appearance-none bg-white/30 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+            />
           </div>
         )}
 
@@ -192,7 +309,7 @@ const SavedVideoPlayer: React.FC<SavedVideoPlayerProps> = ({
 
         {/* Comment */}
         <button
-          onClick={(e) => { e.stopPropagation(); light(); onComment(video.contentId); }}
+          onClick={(e) => { e.stopPropagation(); light(); onComment(video.contentId, video.type === 'promo' ? 'promotion' : 'user_content'); }}
           className="flex flex-col items-center gap-1"
         >
           <MessageCircle className="w-7 h-7 text-white" />

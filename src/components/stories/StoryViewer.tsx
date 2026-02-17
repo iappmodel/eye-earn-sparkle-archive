@@ -30,6 +30,8 @@ interface StoryViewerProps {
   onPrev: () => void;
   hasNext: boolean;
   hasPrev: boolean;
+  /** Called when the user has viewed an item (e.g. progress completed or closed). */
+  onItemView?: (contentId: string, userId: string) => void;
 }
 
 export const StoryViewer: React.FC<StoryViewerProps> = ({
@@ -39,6 +41,7 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
   onPrev,
   hasNext,
   hasPrev,
+  onItemView,
 }) => {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -48,7 +51,14 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
   const currentItem = story.items[currentItemIndex];
   const duration = currentItem.duration || 5000;
 
+  const reportCurrentItemViewed = useCallback(() => {
+    if (currentItem && onItemView) {
+      onItemView(currentItem.id, story.userId);
+    }
+  }, [currentItem, story.userId, onItemView]);
+
   const goToNextItem = useCallback(() => {
+    reportCurrentItemViewed();
     if (currentItemIndex < story.items.length - 1) {
       setCurrentItemIndex(prev => prev + 1);
       setProgress(0);
@@ -59,7 +69,7 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
     } else {
       onClose();
     }
-  }, [currentItemIndex, story.items.length, hasNext, onNext, onClose]);
+  }, [currentItemIndex, story.items.length, hasNext, onNext, onClose, reportCurrentItemViewed]);
 
   const goToPrevItem = useCallback(() => {
     if (currentItemIndex > 0) {
@@ -144,7 +154,15 @@ export const StoryViewer: React.FC<StoryViewerProps> = ({
           <Button variant="ghost" size="icon" className="text-white">
             <MoreHorizontal className="w-5 h-5" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-white">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              reportCurrentItemViewed();
+              onClose();
+            }}
+            className="text-white"
+          >
             <X className="w-5 h-5" />
           </Button>
         </div>

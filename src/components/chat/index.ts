@@ -5,3 +5,5 @@ export { VoiceRecorder } from './VoiceRecorder';
 export { MediaPicker, MediaPreview } from './MediaPicker';
 export { ChatSearch } from './ChatSearch';
 export { VoiceMessage } from './VoiceMessage';
+export { ConnectionStatus } from './ConnectionStatus';
+export type { ConnectionStatusType } from './ConnectionStatus';

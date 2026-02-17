@@ -1,59 +1,42 @@
-// Promo Videos Feed Component - Right swipe screen with reward earning
+// Promo Videos Feed – Right swipe screen: rewards, video playback, share/save, filters
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Gift, Coins, Clock, Check, Eye, Volume2, VolumeX, Play, Pause, Heart, MessageCircle, Share2 } from 'lucide-react';
+import {
+  Gift,
+  Coins,
+  Clock,
+  Check,
+  Eye,
+  Volume2,
+  VolumeX,
+  Play,
+  Pause,
+  Heart,
+  MessageCircle,
+  Share2,
+  Bookmark,
+  SkipForward,
+  SkipBack,
+  Flag,
+  RefreshCw,
+  Sparkles,
+  Maximize,
+  RotateCw,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { rewardsService } from '@/services/rewards.service';
 import { toast } from 'sonner';
 import { Neu3DButton, VideoTheme } from '@/components/ui/Neu3DButton';
 import { GlassText } from '@/components/ui/GlassText';
-
-interface FeedItem {
-  id: string;
-  type: 'promo' | 'user_post';
-  brandName?: string;
-  username?: string;
-  brandLogo?: string;
-  avatar?: string;
-  videoUrl: string;
-  thumbnail: string;
-  title: string;
-  description: string;
-  duration: number;
-  reward?: { amount: number; type: 'vicoin' | 'icoin' };
-  claimed?: boolean;
-  theme: VideoTheme;
-  likes?: number;
-  comments?: number;
-}
-
-const mockFeedItems: FeedItem[] = [
-  { id: 'coca-cola-1', type: 'promo', brandName: 'Coca-Cola', brandLogo: 'https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?w=1080&h=1920&fit=crop', title: 'Share a Coke This Summer', description: 'Refresh your moments with the taste of happiness!', duration: 8, reward: { amount: 100, type: 'vicoin' }, claimed: false, theme: 'rose' },
-  { id: 'user-1', type: 'user_post', username: '@travel_adventures', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1080&h=1920&fit=crop', title: 'Sunrise in Bali', description: 'Woke up to this incredible view! #travel', duration: 15, theme: 'gold', likes: 12400, comments: 342 },
-  { id: 'emirates-1', type: 'promo', brandName: 'Emirates Airlines', brandLogo: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?w=1080&h=1920&fit=crop', title: 'Fly Better with Emirates', description: 'Experience world-class luxury. Book now - 20% off!', duration: 8, reward: { amount: 150, type: 'vicoin' }, claimed: false, theme: 'gold' },
-  { id: 'user-2', type: 'user_post', username: '@fitness_queen', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=1080&h=1920&fit=crop', title: 'Morning Workout', description: 'Start your day right! 💪', duration: 20, theme: 'emerald', likes: 8900, comments: 156 },
-  { id: 'pool-party-1', type: 'promo', brandName: 'Wet Republic', brandLogo: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1504196606672-aef5c9cefc92?w=1080&h=1920&fit=crop', title: 'Ultimate Pool Party', description: 'Vegas hottest pool party! Use code SWIM50', duration: 8, reward: { amount: 75, type: 'vicoin' }, claimed: false, theme: 'cyan' },
-  { id: 'wellness-1', type: 'promo', brandName: 'Serenity Spa', brandLogo: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=1080&h=1920&fit=crop', title: 'Find Your Inner Peace', description: 'Luxury wellness retreat from $99!', duration: 8, reward: { amount: 2, type: 'icoin' }, claimed: false, theme: 'emerald' },
-  { id: 'user-3', type: 'user_post', username: '@chef_marco', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1080&h=1920&fit=crop', title: 'Perfect Italian Pasta', description: 'Secret family recipe 🍝', duration: 12, theme: 'gold', likes: 45200, comments: 892 },
-  { id: 'nike-1', type: 'promo', brandName: 'Nike', brandLogo: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1556906781-9a412961c28c?w=1080&h=1920&fit=crop', title: 'Just Do It - New Collection', description: 'Unleash your potential!', duration: 8, reward: { amount: 80, type: 'vicoin' }, claimed: false, theme: 'rose' },
-  { id: 'starbucks-1', type: 'promo', brandName: 'Starbucks', brandLogo: 'https://images.unsplash.com/photo-1453614512568-c4024d13c247?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=1080&h=1920&fit=crop', title: 'Fall Favorites Are Back', description: 'Pumpkin Spice Latte season!', duration: 8, reward: { amount: 50, type: 'vicoin' }, claimed: false, theme: 'gold' },
-  { id: 'user-4', type: 'user_post', username: '@dance_vibes', avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1508700929628-666bc8bd84ea?w=1080&h=1920&fit=crop', title: 'New Choreography', description: 'Learn this dance! 💃', duration: 18, theme: 'magenta', likes: 67800, comments: 1204 },
-  { id: 'apple-1', type: 'promo', brandName: 'Apple', brandLogo: 'https://images.unsplash.com/photo-1611186871348-b1ce696e52c9?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=1080&h=1920&fit=crop', title: 'iPhone 16 Pro', description: 'The most powerful iPhone ever!', duration: 8, reward: { amount: 3, type: 'icoin' }, claimed: false, theme: 'purple' },
-  { id: 'marriott-1', type: 'promo', brandName: 'Marriott Hotels', brandLogo: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=1080&h=1920&fit=crop', title: 'Luxury Awaits', description: 'Members save up to 25%!', duration: 8, reward: { amount: 120, type: 'vicoin' }, claimed: false, theme: 'gold' },
-  { id: 'user-5', type: 'user_post', username: '@mountain_explorer', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1080&h=1920&fit=crop', title: 'Summit Reached!', description: '14,000 ft above sea level 🏔️', duration: 10, theme: 'cyan', likes: 23100, comments: 456 },
-  { id: 'samsung-1', type: 'promo', brandName: 'Samsung', brandLogo: 'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1585060544812-6b45742d762f?w=1080&h=1920&fit=crop', title: 'Galaxy Z Fold 6', description: 'Unfold the future!', duration: 8, reward: { amount: 90, type: 'vicoin' }, claimed: false, theme: 'purple' },
-  { id: 'tesla-1', type: 'promo', brandName: 'Tesla', brandLogo: 'https://images.unsplash.com/photo-1560958089-b8a1929cea89?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1617886322168-72b886573c35?w=1080&h=1920&fit=crop', title: 'Model S Plaid', description: 'Quickest production car ever!', duration: 8, reward: { amount: 200, type: 'vicoin' }, claimed: false, theme: 'rose' },
-  { id: 'user-6', type: 'user_post', username: '@art_gallery', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=1080&h=1920&fit=crop', title: 'Digital Art Process', description: 'Watch me create! 🎨', duration: 25, theme: 'magenta', likes: 34500, comments: 678 },
-  { id: 'mcdonalds-1', type: 'promo', brandName: "McDonald's", brandLogo: 'https://images.unsplash.com/photo-1586816001966-79b736744398?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1080&h=1920&fit=crop', title: "I'm Lovin' It", description: 'New crispy chicken sandwich!', duration: 8, reward: { amount: 40, type: 'vicoin' }, claimed: false, theme: 'gold' },
-  { id: 'adidas-1', type: 'promo', brandName: 'Adidas', brandLogo: 'https://images.unsplash.com/photo-1518002171953-a080ee817e1f?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1518002171953-a080ee817e1f?w=1080&h=1920&fit=crop', title: 'Impossible Is Nothing', description: 'New Ultraboost collection!', duration: 8, reward: { amount: 70, type: 'vicoin' }, claimed: false, theme: 'purple' },
-  { id: 'user-7', type: 'user_post', username: '@pet_lover', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=1080&h=1920&fit=crop', title: 'Meet My New Puppy!', description: 'Welcome home buddy! 🐕', duration: 8, theme: 'gold', likes: 89200, comments: 2341 },
-  { id: 'rolex-1', type: 'promo', brandName: 'Rolex', brandLogo: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=1080&h=1920&fit=crop', title: 'Perpetual Excellence', description: 'Discover the art of watchmaking', duration: 8, reward: { amount: 5, type: 'icoin' }, claimed: false, theme: 'gold' },
-  { id: 'spotify-1', type: 'promo', brandName: 'Spotify', brandLogo: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1080&h=1920&fit=crop', title: 'Premium Free 3 Months', description: 'Ad-free music, offline listening!', duration: 8, reward: { amount: 60, type: 'vicoin' }, claimed: false, theme: 'emerald' },
-  { id: 'user-8', type: 'user_post', username: '@fashion_forward', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1445205170230-053b83016050?w=1080&h=1920&fit=crop', title: 'OOTD - Street Style', description: 'Under $50 thrifted! 🛍️', duration: 12, theme: 'magenta', likes: 15600, comments: 289 },
-  { id: 'delta-1', type: 'promo', brandName: 'Delta Airlines', brandLogo: 'https://images.unsplash.com/photo-1474302770737-173ee21bab63?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1080&h=1920&fit=crop', title: 'Keep Climbing', description: 'Double miles on international!', duration: 8, reward: { amount: 130, type: 'vicoin' }, claimed: false, theme: 'cyan' },
-  { id: 'equinox-1', type: 'promo', brandName: 'Equinox', brandLogo: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1080&h=1920&fit=crop', title: 'Elevate Your Fitness', description: 'First month free!', duration: 8, reward: { amount: 85, type: 'vicoin' }, claimed: false, theme: 'purple' },
-  { id: 'bmw-1', type: 'promo', brandName: 'BMW', brandLogo: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=100&h=100&fit=crop', videoUrl: '', thumbnail: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=1080&h=1920&fit=crop', title: 'Ultimate Driving Machine', description: 'New M4 Competition!', duration: 8, reward: { amount: 180, type: 'vicoin' }, claimed: false, theme: 'cyan' },
-];
+import { PullToRefresh } from '@/components/ui/PullToRefresh';
+import { ShareSheet } from '@/components/ShareSheet';
+import { usePromoFeed, type PromoFeedItem, type PromoFeedRewardFilter } from '@/hooks/usePromoFeed';
+import { useVideoMute } from '@/contexts/VideoMuteContext';
+import { useSavedVideos } from '@/hooks/useSavedVideos';
+import { useContentLikes } from '@/hooks/useContentLikes';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 const themeOverlays: Record<VideoTheme, string> = {
   purple: 'from-[hsl(270,95%,10%,0.4)] via-transparent to-[hsl(270,95%,5%,0.8)]',
@@ -65,8 +48,12 @@ const themeOverlays: Record<VideoTheme, string> = {
 };
 
 const themeProgressBars: Record<VideoTheme, string> = {
-  purple: 'bg-[hsl(270,95%,65%)]', magenta: 'bg-[hsl(320,90%,60%)]', cyan: 'bg-[hsl(185,100%,50%)]',
-  gold: 'bg-[hsl(45,100%,55%)]', emerald: 'bg-[hsl(160,84%,39%)]', rose: 'bg-[hsl(350,89%,60%)]',
+  purple: 'bg-[hsl(270,95%,65%)]',
+  magenta: 'bg-[hsl(320,90%,60%)]',
+  cyan: 'bg-[hsl(185,100%,50%)]',
+  gold: 'bg-[hsl(45,100%,55%)]',
+  emerald: 'bg-[hsl(160,84%,39%)]',
+  rose: 'bg-[hsl(350,89%,60%)]',
 };
 
 interface PromoVideosFeedProps {
@@ -75,186 +62,804 @@ interface PromoVideosFeedProps {
   onRewardEarned?: (amount: number, type: 'vicoin' | 'icoin') => void;
 }
 
-export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({ isActive, onSwipeLeft, onRewardEarned }) => {
+const REWARD_FILTERS: { value: PromoFeedRewardFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'vicoin', label: 'Vicoins' },
+  { value: 'icoin', label: 'Icoins' },
+];
+
+export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
+  isActive,
+  onSwipeLeft,
+  onRewardEarned,
+}) => {
   const { refreshProfile } = useAuth();
+  const haptics = useHapticFeedback();
+  const [rewardFilter, setRewardFilter] = useState<PromoFeedRewardFilter>('all');
+  const promoFeed = usePromoFeed({ rewardFilter });
+  const { items: feedItems, isLoading, error, fromBackend, refresh } = promoFeed;
+  const { saveVideo, isSaved } = useSavedVideos();
+  const contentLikes = useContentLikes();
+
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [feedItems, setFeedItems] = useState(mockFeedItems);
   const [progress, setProgress] = useState(0);
   const [isWatching, setIsWatching] = useState(false);
   const [showReward, setShowReward] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const { isMuted, toggleMute } = useVideoMute();
   const [isPaused, setIsPaused] = useState(false);
   const [isClaimingReward, setIsClaimingReward] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [shareItem, setShareItem] = useState<PromoFeedItem | null>(null);
+  const [localItems, setLocalItems] = useState<PromoFeedItem[]>([]);
+  const [videoLoading, setVideoLoading] = useState(true);
+  const [videoError, setVideoError] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const touchStartY = useRef<number>(0);
-  const touchEndY = useRef<number>(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const touchStartY = useRef(0);
+  const touchEndY = useRef(0);
+  const lastTapRef = useRef(0);
 
-  const currentItem = feedItems[currentIndex];
-  const currentTheme = currentItem.theme;
-  const isPromo = currentItem.type === 'promo';
+  // Sync feed items and reset index when filter or data changes
+  useEffect(() => {
+    setLocalItems(feedItems);
+    if (currentIndex >= feedItems.length) setCurrentIndex(Math.max(0, feedItems.length - 1));
+  }, [feedItems, rewardFilter]);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => { touchStartY.current = e.touches[0].clientY; }, []);
-  const handleTouchMove = useCallback((e: React.TouchEvent) => { touchEndY.current = e.touches[0].clientY; }, []);
+  // Fetch like counts for visible content (current + adjacent for preload)
+  useEffect(() => {
+    const windowSize = 5;
+    const start = Math.max(0, currentIndex - 2);
+    const end = Math.min(feedItems.length, start + windowSize);
+    const ids = feedItems.slice(start, end).map((i) => i.id);
+    if (ids.length > 0) contentLikes.fetchLikeCounts(ids);
+  }, [feedItems, currentIndex, contentLikes.fetchLikeCounts]);
+
+  const currentItem = localItems[currentIndex];
+  const currentTheme = currentItem?.theme ?? 'gold';
+  const isPromo = currentItem?.type === 'promo';
+  const hasVideo = !!(currentItem?.videoUrl && currentItem.videoUrl.length > 0);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    touchEndY.current = e.touches[0].clientY;
+  }, []);
+
   const handleTouchEnd = useCallback(() => {
     const diff = touchStartY.current - touchEndY.current;
-    if (Math.abs(diff) > 50) {
-      setCurrentIndex(prev => diff > 0 ? (prev + 1) % feedItems.length : (prev - 1 + feedItems.length) % feedItems.length);
+    if (Math.abs(diff) > 50 && localItems.length > 0) {
+      haptics.light();
+      setCurrentIndex((prev) =>
+        diff > 0
+          ? Math.min(prev + 1, localItems.length - 1)
+          : Math.max(prev - 1, 0)
+      );
     }
-    touchStartY.current = 0; touchEndY.current = 0;
-  }, [feedItems.length]);
+    touchStartY.current = 0;
+    touchEndY.current = 0;
+  }, [localItems.length, haptics]);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (Math.abs(e.deltaY) > 30) {
-      setCurrentIndex(prev => e.deltaY > 0 ? (prev + 1) % feedItems.length : (prev - 1 + feedItems.length) % feedItems.length);
-    }
-  }, [feedItems.length]);
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (Math.abs(e.deltaY) > 30 && localItems.length > 0) {
+        haptics.light();
+        setCurrentIndex((prev) =>
+          e.deltaY > 0 ? Math.min(prev + 1, localItems.length - 1) : Math.max(prev - 1, 0)
+        );
+      }
+    },
+    [localItems.length, haptics]
+  );
 
   const resetControlsTimeout = useCallback(() => {
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000);
   }, []);
 
-  const handleScreenTap = useCallback(() => {
-    setShowControls(prev => !prev);
-    if (!showControls) resetControlsTimeout();
-  }, [showControls, resetControlsTimeout]);
+  const handleScreenTap = useCallback(
+    async (e?: React.MouseEvent) => {
+      const now = Date.now();
+      if (now - lastTapRef.current < 350) {
+        lastTapRef.current = 0;
+        if (currentItem && currentItem.type === 'user_post') {
+          const result = await contentLikes.toggleLike(currentItem.id);
+          if (result.success) haptics.success();
+          else toast.error('Could not update like');
+        }
+        return;
+      }
+      lastTapRef.current = now;
+      setShowControls((prev) => !prev);
+      if (!showControls) resetControlsTimeout();
+    },
+    [currentItem, showControls, resetControlsTimeout, haptics, contentLikes]
+  );
 
-  useEffect(() => { return () => { if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current); }; }, []);
+  useEffect(() => () => {
+    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     if (isActive && currentItem && isPromo && !currentItem.claimed && !isPaused) setIsWatching(true);
     else setIsWatching(false);
   }, [isActive, currentIndex, currentItem, isPaused, isPromo]);
 
+  // Progress: video-driven when hasVideo, else timer
   useEffect(() => {
-    if (isWatching && currentItem && isPromo && !currentItem.claimed) {
+    if (!currentItem || !isPromo || currentItem.claimed) return;
+    if (hasVideo && videoRef.current) {
+      const video = videoRef.current;
+      const onTimeUpdate = () => {
+        if (video.duration && isFinite(video.duration))
+          setProgress((video.currentTime / Math.min(video.duration, currentItem.duration)) * 100);
+      };
+      const onEnded = () => {
+        setProgress(100);
+        setIsWatching(false);
+        setShowReward(true);
+        navigator.vibrate?.([100, 50, 100]);
+      };
+      video.addEventListener('timeupdate', onTimeUpdate);
+      video.addEventListener('ended', onEnded);
+      return () => {
+        video.removeEventListener('timeupdate', onTimeUpdate);
+        video.removeEventListener('ended', onEnded);
+      };
+    }
+    if (isWatching) {
       const duration = currentItem.duration * 1000;
       const startTime = Date.now();
       progressInterval.current = setInterval(() => {
         const newProgress = Math.min(((Date.now() - startTime) / duration) * 100, 100);
         setProgress(newProgress);
         if (newProgress >= 100) {
-          clearInterval(progressInterval.current!);
+          if (progressInterval.current) clearInterval(progressInterval.current);
           setIsWatching(false);
           setShowReward(true);
           navigator.vibrate?.([100, 50, 100]);
         }
       }, 50);
-      return () => { if (progressInterval.current) clearInterval(progressInterval.current); };
+      return () => {
+        if (progressInterval.current) clearInterval(progressInterval.current);
+      };
     }
-  }, [isWatching, currentItem, isPromo]);
+  }, [isWatching, currentItem, isPromo, hasVideo]);
 
-  useEffect(() => { setProgress(0); setShowReward(false); setIsPaused(false); }, [currentIndex]);
+  useEffect(() => {
+    setProgress(0);
+    setShowReward(false);
+    setIsPaused(false);
+    setVideoLoading(true);
+    setVideoError(false);
+    setPlaybackRate(1);
+  }, [currentIndex]);
+
+  // Sync video element play/pause, mute, and playback rate
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!hasVideo || !video) return;
+    video.muted = isMuted;
+    video.playbackRate = playbackRate;
+    if (isActive && !isPaused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [isActive, isPaused, isMuted, playbackRate, hasVideo, currentIndex]);
 
   const claimReward = useCallback(async () => {
-    if (!currentItem || !isPromo || currentItem.claimed || isClaimingReward || !currentItem.reward) return;
+    if (!currentItem || !isPromo || currentItem.claimed || isClaimingReward || !currentItem.reward)
+      return;
     setIsClaimingReward(true);
     try {
-      const result = await rewardsService.issueReward('promo_view', currentItem.id, { attentionScore: 95, coinType: currentItem.reward.type });
+      const duration = currentItem.duration ?? 0;
+      const result = await rewardsService.issueReward('promo_view', currentItem.id, {
+        attentionScore: 85,
+        coinType: currentItem.reward.type,
+        watchDuration: duration,
+        totalDuration: duration,
+      });
       if (result.success && result.amount) {
-        setFeedItems(prev => prev.map((v, idx) => idx === currentIndex ? { ...v, claimed: true } : v));
+        setLocalItems((prev) =>
+          prev.map((v, idx) => (idx === currentIndex ? { ...v, claimed: true } : v))
+        );
         await refreshProfile();
         onRewardEarned?.(result.amount, result.coinType || currentItem.reward.type);
-        toast.success(`+${result.amount} ${result.coinType === 'vicoin' ? 'Vicoins' : 'Icoins'}!`);
-        setTimeout(() => setShowReward(false), 1500);
+        const coinLabel = result.coinType === 'vicoin' ? 'Vicoins' : 'Icoins';
+        toast.success(`+${result.amount} ${coinLabel}!`, {
+          description: result.dailyRemaining?.promo_views != null && result.dailyRemaining.promo_views < 5
+            ? `${result.dailyRemaining.promo_views} rewards left today`
+            : undefined,
+        });
+        haptics.success();
+        setTimeout(() => setShowReward(false), 1200);
+      } else if (result.error) {
+        if (result.error.includes('already claimed') || result.error.includes('Reward already')) {
+          setLocalItems((prev) =>
+            prev.map((v, idx) => (idx === currentIndex ? { ...v, claimed: true } : v))
+          );
+          setShowReward(false);
+        } else if (result.error.includes('limit') || result.error.includes('Daily')) {
+          toast.info('Daily limit reached', { description: 'Come back tomorrow for more rewards!' });
+        } else if (result.error.includes('Watch more')) {
+          toast.warning('Keep watching', { description: result.error });
+        } else {
+          toast.error('Could not claim', { description: result.error });
+        }
       }
-    } catch (error) { console.error('Error claiming reward:', error); }
-    finally { setIsClaimingReward(false); }
-  }, [currentItem, currentIndex, isClaimingReward, isPromo, onRewardEarned, refreshProfile]);
+    } catch (err) {
+      console.error('Error claiming reward:', err);
+      toast.error('Connection error', { description: 'Please try again' });
+    } finally {
+      setIsClaimingReward(false);
+    }
+  }, [currentItem, currentIndex, isClaimingReward, isPromo, onRewardEarned, refreshProfile, haptics]);
 
-  const formatNumber = (num: number) => num >= 1000000 ? (num / 1000000).toFixed(1) + 'M' : num >= 1000 ? (num / 1000).toFixed(1) + 'K' : num.toString();
+  const handleRefresh = useCallback(async () => {
+    await refresh();
+    setCurrentIndex(0);
+    if (error) toast.success('Feed refreshed');
+  }, [refresh, error]);
 
-  return (
-    <div className="h-full w-full bg-background relative overflow-hidden" onClick={handleScreenTap} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onWheel={handleWheel}>
+  const handleSave = useCallback(() => {
+    if (!currentItem) return;
+    saveVideo({
+      contentId: currentItem.id,
+      title: currentItem.title,
+      thumbnail: currentItem.thumbnail,
+      type: currentItem.type === 'promo' ? 'promo' : 'video',
+      videoSrc: currentItem.videoUrl || undefined,
+      src: currentItem.thumbnail,
+      creator: currentItem.brandName
+        ? { displayName: currentItem.brandName }
+        : currentItem.username
+          ? { displayName: currentItem.username }
+          : undefined,
+      reward: currentItem.reward,
+      duration: currentItem.duration,
+    });
+    haptics.success();
+    toast.success('Saved for later');
+  }, [currentItem, saveVideo, haptics]);
+
+  const handleReport = useCallback(() => {
+    haptics.light();
+    toast.success("Thanks, we'll review this.");
+  }, [haptics]);
+
+  const formatNumber = (num: number) =>
+    num >= 1_000_000 ? (num / 1_000_000).toFixed(1) + 'M' : num >= 1000 ? (num / 1000).toFixed(1) + 'K' : num.toString();
+
+  const goNext = useCallback(() => {
+    if (localItems.length === 0) return;
+    haptics.light();
+    setCurrentIndex((prev) => Math.min(prev + 1, localItems.length - 1));
+  }, [localItems.length, haptics]);
+
+  const goPrev = useCallback(() => {
+    haptics.light();
+    setCurrentIndex((prev) => Math.max(prev - 1, 0));
+  }, [haptics]);
+
+  const handleVideoLoadedData = useCallback(() => {
+    setVideoLoading(false);
+    setVideoError(false);
+  }, []);
+
+  const handleVideoError = useCallback(() => {
+    setVideoLoading(false);
+    setVideoError(true);
+  }, []);
+
+  const handleVideoRetry = useCallback(() => {
+    setVideoError(false);
+    setVideoLoading(true);
+    const video = videoRef.current;
+    if (video && currentItem?.videoUrl) {
+      video.load();
+      video.play().catch(() => {});
+    }
+  }, [currentItem?.videoUrl]);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.().then(() => haptics.light()).catch(() => {});
+    } else {
+      document.exitFullscreen?.().then(() => haptics.light()).catch(() => {});
+    }
+    resetControlsTimeout();
+  }, [haptics, resetControlsTimeout]);
+
+  const seekBack = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.max(0, video.currentTime - 10);
+    haptics.light();
+    resetControlsTimeout();
+  }, [haptics, resetControlsTimeout]);
+
+  const seekForward = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const duration = Number.isFinite(video.duration) ? video.duration : currentItem?.duration ?? 999;
+    video.currentTime = Math.min(duration, video.currentTime + 10);
+    haptics.light();
+    resetControlsTimeout();
+  }, [currentItem?.duration, haptics, resetControlsTimeout]);
+
+  const cyclePlaybackRate = useCallback(() => {
+    setPlaybackRate((r) => (r >= 1.5 ? 1 : 1.5));
+    haptics.light();
+    resetControlsTimeout();
+  }, [haptics, resetControlsTimeout]);
+
+  // Loading state
+  if (isLoading && localItems.length === 0) {
+    return (
+      <div className="h-full w-full bg-background flex flex-col items-center justify-center gap-4 p-6">
+        <div className="w-12 h-12 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <p className="text-muted-foreground text-sm">Loading promos...</p>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (localItems.length === 0) {
+    return (
+      <div className="h-full w-full bg-background flex flex-col items-center justify-center gap-6 p-8">
+        <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center">
+          <Sparkles className="w-12 h-12 text-primary" />
+        </div>
+        <h2 className="text-xl font-semibold text-center">No promos right now</h2>
+        <p className="text-muted-foreground text-center text-sm max-w-xs">
+          Check back later or pull to refresh for new rewards.
+        </p>
+        <button
+          onClick={handleRefresh}
+          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary text-primary-foreground font-medium"
+        >
+          <RefreshCw className="w-5 h-5" />
+          Refresh
+        </button>
+      </div>
+    );
+  }
+
+  const atStart = currentIndex === 0;
+  const atEnd = currentIndex === localItems.length - 1;
+
+  const content = (
+    <div
+      ref={containerRef}
+      className="h-full w-full relative overflow-hidden"
+      onClick={(e) => handleScreenTap(e as unknown as React.MouseEvent)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onWheel={handleWheel}
+    >
+      {/* Background: video or image */}
       <div className="absolute inset-0">
-        <img src={currentItem.thumbnail} alt={currentItem.title} className="w-full h-full object-cover" />
+        {hasVideo ? (
+          <video
+            ref={videoRef}
+            src={currentItem.videoUrl}
+            poster={currentItem.thumbnail}
+            className="w-full h-full object-cover"
+            muted={isMuted}
+            playsInline
+            loop={!isPromo}
+            onLoadedData={handleVideoLoadedData}
+            onCanPlay={handleVideoLoadedData}
+            onError={handleVideoError}
+            style={{ opacity: isPaused ? 0.85 : 1 }}
+          />
+        ) : (
+          <img
+            src={currentItem.thumbnail}
+            alt={currentItem.title}
+            className="w-full h-full object-cover"
+          />
+        )}
         <div className={cn('absolute inset-0 bg-gradient-to-b', themeOverlays[currentTheme])} />
       </div>
 
-      {isPromo && currentItem.reward && (
-        <div className="absolute top-0 left-0 right-0 z-20 p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Clock className="w-4 h-4 text-white" />
-            <div className="flex-1 h-2.5 bg-white/20 rounded-full overflow-hidden">
-              <div className={cn('h-full rounded-full transition-all', progress >= 100 ? 'bg-green-400' : themeProgressBars[currentTheme])} style={{ width: `${progress}%` }} />
-            </div>
-            <GlassText theme={currentTheme} variant="glow" size="sm">{Math.ceil((currentItem.duration * (100 - progress)) / 100)}s</GlassText>
-          </div>
-          <div className="flex items-center justify-center gap-2 glass-neon rounded-full px-4 py-2 w-fit mx-auto">
-            <Coins className={cn('w-5 h-5', currentItem.reward.type === 'icoin' ? 'text-icoin' : 'text-primary')} />
-            <GlassText theme={currentItem.reward.type === 'icoin' ? 'gold' : currentTheme} variant="gradient" size="lg">+{currentItem.reward.amount}</GlassText>
-            <span className="text-white/70 text-sm">{currentItem.reward.type === 'vicoin' ? 'Vicoins' : 'Icoins'}</span>
+      {/* Video loading overlay */}
+      {hasVideo && videoLoading && !videoError && (
+        <div className="absolute inset-0 z-[13] flex items-center justify-center bg-black/30">
+          <div className="w-14 h-14 rounded-full bg-black/50 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-white animate-spin" />
           </div>
         </div>
       )}
 
-      <div className={cn("absolute left-0 right-0 z-10 px-4", isPromo ? "top-28" : "top-4")}>
-        <div className="flex items-center gap-3 glass-neon rounded-2xl p-3">
-          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary/50">
-            <img src={isPromo ? currentItem.brandLogo : currentItem.avatar} alt="" className="w-full h-full object-cover" />
+      {/* Video error overlay: fallback thumbnail message + retry */}
+      {hasVideo && videoError && (
+        <div className="absolute inset-0 z-[13] flex flex-col items-center justify-center gap-4 bg-black/50 p-6">
+          <AlertCircle className="w-12 h-12 text-amber-400" />
+          <p className="text-white text-sm text-center">Couldn&apos;t load video</p>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleVideoRetry();
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/20 text-white font-medium text-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Video play/pause when hasVideo and paused */}
+      {hasVideo && isPaused && !videoLoading && !videoError && (
+        <div className="absolute inset-0 flex items-center justify-center z-[14] pointer-events-none">
+          <div className="w-20 h-20 rounded-full bg-black/50 flex items-center justify-center">
+            <Play className="w-10 h-10 text-white ml-1" />
           </div>
-          <div className="flex-1">
-            <GlassText theme={currentTheme} variant="3d" size="lg" as="p">{isPromo ? currentItem.brandName : currentItem.username}</GlassText>
-            <p className="text-white/60 text-xs flex items-center gap-1">{isPromo ? <><Gift className="w-3 h-3" /> Sponsored</> : <><Eye className="w-3 h-3" /> {formatNumber(currentItem.likes || 0)} likes</>}</p>
+        </div>
+      )}
+
+      {/* Top: filter chips */}
+      <div className="absolute top-2 left-2 right-2 z-20 flex justify-center gap-2 flex-wrap">
+        {REWARD_FILTERS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={(e) => {
+              e.stopPropagation();
+              setRewardFilter(value);
+              setCurrentIndex(0);
+              haptics.light();
+            }}
+            className={cn(
+              'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+              rewardFilter === value
+                ? 'bg-white/25 text-white border border-white/40'
+                : 'bg-white/10 text-white/80 border border-transparent'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Promo: progress bar + reward badge */}
+      {isPromo && currentItem.reward && (
+        <div className="absolute top-12 left-0 right-0 z-20 p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock className="w-4 h-4 text-white shrink-0" />
+            <div className="flex-1 h-2.5 bg-white/20 rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all',
+                  progress >= 100 ? 'bg-green-400' : themeProgressBars[currentTheme]
+                )}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <GlassText theme={currentTheme} variant="glow" size="sm">
+              {Math.ceil((currentItem.duration * (100 - progress)) / 100)}s
+            </GlassText>
+          </div>
+          <div className="flex items-center justify-center gap-2 glass-neon rounded-full px-4 py-2 w-fit mx-auto">
+            <Coins
+              className={cn(
+                'w-5 h-5',
+                currentItem.reward.type === 'icoin' ? 'text-icoin' : 'text-primary'
+              )}
+            />
+            <GlassText
+              theme={currentItem.reward.type === 'icoin' ? 'gold' : currentTheme}
+              variant="gradient"
+              size="lg"
+            >
+              +{currentItem.reward.amount}
+            </GlassText>
+            <span className="text-white/70 text-sm">
+              {currentItem.reward.type === 'vicoin' ? 'Vicoins' : 'Icoins'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Header: brand / user */}
+      <div
+        className={cn(
+          'absolute left-0 right-0 z-10 px-4',
+          isPromo && currentItem.reward ? 'top-44' : 'top-14'
+        )}
+      >
+        <div className="flex items-center gap-3 glass-neon rounded-2xl p-3">
+          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary/50 shrink-0">
+            <img
+              src={isPromo ? currentItem.brandLogo : currentItem.avatar}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <GlassText theme={currentTheme} variant="3d" size="lg" as="p" className="truncate">
+              {isPromo ? currentItem.brandName : currentItem.username}
+            </GlassText>
+            <p className="text-white/60 text-xs flex items-center gap-1">
+              {isPromo ? (
+                <>
+                  <Gift className="w-3 h-3 shrink-0" /> Sponsored
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3 h-3 shrink-0" /> {formatNumber(contentLikes.getLikeCount(currentItem.id, currentItem.likes || 0))} likes
+                </>
+              )}
+            </p>
           </div>
         </div>
       </div>
 
+      {/* Claim reward modal */}
       {showReward && isPromo && !currentItem.claimed && currentItem.reward && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-md">
           <div className="glass-neon rounded-3xl p-8 mx-6 text-center animate-scale-in">
             <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 bg-gradient-to-br from-primary/30 to-accent/20">
-              <Coins className={cn('w-10 h-10', currentItem.reward.type === 'icoin' ? 'text-icoin' : 'text-primary')} />
+              <Coins
+                className={cn(
+                  'w-10 h-10',
+                  currentItem.reward.type === 'icoin' ? 'text-icoin' : 'text-primary'
+                )}
+              />
             </div>
-            <GlassText theme={currentTheme} variant="gradient" size="xl" as="h3" className="mb-2">Reward Earned!</GlassText>
-            <GlassText theme={currentItem.reward.type === 'icoin' ? 'gold' : currentTheme} variant="neon" className="text-5xl mb-2 block">+{currentItem.reward.amount}</GlassText>
-            <button onClick={claimReward} disabled={isClaimingReward} className="w-full py-4 rounded-2xl font-bold bg-gradient-to-r from-primary to-accent text-white flex items-center justify-center gap-2">
-              {isClaimingReward ? 'Claiming...' : <><Check className="w-5 h-5" /> Claim Reward</>}
+            <GlassText theme={currentTheme} variant="gradient" size="xl" as="h3" className="mb-2">
+              Reward Earned!
+            </GlassText>
+            <GlassText
+              theme={currentItem.reward.type === 'icoin' ? 'gold' : currentTheme}
+              variant="neon"
+              className="text-5xl mb-2 block"
+            >
+              +{currentItem.reward.amount}
+            </GlassText>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                claimReward();
+              }}
+              disabled={isClaimingReward}
+              className="w-full py-4 rounded-2xl font-bold bg-gradient-to-r from-primary to-accent text-white flex items-center justify-center gap-2"
+            >
+              {isClaimingReward ? (
+                'Claiming...'
+              ) : (
+                <>
+                  <Check className="w-5 h-5" /> Claim Reward
+                </>
+              )}
             </button>
           </div>
         </div>
       )}
 
+      {/* Claimed badge */}
       {isPromo && currentItem.claimed && (
-        <div className="absolute top-44 left-1/2 -translate-x-1/2 z-20">
+        <div className="absolute top-52 left-1/2 -translate-x-1/2 z-20">
           <div className="flex items-center gap-2 glass-neon rounded-full px-4 py-2 border border-green-500/30">
             <Check className="w-5 h-5 text-green-400" />
-            <GlassText theme="emerald" variant="glow" size="sm">Reward Claimed</GlassText>
+            <GlassText theme="emerald" variant="glow" size="sm">
+              Reward Claimed
+            </GlassText>
           </div>
         </div>
       )}
 
+      {/* Overlay controls (play/pause, mute, seek, rate, fullscreen, skip) */}
       {showControls && (
-        <div className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center gap-6">
-            <Neu3DButton onClick={() => { setIsPaused(!isPaused); resetControlsTimeout(); }} theme={currentTheme} variant="glass" size="lg">
+        <div
+          className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex flex-wrap items-center justify-center gap-3 max-w-full px-4">
+            <Neu3DButton
+              onClick={() => {
+                if (hasVideo && videoRef.current) {
+                  if (isPaused) videoRef.current.play();
+                  else videoRef.current.pause();
+                }
+                setIsPaused(!isPaused);
+                resetControlsTimeout();
+              }}
+              theme={currentTheme}
+              variant="glass"
+              size="lg"
+            >
               {isPaused ? <Play className="w-8 h-8 ml-1" /> : <Pause className="w-8 h-8" />}
             </Neu3DButton>
-            <Neu3DButton onClick={() => { setIsMuted(!isMuted); resetControlsTimeout(); }} theme={currentTheme} variant="glass">
+            <Neu3DButton
+              onClick={() => {
+                toggleMute();
+                resetControlsTimeout();
+              }}
+              theme={currentTheme}
+              variant="glass"
+            >
               {isMuted ? <VolumeX className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
             </Neu3DButton>
+            {hasVideo && (
+              <>
+                <Neu3DButton onClick={seekBack} theme={currentTheme} variant="glass" title="Back 10s">
+                  <SkipBack className="w-6 h-6" />
+                </Neu3DButton>
+                <Neu3DButton onClick={seekForward} theme={currentTheme} variant="glass" title="Forward 10s">
+                  <SkipForward className="w-6 h-6" />
+                </Neu3DButton>
+                <Neu3DButton onClick={cyclePlaybackRate} theme={currentTheme} variant="glass" title="Playback speed">
+                  <RotateCw className="w-6 h-6" />
+                  <span className="text-xs ml-1">{playbackRate}x</span>
+                </Neu3DButton>
+                <Neu3DButton onClick={toggleFullscreen} theme={currentTheme} variant="glass" title="Fullscreen">
+                  <Maximize className="w-6 h-6" />
+                </Neu3DButton>
+              </>
+            )}
+            {isPromo && !currentItem.claimed && (
+              <Neu3DButton onClick={() => { goNext(); resetControlsTimeout(); }} theme={currentTheme} variant="glass">
+                <SkipForward className="w-6 h-6" />
+                <span className="text-xs ml-1">Next</span>
+              </Neu3DButton>
+            )}
           </div>
         </div>
       )}
 
-      {!isPromo && (
-        <div className="absolute right-4 bottom-40 z-10 flex flex-col items-center gap-4">
-          <button className="flex flex-col items-center gap-1"><div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center"><Heart className="w-6 h-6 text-white" /></div><span className="text-white text-xs">{formatNumber(currentItem.likes || 0)}</span></button>
-          <button className="flex flex-col items-center gap-1"><div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center"><MessageCircle className="w-6 h-6 text-white" /></div><span className="text-white text-xs">{formatNumber(currentItem.comments || 0)}</span></button>
-          <button className="flex flex-col items-center gap-1"><div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center"><Share2 className="w-6 h-6 text-white" /></div><span className="text-white text-xs">Share</span></button>
-        </div>
-      )}
+      {/* Right rail: like, comment, share, save, report */}
+      <div className="absolute right-4 bottom-36 z-10 flex flex-col items-center gap-4">
+        <button
+          className="flex flex-col items-center gap-1"
+          onClick={async (e) => {
+            e.stopPropagation();
+            if (currentItem?.type === 'user_post') {
+              const result = await contentLikes.toggleLike(currentItem.id);
+              if (result.success) haptics.success();
+              else toast.error('Could not update like');
+            }
+          }}
+        >
+          <div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center">
+            <Heart
+              className={cn(
+                'w-6 h-6',
+                currentItem?.type === 'user_post' && contentLikes.isLiked(currentItem?.id ?? '')
+                  ? 'fill-red-500 text-red-500'
+                  : 'text-white'
+              )}
+            />
+          </div>
+          <span className="text-white text-xs">
+            {currentItem?.type === 'user_post'
+              ? formatNumber(contentLikes.getLikeCount(currentItem?.id ?? '', currentItem?.likes ?? 0))
+              : 'Like'}
+          </span>
+        </button>
+        {currentItem?.type === 'user_post' && (
+          <>
+            <button className="flex flex-col items-center gap-1">
+              <div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center">
+                <MessageCircle className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-white text-xs">{formatNumber(currentItem.comments ?? 0)}</span>
+            </button>
+          </>
+        )}
+        <button
+          className="flex flex-col items-center gap-1"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShareItem(currentItem ?? null);
+          }}
+        >
+          <div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center">
+            <Share2 className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-white text-xs">Share</span>
+        </button>
+        <button
+          className="flex flex-col items-center gap-1"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleSave();
+          }}
+        >
+          <div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center">
+            <Bookmark
+              className={cn('w-6 h-6', isSaved(currentItem?.id ?? '') ? 'fill-primary text-primary' : 'text-white')}
+            />
+          </div>
+          <span className="text-white text-xs">{isSaved(currentItem?.id ?? '') ? 'Saved' : 'Save'}</span>
+        </button>
+        <button
+          className="flex flex-col items-center gap-1"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleReport();
+          }}
+        >
+          <div className="w-12 h-12 rounded-full glass-neon flex items-center justify-center">
+            <Flag className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-white text-xs">Report</span>
+        </button>
+      </div>
 
-      <div className="absolute bottom-24 left-4 right-20 z-10">
-        <GlassText theme={currentTheme} variant="3d" size="xl" as="h2" className="mb-2">{currentItem.title}</GlassText>
+      {/* Title + description */}
+      <div className="absolute bottom-28 left-4 right-20 z-10">
+        <GlassText theme={currentTheme} variant="3d" size="xl" as="h2" className="mb-2">
+          {currentItem.title}
+        </GlassText>
         <p className="text-white/80 text-sm line-clamp-2">{currentItem.description}</p>
       </div>
 
-      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10"><div className="flex flex-col items-center gap-1 animate-bounce"><div className="w-1 h-6 bg-white/30 rounded-full" /><span className="text-white/50 text-xs">Swipe</span></div></div>
-      <div className="absolute top-4 right-4 z-20"><div className="glass-neon rounded-full px-3 py-1"><span className="text-white/80 text-sm">{currentIndex + 1}/{feedItems.length}</span></div></div>
+      {/* Swipe hint (only near bottom, first few items; hide at end) */}
+      {currentIndex < 3 && !atEnd && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10">
+          <div className="flex flex-col items-center gap-1 animate-bounce">
+            <div className="w-1 h-6 bg-white/30 rounded-full" />
+            <span className="text-white/50 text-xs">Swipe</span>
+          </div>
+        </div>
+      )}
+
+      {/* Position + source badge */}
+      <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-1">
+        <div className="glass-neon rounded-full px-3 py-1">
+          <span className="text-white/80 text-sm">
+            {currentIndex + 1}/{localItems.length}
+          </span>
+        </div>
+        {fromBackend && (
+          <span className="text-white/50 text-[10px]">Live</span>
+        )}
+      </div>
+
+      {/* End of feed card */}
+      {atEnd && localItems.length > 0 && (
+        <div className="absolute bottom-20 left-4 right-4 z-10 flex flex-col items-center gap-2">
+          <p className="text-white/70 text-sm">You're all caught up!</p>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRefresh();
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 text-white text-sm font-medium"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
+      )}
     </div>
+  );
+
+  return (
+    <>
+      <PullToRefresh onRefresh={handleRefresh} className="h-full w-full overflow-hidden">
+        {content}
+      </PullToRefresh>
+      <ShareSheet
+        isOpen={!!shareItem}
+        onClose={() => setShareItem(null)}
+        contentId={shareItem?.id ?? null}
+        title={shareItem?.title}
+        description={shareItem?.description}
+        mediaUrl={shareItem?.videoUrl ?? undefined}
+        mediaType="video"
+      />
+    </>
   );
 };
 

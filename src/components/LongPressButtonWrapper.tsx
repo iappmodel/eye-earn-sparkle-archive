@@ -42,6 +42,7 @@ interface LongPressButtonWrapperProps {
 
 // Storage keys
 const BUTTON_SETTINGS_KEY = 'visuai-button-settings';
+const UI_EDIT_MODE_KEY = 'visuai-ui-edit-mode';
 const AUTO_HIDE_DELAY_KEY = 'visuai-auto-hide-delay';
 const GRID_SNAP_KEY = 'visuai-grid-snap-enabled';
 const HIDDEN_BUTTONS_KEY = 'visuai-hidden-buttons';
@@ -54,6 +55,7 @@ const BUTTON_OPACITY_KEY = 'visuai-button-opacity';
 const BUTTON_BORDERS_KEY = 'visuai-button-borders';
 const BUTTON_SHADOWS_KEY = 'visuai-button-shadows';
 const BUTTON_HOVERS_KEY = 'visuai-button-hovers';
+const BUTTON_SHAPES_KEY = 'visuai-button-shapes';
 const BUTTON_UI_GROUPS_KEY = 'visuai-button-ui-groups';
 
 // Grid snap configuration
@@ -164,6 +166,30 @@ export const BUTTON_HOVER_OPTIONS: { value: ButtonHoverEffect; label: string; de
   { value: 'glow', label: 'Glow', description: 'Glow on hover' },
   { value: 'scale-rotate', label: 'Scale + Rotate', description: 'Combined effect' },
   { value: 'lift', label: 'Lift', description: 'Float up on hover' },
+];
+
+// Button shape options (per-button override)
+export type ButtonShapeOption =
+  | 'theme' // use theme default
+  | 'rounded'
+  | 'pill'
+  | 'square'
+  | 'circle'
+  | 'hex'
+  | 'star'
+  | 'heart'
+  | 'diamond';
+
+export const BUTTON_SHAPE_OPTIONS: { value: ButtonShapeOption; label: string }[] = [
+  { value: 'theme', label: 'Theme' },
+  { value: 'rounded', label: 'Rounded' },
+  { value: 'pill', label: 'Pill' },
+  { value: 'square', label: 'Square' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'hex', label: 'Hex' },
+  { value: 'star', label: 'Star' },
+  { value: 'heart', label: 'Heart' },
+  { value: 'diamond', label: 'Diamond' },
 ];
 
 // Button UI Groups for collapsible sections
@@ -574,6 +600,32 @@ export const getButtonHover = (buttonId: string): ButtonHoverEffect => {
   return hovers[buttonId] || 'none';
 };
 
+// Button shapes management
+export const getButtonShapes = (): Record<string, ButtonShapeOption> => {
+  try {
+    const saved = localStorage.getItem(BUTTON_SHAPES_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setButtonShape = (buttonId: string, shape: ButtonShapeOption) => {
+  try {
+    const shapes = getButtonShapes();
+    shapes[buttonId] = shape;
+    localStorage.setItem(BUTTON_SHAPES_KEY, JSON.stringify(shapes));
+    window.dispatchEvent(new CustomEvent('buttonShapesChanged', { detail: shapes }));
+  } catch (e) {
+    console.error('Failed to save button shape:', e);
+  }
+};
+
+export const getButtonShape = (buttonId: string): ButtonShapeOption => {
+  const shapes = getButtonShapes();
+  return shapes[buttonId] || 'theme';
+};
+
 // Button UI Groups management
 export const loadButtonUIGroups = (): ButtonUIGroup[] => {
   try {
@@ -829,12 +881,14 @@ const ButtonSettingsPopover: React.FC<{
   const [selectedBorder, setSelectedBorder] = useState<ButtonBorderStyle>(() => getButtonBorder(buttonId));
   const [selectedShadow, setSelectedShadow] = useState<ButtonShadowStyle>(() => getButtonShadow(buttonId));
   const [selectedHover, setSelectedHover] = useState<ButtonHoverEffect>(() => getButtonHover(buttonId));
+  const [selectedShape, setSelectedShape] = useState<ButtonShapeOption>(() => getButtonShape(buttonId));
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showAnimationPicker, setShowAnimationPicker] = useState(false);
   const [showBorderPicker, setShowBorderPicker] = useState(false);
   const [showShadowPicker, setShowShadowPicker] = useState(false);
   const [showHoverPicker, setShowHoverPicker] = useState(false);
+  const [showShapePicker, setShowShapePicker] = useState(false);
 
   const delayOptions = [
     { value: 500, label: '0.5s' },
@@ -931,6 +985,12 @@ const ButtonSettingsPopover: React.FC<{
     light();
     setSelectedHover(hover);
     setButtonHover(buttonId, hover);
+  };
+
+  const handleShapeChange = (shape: ButtonShapeOption) => {
+    light();
+    setSelectedShape(shape);
+    setButtonShape(buttonId, shape);
   };
 
   const handleResetPosition = () => {
@@ -1330,6 +1390,49 @@ const ButtonSettingsPopover: React.FC<{
             </div>
           )}
 
+          {/* Shape Picker */}
+          {!showAutoHideSettings && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowShapePicker(!showShapePicker)}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Square className={cn('w-5 h-5', selectedShape !== 'theme' ? 'text-primary' : 'text-muted-foreground')} />
+                  <span className="text-sm font-medium">
+                    Shape: {BUTTON_SHAPE_OPTIONS.find(s => s.value === selectedShape)?.label || 'Theme'}
+                  </span>
+                </div>
+                <Square className={cn('w-4 h-4 transition-colors', showShapePicker ? 'text-primary' : 'text-muted-foreground')} />
+              </button>
+
+              {showShapePicker && (
+                <div className="space-y-2 animate-fade-in p-2 rounded-xl bg-muted/30">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {BUTTON_SHAPE_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => handleShapeChange(option.value)}
+                        className={cn(
+                          'p-2.5 rounded-lg transition-all text-center text-xs font-medium',
+                          selectedShape === option.value
+                            ? 'bg-primary text-primary-foreground ring-2 ring-primary/50'
+                            : 'bg-muted/50 hover:bg-muted text-foreground/70'
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] text-muted-foreground">
+                    Tip: pick “Theme” to use the current theme’s default shape.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Border Style */}
           {!showAutoHideSettings && (
             <div className="space-y-2">
@@ -1710,7 +1813,7 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
   onActionChange,
   onVisibilityChange,
   onSettingsChange,
-  longPressDelay = 1000,
+  longPressDelay = 2500,
   enableDrag = true,
   className,
   showAutoHideSettings = false,
@@ -1723,10 +1826,20 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
   const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
   const [dragPosition, setDragPosition] = useState<Position | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(getGridSnapEnabled());
+  const [isUiEditMode, setIsUiEditMode] = useState(() => {
+    try {
+      return localStorage.getItem(UI_EDIT_MODE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { heavy, success, light } = useHapticFeedback();
+  const pointerDownRef = useRef(false);
+  const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragArmedRef = useRef(false);
 
   // Get initial position from saved positions or element position
   useEffect(() => {
@@ -1734,6 +1847,24 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
       const rect = wrapperRef.current.getBoundingClientRect();
       setPosition({ x: rect.left, y: rect.top });
     }
+  }, []);
+
+  // Global edit-mode sync (so a single "Edit" button can show gears on all buttons)
+  useEffect(() => {
+    const read = () => {
+      try {
+        setIsUiEditMode(localStorage.getItem(UI_EDIT_MODE_KEY) === 'true');
+      } catch {
+        setIsUiEditMode(false);
+      }
+    };
+    const onChanged = () => read();
+    window.addEventListener('uiEditModeChanged', onChanged as EventListener);
+    window.addEventListener('storage', onChanged);
+    return () => {
+      window.removeEventListener('uiEditModeChanged', onChanged as EventListener);
+      window.removeEventListener('storage', onChanged);
+    };
   }, []);
 
   const clearLongPress = useCallback(() => {
@@ -1745,6 +1876,9 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (isDragMode) return;
+    pointerDownRef.current = true;
+    startPointRef.current = { x: e.clientX, y: e.clientY };
+    dragArmedRef.current = false;
     
     const rect = wrapperRef.current?.getBoundingClientRect();
     if (rect) {
@@ -1754,15 +1888,43 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
     longPressTimer.current = setTimeout(() => {
       heavy();
       setShowGear(true);
+      dragArmedRef.current = true;
     }, longPressDelay);
   }, [longPressDelay, heavy, isDragMode]);
 
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!enableDrag) return;
+    if (!pointerDownRef.current) return;
+    if (isDragMode) return;
+    if (!dragArmedRef.current) return;
+    if (!startPointRef.current) return;
+
+    const dx = e.clientX - startPointRef.current.x;
+    const dy = e.clientY - startPointRef.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 10) return;
+
+    // Start drag mode when user moves after long-press.
+    setShowGear(false);
+    setShowSettings(false);
+    setIsDragMode(true);
+    const gridSnap = getGridSnapEnabled();
+    setSnapEnabled(gridSnap);
+    setDragPosition(position);
+  }, [enableDrag, isDragMode, position]);
+
   const handlePointerUp = useCallback(() => {
     clearLongPress();
+    pointerDownRef.current = false;
+    startPointRef.current = null;
+    dragArmedRef.current = false;
   }, [clearLongPress]);
 
   const handlePointerLeave = useCallback(() => {
     clearLongPress();
+    pointerDownRef.current = false;
+    startPointRef.current = null;
+    dragArmedRef.current = false;
   }, [clearLongPress]);
 
   const handleGearClick = useCallback(() => {
@@ -1836,13 +1998,13 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (showGear && wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setShowGear(false);
+        if (!isUiEditMode) setShowGear(false);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showGear]);
+  }, [showGear, isUiEditMode]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1899,6 +2061,7 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
         data-button-id={buttonId}
         className={cn('relative', className)}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         style={{ touchAction: 'manipulation' }}
@@ -1906,7 +2069,7 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
         {children}
         
         <GearIconOverlay 
-          isVisible={showGear} 
+          isVisible={showGear || isUiEditMode} 
           onClick={handleGearClick}
         />
       </div>

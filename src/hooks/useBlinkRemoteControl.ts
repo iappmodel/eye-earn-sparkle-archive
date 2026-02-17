@@ -1,12 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useBlinkDetection } from './useBlinkDetection';
 import { useGazeDirection, GazeDirection } from './useGazeDirection';
+import { useVisionEngine } from './useVisionEngine';
+import { useVision, USE_VISION_CONTEXT } from '@/contexts/VisionContext';
+import { logger } from '@/lib/logger';
+import { fetchProfileCalibration, saveProfileCalibration } from '@/services/calibration.service';
+import { securityService } from '@/services/security.service';
 
 // Storage keys
 export const BLINK_COMMANDS_KEY = 'app_blink_commands';
+export const GESTURE_THRESHOLDS_KEY = 'app_gesture_thresholds';
+
+/** Derive gesture thresholds from FacialExpressionScanning result for persistence */
+export function deriveGestureThresholdsFromExpressions(expressions: { type: string; captured: boolean }[]): Record<string, number> {
+  const captured = new Set(expressions.filter((e) => e.captured).map((e) => e.type));
+  const thresholds: Record<string, number> = {};
+  if (captured.has('tilt-left') || captured.has('tilt-right')) thresholds.headTurn = 6;
+  if (captured.has('lift-lips')) thresholds.lipRaise = 0.010;
+  if (captured.has('surprised')) thresholds.eyebrowLift = 0.18;
+  if (captured.has('happy') || captured.has('smiling') || captured.has('smirk')) thresholds.smileRatio = 0.12;
+  return thresholds;
+}
 export const GAZE_COMMANDS_KEY = 'app_gaze_commands';
 export const REMOTE_CONTROL_SETTINGS_KEY = 'app_remote_control_settings';
 export const CALIBRATION_DATA_KEY = 'app_remote_control_calibration';
+
+// Special command ID used for global default blink mappings
+export const GLOBAL_BLINK_COMMAND_ID = '__global__';
 
 export type BlinkAction = 'click' | 'longPress' | 'toggle' | 'none';
 export type GazeNavigationAction = 'nextVideo' | 'prevVideo' | 'friendsFeed' | 'promoFeed' | 'none';
@@ -24,6 +43,9 @@ export interface GazeCommand {
   enabled: boolean;
 }
 
+/** 2D affine params: targetX = a*gazeX + b*gazeY + c, targetY = d*gazeX + e*gazeY + f */
+export type AffineParams = [number, number, number, number, number, number];
+
 export interface CalibrationData {
   offsetX: number;
   offsetY: number;
@@ -33,6 +55,11 @@ export interface CalibrationData {
   calibratedAt: number;
   autoCalibrationEnabled: boolean;
   autoAdjustments: number;
+  /** 2D affine mapping for better accuracy (Phase 2). When present, used instead of offset+scale. */
+  affineParams?: AffineParams;
+  /** Personalized slow blink range (ms) from training. Defaults: 400–2000 */
+  slowBlinkMinMs?: number;
+  slowBlinkMaxMs?: number;
 }
 
 export interface AutoCalibrationState {
@@ -48,6 +75,15 @@ export interface RemoteControlSettings {
   ghostOpacity: number; // 0.3-0.5 for ghost mode
   edgeThreshold: number; // How far eyes need to move to trigger navigation
   rapidMovementEnabled: boolean;
+  gazeReach: number; // 0.8-2.4 scale for iris range
+  mirrorX: boolean;
+  invertY: boolean;
+  tiltEnabled: boolean;
+  tiltSensitivity: number; // 1-10
+  /** Use 16-point calibration for better gaze accuracy (Phase 2) */
+  extendedGazeCalibration?: boolean;
+  /** Vision backend: face_mesh (legacy) or face_landmarker (Phase 3) */
+  visionBackend?: 'face_mesh' | 'face_landmarker';
 }
 
 export interface GhostButton {
@@ -88,6 +124,7 @@ interface RemoteControlState {
 
 interface UseBlinkRemoteControlOptions {
   enabled?: boolean;
+  userId?: string | null;
   onAction?: (buttonId: string, action: BlinkAction, blinkCount: number) => void;
   onNavigate?: (action: GazeNavigationAction, direction: GazeDirection) => void;
 }
@@ -100,6 +137,11 @@ const DEFAULT_SETTINGS: RemoteControlSettings = {
   ghostOpacity: 0.4,
   edgeThreshold: 0.35,
   rapidMovementEnabled: true,
+  gazeReach: 1.6,
+  mirrorX: true,
+  invertY: true,
+  tiltEnabled: false,
+  tiltSensitivity: 5,
 };
 
 const DEFAULT_CALIBRATION: CalibrationData = {
@@ -191,14 +233,88 @@ export const saveCalibrationData = (data: CalibrationData) => {
   localStorage.setItem(CALIBRATION_DATA_KEY, JSON.stringify(data));
 };
 
+/** Solve 3x3 system Mx=v. Returns null if singular. */
+function solve3x3(M: number[][], v: number[]): [number, number, number] | null {
+  const a = M.map((r) => [...r]);
+  const b = [...v];
+  for (let col = 0; col < 3; col++) {
+    let maxRow = col;
+    for (let r = col + 1; r < 3; r++) {
+      if (Math.abs(a[r][col]) > Math.abs(a[maxRow][col])) maxRow = r;
+    }
+    [a[col], a[maxRow]] = [a[maxRow], a[col]];
+    [b[col], b[maxRow]] = [b[maxRow], b[col]];
+    if (Math.abs(a[col][col]) < 1e-10) return null;
+    for (let r = col + 1; r < 3; r++) {
+      const f = a[r][col] / a[col][col];
+      for (let c = col; c < 3; c++) a[r][c] -= f * a[col][c];
+      b[r] -= f * b[col];
+    }
+  }
+  const x = [0, 0, 0];
+  for (let i = 2; i >= 0; i--) {
+    let s = b[i];
+    for (let j = i + 1; j < 3; j++) s -= a[i][j] * x[j];
+    x[i] = s / a[i][i];
+  }
+  return [x[0], x[1], x[2]];
+}
+
+/** Fit 2D affine from (gazeX,gazeY)->(targetX,targetY). Returns null if <6 points or singular. */
+function fitAffineFromPoints(
+  points: Array<{ gazeX: number; gazeY: number; targetX: number; targetY: number }>
+): AffineParams | null {
+  if (points.length < 6) return null;
+  const AtA = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const AtbX = [0, 0, 0];
+  const AtbY = [0, 0, 0];
+  for (const p of points) {
+    const row = [p.gazeX, p.gazeY, 1];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) AtA[i][j] += row[i] * row[j];
+      AtbX[i] += row[i] * p.targetX;
+      AtbY[i] += row[i] * p.targetY;
+    }
+  }
+  const abc = solve3x3(AtA, AtbX);
+  const def = solve3x3(AtA, AtbY);
+  return abc && def ? ([...abc, ...def] as AffineParams) : null;
+}
+
+/** Apply calibration to raw gaze (0-1) → calibrated (0-1). Uses affine when available. */
+export function applyCalibration(
+  rawX: number,
+  rawY: number,
+  calibration: CalibrationData
+): { x: number; y: number } {
+  if (calibration.affineParams && calibration.affineParams.length === 6) {
+    const [a, b, c, d, e, f] = calibration.affineParams;
+    return {
+      x: Math.max(0, Math.min(1, a * rawX + b * rawY + c)),
+      y: Math.max(0, Math.min(1, d * rawX + e * rawY + f)),
+    };
+  }
+  const calibratedX = (rawX - 0.5) * calibration.scaleX + 0.5 + calibration.offsetX;
+  const calibratedY = (rawY - 0.5) * calibration.scaleY + 0.5 + calibration.offsetY;
+  return {
+    x: Math.max(0, Math.min(1, calibratedX)),
+    y: Math.max(0, Math.min(1, calibratedY)),
+  };
+}
+
 export const getBlinkCommand = (buttonId: string): BlinkCommand => {
   const commands = loadBlinkCommands();
-  return commands[buttonId] || {
-    buttonId,
+  const specific = commands[buttonId];
+  const globalDefault = commands[GLOBAL_BLINK_COMMAND_ID];
+
+  const fallback = globalDefault || {
+    buttonId: GLOBAL_BLINK_COMMAND_ID,
     singleBlink: 'click',
     doubleBlink: 'longPress',
     tripleBlink: 'toggle',
   };
+
+  return specific || { ...fallback, buttonId };
 };
 
 export const setBlinkCommand = (buttonId: string, command: Partial<BlinkCommand>) => {
@@ -234,7 +350,9 @@ export const setGazeCommand = (direction: GazeDirection, action: GazeNavigationA
 export { CALIBRATION_TARGETS };
 
 export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}) {
-  const { enabled = false, onAction, onNavigate } = options;
+  const { enabled = false, userId, onAction, onNavigate } = options;
+  const visionCtx = useVision();
+  const useContextPath = USE_VISION_CONTEXT && !!visionCtx;
   
   const [state, setState] = useState<RemoteControlState>({
     isActive: false,
@@ -254,6 +372,13 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const [settings, setSettings] = useState<RemoteControlSettings>(loadRemoteControlSettings);
   const [gazeCommands, setGazeCommands] = useState<GazeCommand[]>(loadGazeCommands);
   const [calibration, setCalibration] = useState<CalibrationData>(loadCalibrationData);
+  const remoteLoadedRef = useRef(false);
+  const lastSyncedRef = useRef<string>('');
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [calibrationActive, setCalibrationActive] = useState(false);
+  const calibrationActiveRef = useRef(false);
+  const [suspended, setSuspended] = useState(false);
+  const suspendedRef = useRef(false);
   
   // Refs
   const registeredButtonsRef = useRef<Map<string, HTMLElement>>(new Map());
@@ -263,8 +388,6 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const navigationCooldownRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const trackingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const smoothedPositionRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const autoCalibrationHistoryRef = useRef<{ gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[]>([]);
   const lastAutoAdjustmentRef = useRef<number>(0);
@@ -273,6 +396,26 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     onActionRef.current = onAction;
     onNavigateRef.current = onNavigate;
   }, [onAction, onNavigate]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { active?: boolean } | undefined;
+      calibrationActiveRef.current = Boolean(detail?.active);
+      setCalibrationActive(calibrationActiveRef.current);
+      if (calibrationActiveRef.current) {
+        setState(prev => ({
+          ...prev,
+          gazePosition: null,
+          rawGazePosition: null,
+          currentTarget: null,
+          ghostButtons: new Map(),
+        }));
+      }
+    };
+    window.addEventListener('calibrationMode', handler as EventListener);
+    return () => window.removeEventListener('calibrationMode', handler as EventListener);
+  }, []);
+
   
   // Reload settings when changed
   useEffect(() => {
@@ -322,11 +465,27 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     onRapidMovement: handleRapidMovement,
   });
   
+  const dispatchGestureTrigger = useCallback((trigger: string) => {
+    try {
+      window.dispatchEvent(new CustomEvent('remoteGestureTrigger', { detail: { trigger, timestamp: Date.now() } }));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Execute action when blink pattern is detected
   const handleBlinkPattern = useCallback((count: number) => {
+    // Broadcast blink patterns so other systems (e.g. screen targets) can react.
+    try {
+      window.dispatchEvent(new CustomEvent('remoteBlinkPattern', { detail: { count, timestamp: Date.now() } }));
+      if (count === 1) dispatchGestureTrigger('bothBlink');
+    } catch {
+      // ignore
+    }
+
     const target = state.currentTarget;
     if (!target) {
-      console.log('[RemoteControl] No target for blink pattern');
+      logger.log('[RemoteControl] No target for blink pattern');
       setState(prev => ({ ...prev, pendingBlinkCount: 0 }));
       return;
     }
@@ -349,7 +508,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     }
     
     if (action !== 'none') {
-      console.log('[RemoteControl] Executing:', action, 'on', target.buttonId);
+      logger.log('[RemoteControl] Executing:', action, 'on', target.buttonId);
       
       executeAction(target.element, action);
       
@@ -393,24 +552,159 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       pendingBlinkCount: prev.pendingBlinkCount + 1,
     }));
   }, []);
+
+  const handleLeftWink = useCallback(() => {
+    dispatchGestureTrigger('leftWink');
+  }, [dispatchGestureTrigger]);
+
+  const handleRightWink = useCallback(() => {
+    dispatchGestureTrigger('rightWink');
+  }, [dispatchGestureTrigger]);
   
-  // Blink detection
-  const {
-    isDetecting,
-    eyeOpenness,
-    blinkCount,
-  } = useBlinkDetection({
-    enabled: enabled && settings.enabled,
+  // Legacy path: own camera + useVisionEngine when not using VisionContext
+  const legacyVision = useVisionEngine({
+    enabled: !useContextPath && enabled && settings.enabled && !calibrationActive && !suspended,
+    videoRef,
     patternTimeout: settings.blinkPatternTimeout,
+    mirrorX: settings.mirrorX,
+    invertY: settings.invertY,
+    gazeScale: settings.gazeReach,
+    gazeSmoothing: 0.25,
+    visionBackend: settings.visionBackend ?? 'face_mesh',
     onBlink: handleBlink,
     onBlinkPattern: handleBlinkPattern,
+    onLeftWink: handleLeftWink,
+    onRightWink: handleRightWink,
   });
+  
+  const vision = useContextPath ? (visionCtx?.visionState ?? legacyVision) : legacyVision;
 
-  // Process raw gaze from camera feed and apply calibration
+  // Register blink handlers with VisionContext when using context path
+  useEffect(() => {
+    if (!useContextPath || !visionCtx) return;
+    visionCtx.registerBlinkHandlers({
+      onBlink: handleBlink,
+      onBlinkPattern: handleBlinkPattern,
+      onLeftWink: handleLeftWink,
+      onRightWink: handleRightWink,
+    });
+    return () => {
+      visionCtx.registerBlinkHandlers(null);
+    };
+  }, [useContextPath, visionCtx, handleBlink, handleBlinkPattern, handleLeftWink, handleRightWink]);
+
+  const gestureCooldownRef = useRef<Record<string, number>>({});
+  const smileBaselineRef = useRef<number | null>(null);
+  const cornerBaselineRef = useRef<{ leftY: number; rightY: number } | null>(null);
+  const browBaselineRef = useRef<{ left: number; right: number } | null>(null);
+  const slowBlinkStateRef = useRef<{ closedAt: number; isClosed: boolean }>({ closedAt: 0, isClosed: false });
+  // Configurable gesture thresholds (can be populated from calibration results)
+  const savedGestureThresholds = useRef<{
+    eyebrowLift?: number;
+    headTurn?: number;
+    lipRaise?: number;
+    smileRatio?: number;
+  }>({});
+
+  useEffect(() => {
+    let mounted = true;
+    const loadDeviceId = async () => {
+      try {
+        const fingerprint = await securityService.generateFingerprint();
+        if (mounted) setDeviceId(fingerprint);
+      } catch {
+        if (mounted) setDeviceId(null);
+      }
+    };
+
+    void loadDeviceId();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Load gesture thresholds saved during calibration
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('app_gesture_thresholds');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          savedGestureThresholds.current = parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  /** Merge and persist gesture thresholds from calibration flows (FacialExpressionScanning, etc.) */
+  const mergeGestureThresholds = useCallback((partial: Record<string, number>) => {
+    try {
+      const existing = localStorage.getItem('app_gesture_thresholds');
+      const current = existing ? { ...JSON.parse(existing) } : {};
+      Object.assign(current, partial);
+      localStorage.setItem('app_gesture_thresholds', JSON.stringify(current));
+      savedGestureThresholds.current = current;
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const persistCalibration = useCallback((data: CalibrationData) => {
+    setCalibration(data);
+    saveCalibrationData(data);
+  }, []);
+
+  // Load calibration from profile when signed in
+  useEffect(() => {
+    let cancelled = false;
+    remoteLoadedRef.current = false;
+
+    if (!userId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const load = async () => {
+      const remote = await fetchProfileCalibration(userId, deviceId);
+      if (cancelled) return;
+      const local = loadCalibrationData();
+
+      const remoteAt = remote?.calibratedAt ?? 0;
+      const localAt = local?.calibratedAt ?? 0;
+      const candidate = remoteAt >= localAt ? remote : local;
+
+      if (candidate) {
+        const merged: CalibrationData = { ...DEFAULT_CALIBRATION, ...candidate };
+        persistCalibration(merged);
+      }
+
+      remoteLoadedRef.current = true;
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, deviceId, persistCalibration]);
+
+  // Sync calibration updates to profile
+  useEffect(() => {
+    if (!userId || !remoteLoadedRef.current) return;
+    const serialized = JSON.stringify(calibration);
+    if (serialized === lastSyncedRef.current) return;
+    lastSyncedRef.current = serialized;
+    void saveProfileCalibration(userId, calibration, deviceId);
+  }, [calibration, userId, deviceId]);
+
+  // Process raw gaze from camera feed and apply calibration (affine or offset+scale)
   const processGazePosition = useCallback((rawX: number, rawY: number) => {
-    // Apply calibration
-    const calibratedX = (rawX - 0.5) * calibration.scaleX + 0.5 + calibration.offsetX;
-    const calibratedY = (rawY - 0.5) * calibration.scaleY + 0.5 + calibration.offsetY;
+    if (calibrationActiveRef.current || suspendedRef.current) return null;
+    const calibrated = applyCalibration(rawX, rawY, calibration);
+    const calibratedX = calibrated.x;
+    const calibratedY = calibrated.y;
     
     // Apply sensitivity
     const sensitivity = settings.sensitivity / 5;
@@ -437,52 +731,143 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       rawGazePosition: { x: rawX * window.innerWidth, y: rawY * window.innerHeight },
       gazePosition: { x: clampedX, y: clampedY },
     }));
+
+    // Broadcast gaze so overlays (targets) can do hit-testing.
+    try {
+      window.dispatchEvent(new CustomEvent('remoteGazePosition', { detail: { x: clampedX, y: clampedY, timestamp: Date.now() } }));
+    } catch {
+      // ignore
+    }
     
     return { x: clampedX, y: clampedY };
   }, [calibration, settings.sensitivity, updateGazeDir]);
 
-  // Extract face/eye position from camera frame
-  const detectFacePosition = useCallback((imageData: ImageData): { x: number; y: number } | null => {
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    
-    let sumX = 0, sumY = 0, count = 0;
-    
-    // Detect skin-tone pixels (simple face detection)
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        
-        // Basic skin tone detection
-        if (r > 60 && g > 40 && b > 20 && 
-            r > g && r > b && 
-            Math.abs(r - g) > 15 &&
-            r - b > 15) {
-          sumX += x;
-          sumY += y;
-          count++;
-        }
+  // Landmark-based gesture triggers for targets
+  useEffect(() => {
+    if (!enabled || !settings.enabled) return;
+    if (!vision.landmarks || !vision.faceBox) return;
+
+    const landmarks = vision.landmarks;
+    const getLm = (i: number) => landmarks[i];
+    const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      Math.hypot(a.x - b.x, a.y - b.y);
+
+    const emit = (trigger: string) => {
+      const now = Date.now();
+      const last = gestureCooldownRef.current[trigger] || 0;
+      if (now - last < 650) return;
+      gestureCooldownRef.current[trigger] = now;
+      try {
+        window.dispatchEvent(new CustomEvent('remoteGestureTrigger', { detail: { trigger, timestamp: now } }));
+      } catch {
+        // ignore
+      }
+    };
+
+    // EMA alpha: faster warm-up (0.90/0.10) to establish baseline in ~10 frames,
+    // then slow adaptation (0.95/0.05). First value initializes immediately.
+    const emaAlpha = 0.08;
+
+    // Smile (mouth width ratio)
+    const up = getLm(13);
+    const low = getLm(14);
+    const left = getLm(61);
+    const right = getLm(291);
+    if (up && low && left && right) {
+      const horizontal = dist(left, right);
+      const vertical = dist(up, low);
+      if (vertical > 0) {
+        const ratio = horizontal / vertical;
+        const base = smileBaselineRef.current ?? ratio;
+        const smoothed = base * (1 - emaAlpha) + ratio * emaAlpha;
+        smileBaselineRef.current = smoothed;
+        // Smile fires when mouth width exceeds baseline by 12%
+        if (ratio > smoothed * 1.12) emit('fullSmile');
       }
     }
-    
-    if (count < 500) return null; // Not enough skin pixels
-    
-    // Normalize to 0-1
-    const faceCenterX = sumX / count / width;
-    const faceCenterY = sumY / count / height;
-    
-    // Mirror X axis (camera is mirrored)
-    return { x: 1 - faceCenterX, y: faceCenterY };
-  }, []);
+
+    // Smirk / lip raises (mouth corner lift — Y decreases when corner lifts)
+    const corners = left && right ? { leftY: left.y, rightY: right.y } : null;
+    if (corners) {
+      const base = cornerBaselineRef.current ?? corners;
+      const smoothed = {
+        leftY: base.leftY * (1 - emaAlpha) + corners.leftY * emaAlpha,
+        rightY: base.rightY * (1 - emaAlpha) + corners.rightY * emaAlpha,
+      };
+      cornerBaselineRef.current = smoothed;
+      // Positive delta = corner lifted (lower Y)
+      const leftDelta = smoothed.leftY - corners.leftY;
+      const rightDelta = smoothed.rightY - corners.rightY;
+      const lipThreshold = savedGestureThresholds.current.lipRaise ?? 0.012;
+      const smirkThreshold = Math.min(lipThreshold, 0.008);
+      if (Math.abs(leftDelta - rightDelta) > lipThreshold && (leftDelta > smirkThreshold || rightDelta > smirkThreshold)) {
+        emit('smirkSmile');
+      }
+      if (leftDelta > lipThreshold) emit('lipRaiseLeft');
+      if (rightDelta > lipThreshold) emit('lipRaiseRight');
+    }
+
+    // Eyebrow lifts (left/right/both)
+    const lb = getLm(105);
+    const rb = getLm(334);
+    const lUp = getLm(159);
+    const lLow = getLm(145);
+    const rUp = getLm(386);
+    const rLow = getLm(374);
+    if (lb && rb && lUp && lLow && rUp && rLow) {
+      const leftLift = Math.abs(lUp.y - lb.y) / Math.max(0.0001, Math.abs(lLow.y - lUp.y));
+      const rightLift = Math.abs(rUp.y - rb.y) / Math.max(0.0001, Math.abs(rLow.y - rUp.y));
+      const base = browBaselineRef.current ?? { left: leftLift, right: rightLift };
+      const smoothed = {
+        left: base.left * (1 - emaAlpha) + leftLift * emaAlpha,
+        right: base.right * (1 - emaAlpha) + rightLift * emaAlpha,
+      };
+      browBaselineRef.current = smoothed;
+      // Use saved calibration thresholds if available, else default 0.20
+      const browThreshold = savedGestureThresholds.current.eyebrowLift ?? 0.20;
+      if (leftLift > smoothed.left + browThreshold) emit('eyebrowLeftLift');
+      if (rightLift > smoothed.right + browThreshold) emit('eyebrowRightLift');
+      if (leftLift > smoothed.left + browThreshold && rightLift > smoothed.right + browThreshold) emit('eyebrowsBothLift');
+    }
+
+    // Head turn (use headYaw from vision engine for more accuracy)
+    const headTurnThreshold = savedGestureThresholds.current.headTurn ?? 8; // degrees
+    if (Math.abs(vision.headYaw) > headTurnThreshold) {
+      if (vision.headYaw < -headTurnThreshold) emit('faceTurnLeft');
+      if (vision.headYaw > headTurnThreshold) emit('faceTurnRight');
+    }
+
+    // Slow blink (long closure) – use personalized range from calibration when available
+    const slowMin = calibration.slowBlinkMinMs ?? 400;
+    const slowMax = calibration.slowBlinkMaxMs ?? 2000;
+    const openness = vision.eyeOpenness;
+    const now = Date.now();
+    if (openness < 0.50 && !slowBlinkStateRef.current.isClosed) {
+      slowBlinkStateRef.current = { isClosed: true, closedAt: now };
+    } else if (openness > 0.80 && slowBlinkStateRef.current.isClosed) {
+      const duration = now - slowBlinkStateRef.current.closedAt;
+      slowBlinkStateRef.current = { isClosed: false, closedAt: 0 };
+      if (duration >= slowMin && duration <= slowMax) emit('slowBlink');
+    }
+  }, [enabled, settings.enabled, calibration.slowBlinkMinMs, calibration.slowBlinkMaxMs, vision.landmarks, vision.faceBox, vision.eyeOpenness, vision.headYaw]);
+
+  // Gaze is now provided by Vision Engine (landmark-based).
+
+  const contextReleaseRef = useRef<(() => void) | null>(null);
 
   // Start camera for gaze tracking
   const startCamera = useCallback(async () => {
+    if (useContextPath && visionCtx) {
+      if (contextReleaseRef.current) return; // already requested
+      contextReleaseRef.current = visionCtx.requestCamera();
+      await visionCtx.startCamera();
+      setState(prev => ({ ...prev, isCameraActive: visionCtx.isActive }));
+      return;
+    }
     if (streamRef.current) return;
     
     try {
-      console.log('[RemoteControl] Starting camera...');
+      logger.log('[RemoteControl] Starting camera...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 320, height: 240 }
@@ -497,46 +882,44 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       video.muted = true;
       videoRef.current = video;
       
-      const canvas = document.createElement('canvas');
-      canvas.width = 320;
-      canvas.height = 240;
-      canvasRef.current = canvas;
-      
       await video.play();
       
       setState(prev => ({ ...prev, isCameraActive: true }));
       
-      console.log('[RemoteControl] Camera started');
-      
-      // Start tracking loop
-      trackingIntervalRef.current = setInterval(() => {
-        if (!videoRef.current || !canvasRef.current) return;
-        
-        const ctx = canvasRef.current.getContext('2d');
-        if (!ctx) return;
-        
-        ctx.drawImage(videoRef.current, 0, 0, 320, 240);
-        const imageData = ctx.getImageData(0, 0, 320, 240);
-        
-        const facePos = detectFacePosition(imageData);
-        if (facePos) {
-          processGazePosition(facePos.x, facePos.y);
-        }
-      }, 50); // 20fps
-      
+      logger.log('[RemoteControl] Camera started');
     } catch (error) {
-      console.error('[RemoteControl] Camera error:', error);
+      logger.error('[RemoteControl] Camera error:', error);
     }
-  }, [detectFacePosition, processGazePosition]);
+  }, [useContextPath, visionCtx]);
+
+  // Some mobile browsers (notably iOS Safari) require getUserMedia to be initiated
+  // directly from a user gesture. These events are dispatched from click/tap handlers.
+  // remoteControlUserStart: RC toggle; cameraUserStart: play button, etc.
+  useEffect(() => {
+    const handler = () => {
+      if (!enabled || !settings.enabled) return;
+      startCamera();
+    };
+
+    window.addEventListener('remoteControlUserStart', handler);
+    window.addEventListener('cameraUserStart', handler);
+    return () => {
+      window.removeEventListener('remoteControlUserStart', handler);
+      window.removeEventListener('cameraUserStart', handler);
+    };
+  }, [enabled, settings.enabled, startCamera]);
 
   // Stop camera
   const stopCamera = useCallback(() => {
-    console.log('[RemoteControl] Stopping camera...');
-    
-    if (trackingIntervalRef.current) {
-      clearInterval(trackingIntervalRef.current);
-      trackingIntervalRef.current = null;
+    if (useContextPath && visionCtx) {
+      if (contextReleaseRef.current) {
+        contextReleaseRef.current();
+        contextReleaseRef.current = null;
+      }
+      setState(prev => ({ ...prev, isCameraActive: false }));
+      return;
     }
+    logger.log('[RemoteControl] Stopping camera...');
     
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -549,7 +932,73 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     }
     
     setState(prev => ({ ...prev, isCameraActive: false }));
-  }, []);
+  }, [useContextPath, visionCtx]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { active?: boolean } | undefined;
+      suspendedRef.current = Boolean(detail?.active);
+      setSuspended(suspendedRef.current);
+      if (suspendedRef.current) {
+        stopCamera();
+        setState(prev => ({
+          ...prev,
+          gazePosition: null,
+          rawGazePosition: null,
+          currentTarget: null,
+          ghostButtons: new Map(),
+        }));
+      } else if (enabled && settings.enabled) {
+        startCamera();
+      }
+    };
+    window.addEventListener('remoteControlSuspend', handler as EventListener);
+    return () => window.removeEventListener('remoteControlSuspend', handler as EventListener);
+  }, [enabled, settings.enabled, startCamera, stopCamera]);
+
+  useEffect(() => {
+    if (!enabled || !settings.enabled) return;
+    if (calibrationActiveRef.current || suspendedRef.current) return;
+
+    // Calibrated gaze in normalized 0-1 for attention validation
+    const calibratedGazePosition = vision.gazePosition
+      ? applyCalibration(vision.gazePosition.x, vision.gazePosition.y, calibration)
+      : null;
+
+    // Broadcast vision data so attention-tracking (useEyeTracking) can consume it
+    // without opening a second camera. Include calibratedGazePosition for reward validation.
+    try {
+      window.dispatchEvent(
+        new CustomEvent('visionEngineSample', {
+          detail: {
+            hasFace: vision.hasFace,
+            eyeEAR: vision.eyeEAR,
+            eyeOpenness: vision.eyeOpenness,
+            gazePosition: vision.gazePosition,
+            calibratedGazePosition,
+            headYaw: vision.headYaw,
+            headPitch: vision.headPitch,
+            timestamp: Date.now(),
+          },
+        })
+      );
+    } catch {
+      // ignore
+    }
+
+    if (!vision.gazePosition) return;
+    processGazePosition(vision.gazePosition.x, vision.gazePosition.y);
+  }, [vision.gazePosition, vision.hasFace, vision.eyeEAR, vision.eyeOpenness, vision.headYaw, vision.headPitch, enabled, settings.enabled, calibration, processGazePosition]);
+
+  useEffect(() => {
+    if (!enabled || !settings.enabled) return;
+    if (vision.hasFace) return;
+    setState(prev => ({
+      ...prev,
+      gazePosition: null,
+      rawGazePosition: null,
+    }));
+  }, [vision.hasFace, enabled, settings.enabled]);
 
   // Find button at gaze position
   const findButtonAtPosition = useCallback((x: number, y: number): GazeTarget | null => {
@@ -624,6 +1073,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   // Update target when gaze position changes
   useEffect(() => {
     if (!state.gazePosition || !enabled || !settings.enabled) return;
+    if (calibrationActiveRef.current || suspendedRef.current) return;
     
     updateGhostButtons(state.gazePosition.x, state.gazePosition.y);
   }, [state.gazePosition, enabled, settings.enabled, updateGhostButtons]);
@@ -671,7 +1121,8 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   // Calibration functions
   const startCalibration = useCallback(async () => {
     // Ensure camera is running
-    if (!streamRef.current) {
+    const hasCamera = useContextPath ? contextReleaseRef.current : streamRef.current;
+    if (!hasCamera) {
       await startCamera();
     }
     
@@ -681,14 +1132,14 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       calibrationStep: 0,
       calibrationPoints: [],
     }));
-  }, [startCamera]);
+  }, [useContextPath, startCamera]);
   
   const recordCalibrationPoint = useCallback((screenX: number, screenY: number) => {
     const currentStep = state.calibrationStep;
     const target = CALIBRATION_TARGETS[currentStep];
     
     if (!target || !state.rawGazePosition) {
-      console.log('[RemoteControl] No target or gaze position for calibration');
+      logger.log('[RemoteControl] No target or gaze position for calibration');
       return;
     }
     
@@ -701,40 +1152,58 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     
     const newPoints = [...state.calibrationPoints, newPoint];
     
-    console.log('[RemoteControl] Calibration point recorded:', currentStep, newPoint);
+    logger.log('[RemoteControl] Calibration point recorded:', currentStep, newPoint);
     
     if (currentStep >= CALIBRATION_TARGETS.length - 1) {
-      // Complete calibration - calculate offsets and scales
-      const avgGazeX = newPoints.reduce((a, p) => a + p.gazeX, 0) / newPoints.length;
-      const avgGazeY = newPoints.reduce((a, p) => a + p.gazeY, 0) / newPoints.length;
-      const avgScreenX = newPoints.reduce((a, p) => a + p.screenX, 0) / newPoints.length;
-      const avgScreenY = newPoints.reduce((a, p) => a + p.screenY, 0) / newPoints.length;
+      const pts = newPoints.map((p) => ({
+        gazeX: p.gazeX,
+        gazeY: p.gazeY,
+        targetX: p.screenX,
+        targetY: p.screenY,
+      }));
+      const affineParams = fitAffineFromPoints(pts);
+
+      let newCalibration: CalibrationData;
+      if (affineParams) {
+        newCalibration = {
+          ...calibration,
+          offsetX: 0,
+          offsetY: 0,
+          scaleX: 1,
+          scaleY: 1,
+          affineParams,
+          isCalibrated: true,
+          calibratedAt: Date.now(),
+        };
+      } else {
+        const avgGazeX = newPoints.reduce((a, p) => a + p.gazeX, 0) / newPoints.length;
+        const avgGazeY = newPoints.reduce((a, p) => a + p.gazeY, 0) / newPoints.length;
+        const avgScreenX = newPoints.reduce((a, p) => a + p.screenX, 0) / newPoints.length;
+        const avgScreenY = newPoints.reduce((a, p) => a + p.screenY, 0) / newPoints.length;
+        let scaleX = 1, scaleY = 1;
+        const gazeRangeX = Math.max(...newPoints.map(p => p.gazeX)) - Math.min(...newPoints.map(p => p.gazeX));
+        const gazeRangeY = Math.max(...newPoints.map(p => p.gazeY)) - Math.min(...newPoints.map(p => p.gazeY));
+        const screenRangeX = Math.max(...newPoints.map(p => p.screenX)) - Math.min(...newPoints.map(p => p.screenX));
+        const screenRangeY = Math.max(...newPoints.map(p => p.screenY)) - Math.min(...newPoints.map(p => p.screenY));
+        if (gazeRangeX > 0.1) scaleX = screenRangeX / gazeRangeX;
+        if (gazeRangeY > 0.1) scaleY = screenRangeY / gazeRangeY;
+        const boundedScaleX = Math.max(0.5, Math.min(2, scaleX));
+        const boundedScaleY = Math.max(0.5, Math.min(2, scaleY));
+        const calibratedCenterX = (avgGazeX - 0.5) * boundedScaleX + 0.5;
+        const calibratedCenterY = (avgGazeY - 0.5) * boundedScaleY + 0.5;
+        newCalibration = {
+          ...calibration,
+          offsetX: avgScreenX - calibratedCenterX,
+          offsetY: avgScreenY - calibratedCenterY,
+          scaleX: boundedScaleX,
+          scaleY: boundedScaleY,
+          isCalibrated: true,
+          calibratedAt: Date.now(),
+        };
+      }
+      logger.log('[RemoteControl] Calibration complete:', affineParams ? 'affine' : 'offset+scale', newCalibration);
       
-      // Calculate scale factors
-      let scaleX = 1, scaleY = 1;
-      const gazeRangeX = Math.max(...newPoints.map(p => p.gazeX)) - Math.min(...newPoints.map(p => p.gazeX));
-      const gazeRangeY = Math.max(...newPoints.map(p => p.gazeY)) - Math.min(...newPoints.map(p => p.gazeY));
-      const screenRangeX = Math.max(...newPoints.map(p => p.screenX)) - Math.min(...newPoints.map(p => p.screenX));
-      const screenRangeY = Math.max(...newPoints.map(p => p.screenY)) - Math.min(...newPoints.map(p => p.screenY));
-      
-      if (gazeRangeX > 0.1) scaleX = screenRangeX / gazeRangeX;
-      if (gazeRangeY > 0.1) scaleY = screenRangeY / gazeRangeY;
-      
-      const newCalibration: CalibrationData = {
-        offsetX: avgScreenX - avgGazeX,
-        offsetY: avgScreenY - avgGazeY,
-        scaleX: Math.max(0.5, Math.min(2, scaleX)),
-        scaleY: Math.max(0.5, Math.min(2, scaleY)),
-        isCalibrated: true,
-        calibratedAt: Date.now(),
-        autoCalibrationEnabled: calibration.autoCalibrationEnabled,
-        autoAdjustments: calibration.autoAdjustments,
-      };
-      
-      console.log('[RemoteControl] Calibration complete:', newCalibration);
-      
-      setCalibration(newCalibration);
-      saveCalibrationData(newCalibration);
+      persistCalibration(newCalibration);
       
       setState(prev => ({ 
         ...prev, 
@@ -750,8 +1219,8 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
         calibrationPoints: newPoints,
       }));
     }
-  }, [state.calibrationStep, state.rawGazePosition, state.calibrationPoints]);
-  
+  }, [state.calibrationStep, state.rawGazePosition, state.calibrationPoints, calibration, persistCalibration]);
+
   const cancelCalibration = useCallback(() => {
     setState(prev => ({ 
       ...prev, 
@@ -762,11 +1231,10 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   }, []);
 
   const resetCalibration = useCallback(() => {
-    setCalibration(DEFAULT_CALIBRATION);
-    saveCalibrationData(DEFAULT_CALIBRATION);
+    persistCalibration(DEFAULT_CALIBRATION);
     autoCalibrationHistoryRef.current = [];
     setState(prev => ({ ...prev, lastAction: 'Calibration reset' }));
-  }, []);
+  }, [persistCalibration]);
 
   // Toggle auto-calibration
   const toggleAutoCalibration = useCallback(() => {
@@ -774,10 +1242,9 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       ...calibration,
       autoCalibrationEnabled: !calibration.autoCalibrationEnabled,
     };
-    setCalibration(newCalibration);
-    saveCalibrationData(newCalibration);
-    console.log('[RemoteControl] Auto-calibration:', !calibration.autoCalibrationEnabled ? 'enabled' : 'disabled');
-  }, [calibration]);
+    persistCalibration(newCalibration);
+    logger.log('[RemoteControl] Auto-calibration:', !calibration.autoCalibrationEnabled ? 'enabled' : 'disabled');
+  }, [calibration, persistCalibration]);
 
   // Record interaction for auto-calibration
   const recordInteractionForAutoCalibration = useCallback((targetX: number, targetY: number) => {
@@ -830,17 +1297,16 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       autoAdjustments: calibration.autoAdjustments + 1,
     };
     
-    console.log('[RemoteControl] Auto-calibration adjustment:', {
+    logger.log('[RemoteControl] Auto-calibration adjustment:', {
       errorX: errorX.toFixed(3),
       errorY: errorY.toFixed(3),
       newOffsetX: newCalibration.offsetX.toFixed(3),
       newOffsetY: newCalibration.offsetY.toFixed(3),
     });
     
-    setCalibration(newCalibration);
-    saveCalibrationData(newCalibration);
+    persistCalibration(newCalibration);
     lastAutoAdjustmentRef.current = now;
-  }, [calibration, state.gazePosition]);
+  }, [calibration, state.gazePosition, persistCalibration]);
   
   // Update settings
   const updateSettings = useCallback((newSettings: Partial<RemoteControlSettings>) => {
@@ -856,17 +1322,43 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   
   // Auto-start camera when enabled
   useEffect(() => {
-    if (enabled && settings.enabled && !streamRef.current) {
+    const hasCamera = useContextPath ? contextReleaseRef.current : streamRef.current;
+    if (enabled && settings.enabled && !hasCamera && !suspendedRef.current) {
       startCamera();
-    } else if ((!enabled || !settings.enabled) && streamRef.current) {
+    } else if ((!enabled || !settings.enabled || suspendedRef.current) && hasCamera) {
       stopCamera();
     }
-  }, [enabled, settings.enabled, startCamera, stopCamera]);
+  }, [enabled, settings.enabled, useContextPath, startCamera, stopCamera]);
+
+  const pauseCamera = useCallback(() => {
+    if (suspendedRef.current) return;
+    suspendedRef.current = true;
+    setSuspended(true);
+    stopCamera();
+    setState(prev => ({
+      ...prev,
+      gazePosition: null,
+      rawGazePosition: null,
+      currentTarget: null,
+      ghostButtons: new Map(),
+      pendingBlinkCount: 0,
+    }));
+  }, [stopCamera]);
+
+  const resumeCamera = useCallback(() => {
+    if (!suspendedRef.current) return;
+    suspendedRef.current = false;
+    setSuspended(false);
+    if (enabled && settings.enabled && !streamRef.current) {
+      startCamera();
+    }
+  }, [enabled, settings.enabled, startCamera]);
   
   // Sync active state with detection
   useEffect(() => {
-    setState(prev => ({ ...prev, isActive: isDetecting || state.isCameraActive }));
-  }, [isDetecting, state.isCameraActive]);
+    const cameraActive = useContextPath && visionCtx ? visionCtx.isActive : state.isCameraActive;
+    setState(prev => ({ ...prev, isActive: vision.isRunning || cameraActive, isCameraActive: cameraActive }));
+  }, [vision.isRunning, state.isCameraActive, useContextPath, visionCtx?.isActive]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -881,8 +1373,8 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     settings,
     gazeCommands,
     calibration,
-    eyeOpenness,
-    blinkCount,
+    eyeOpenness: vision.eyeOpenness,
+    blinkCount: vision.blinkCount,
     currentDirection,
     normalizedPosition,
     calibrationTargets: CALIBRATION_TARGETS,
@@ -899,5 +1391,9 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     updateGazeCommand,
     toggleAutoCalibration,
     recordInteractionForAutoCalibration,
+    pauseCamera,
+    resumeCamera,
+    persistCalibration,
+    mergeGestureThresholds,
   };
 }

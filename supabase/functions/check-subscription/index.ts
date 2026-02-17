@@ -7,10 +7,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Product ID to tier mapping
-const PRODUCT_TIERS: Record<string, string> = {
-  "prod_TgTDyU5HXIH8hh": "pro",
-  "prod_TgTDRhBdlgafaX": "creator",
+// Product ID to tier mapping (tier name and reward multiplier)
+const PRODUCT_TIERS: Record<string, { tier: string; tier_name: string; reward_multiplier: number }> = {
+  "prod_TgTDyU5HXIH8hh": { tier: "pro", tier_name: "Pro", reward_multiplier: 2 },
+  "prod_TgTDRhBdlgafaX": { tier: "creator", tier_name: "Creator", reward_multiplier: 3 },
 };
 
 const logStep = (step: string, details?: unknown) => {
@@ -36,14 +36,19 @@ serve(async (req) => {
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
 
     const authHeader = req.headers.get("Authorization");
+    const freePayload = () => ({
+      subscribed: false,
+      tier: "free",
+      tier_name: "Free",
+      reward_multiplier: 1,
+      subscription_end: null,
+      trial_end: null,
+      cancel_at_period_end: false,
+      current_period_start: null,
+    });
+
     if (!authHeader) {
-      // No auth header - return free tier (anonymous user)
-      return new Response(JSON.stringify({ 
-        subscribed: false,
-        tier: "free",
-        tier_name: "Free",
-        reward_multiplier: 1,
-      }), {
+      return new Response(JSON.stringify(freePayload()), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -53,14 +58,8 @@ serve(async (req) => {
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     
     if (userError || !userData.user?.email) {
-      // Invalid token or no user - return free tier
       logStep("Auth failed, returning free tier");
-      return new Response(JSON.stringify({ 
-        subscribed: false,
-        tier: "free",
-        tier_name: "Free",
-        reward_multiplier: 1,
-      }), {
+      return new Response(JSON.stringify(freePayload()), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -68,19 +67,13 @@ serve(async (req) => {
     
     const user = userData.user;
     logStep("User authenticated", { userId: user.id, email: user.email });
-    logStep("User authenticated", { userId: user.id, email: user.email });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     
     if (customers.data.length === 0) {
       logStep("No customer found");
-      return new Response(JSON.stringify({ 
-        subscribed: false,
-        tier: "free",
-        tier_name: "Free",
-        reward_multiplier: 1,
-      }), {
+      return new Response(JSON.stringify(freePayload()), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -89,46 +82,91 @@ serve(async (req) => {
     const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customerId,
-      status: "active",
-      limit: 1,
-    });
-    
-    const hasActiveSub = subscriptions.data.length > 0;
+    // Include both active and trialing subscriptions
+    const [activeSubs, trialingSubs] = await Promise.all([
+      stripe.subscriptions.list({ customer: customerId, status: "active", limit: 1 }),
+      stripe.subscriptions.list({ customer: customerId, status: "trialing", limit: 1 }),
+    ]);
+    const subscription = activeSubs.data[0] ?? trialingSubs.data[0];
+    const hasActiveSub = !!subscription;
+
     let tier = "free";
     let tierName = "Free";
-    let subscriptionEnd = null;
+    let subscriptionEnd: string | null = null;
+    let trialEnd: string | null = null;
+    let currentPeriodStart: string | null = null;
+    let cancelAtPeriodEnd = false;
     let rewardMultiplier = 1;
+    let productId: string | null = null;
+    let stripeSubscriptionId: string | null = null;
 
-    if (hasActiveSub) {
-      const subscription = subscriptions.data[0];
-      subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
-      const productId = subscription.items.data[0].price.product as string;
-      
-      tier = PRODUCT_TIERS[productId] || "pro";
-      tierName = tier === "creator" ? "Creator" : "Pro";
-      rewardMultiplier = tier === "creator" ? 3 : 2;
-      
-      logStep("Active subscription found", { 
-        subscriptionId: subscription.id, 
-        tier, 
-        endDate: subscriptionEnd 
-      });
+    if (hasActiveSub && subscription.items?.data?.length) {
+      const productIdRaw = subscription.items.data[0].price.product as string;
+      productId = productIdRaw;
+      const t = PRODUCT_TIERS[productIdRaw] ?? { tier: "pro", tier_name: "Pro", reward_multiplier: 2 };
+      tier = t.tier;
+      tierName = t.tier_name;
+      rewardMultiplier = t.reward_multiplier;
+      subscriptionEnd = subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null;
+      trialEnd = subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null;
+      currentPeriodStart = subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null;
+      cancelAtPeriodEnd = !!subscription.cancel_at_period_end;
+      stripeSubscriptionId = subscription.id;
+
+      logStep("Active subscription found", { subscriptionId: subscription.id, tier, endDate: subscriptionEnd });
+
+      // Upsert subscription_status for fast reads and webhook consistency
+      const { error: upsertError } = await supabaseClient.from("subscription_status").upsert(
+        {
+          user_id: user.id,
+          is_subscribed: true,
+          product_id: productId,
+          tier,
+          subscription_end: subscriptionEnd,
+          stripe_customer_id: customerId,
+          reward_multiplier: rewardMultiplier,
+          trial_end: trialEnd,
+          cancel_at_period_end: cancelAtPeriodEnd,
+          current_period_start: currentPeriodStart,
+          stripe_subscription_id: stripeSubscriptionId,
+        },
+        { onConflict: "user_id" }
+      );
+      if (upsertError) logStep("Upsert subscription_status failed", { error: upsertError.message });
     } else {
       logStep("No active subscription");
+      // Ensure DB reflects no subscription
+      await supabaseClient.from("subscription_status").upsert(
+        {
+          user_id: user.id,
+          is_subscribed: false,
+          product_id: null,
+          tier: "free",
+          subscription_end: null,
+          stripe_customer_id: customers.data[0].id,
+          reward_multiplier: 1,
+          trial_end: null,
+          cancel_at_period_end: false,
+          current_period_start: null,
+          stripe_subscription_id: null,
+        },
+        { onConflict: "user_id" }
+      );
     }
 
-    return new Response(JSON.stringify({
-      subscribed: hasActiveSub,
-      tier,
-      tier_name: tierName,
-      subscription_end: subscriptionEnd,
-      reward_multiplier: rewardMultiplier,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({
+        subscribed: hasActiveSub,
+        tier,
+        tier_name: tierName,
+        subscription_end: subscriptionEnd,
+        reward_multiplier: rewardMultiplier,
+        trial_end: trialEnd,
+        cancel_at_period_end: cancelAtPeriodEnd,
+        current_period_start: currentPeriodStart,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });

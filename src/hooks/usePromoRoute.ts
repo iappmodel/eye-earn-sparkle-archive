@@ -1,4 +1,14 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  fetchUserRoutes,
+  saveRouteToServer,
+  deleteRouteFromServer,
+  fetchWatchLater,
+  syncWatchLaterToServer,
+  addWatchLaterOnServer,
+  removeWatchLaterOnServer,
+} from '@/services/route.service';
 
 export interface RouteStop {
   id: string;
@@ -99,7 +109,7 @@ function writeToStorage<T>(key: string, value: T) {
   }
 }
 
-// Haversine for distance sorting
+// Haversine for distance sorting (km)
 const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -110,15 +120,78 @@ const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+// Approximate speed km/h by transport mode
+const SPEED_KMH: Record<TransportMode, number> = {
+  walking: 5,
+  running: 10,
+  cycling: 15,
+  transit: 25,
+  driving: 40,
+};
+
+/** Compute estimated distance (km) and time (minutes) for a route. */
+export function computeRouteEstimate(route: PromoRoute | null): { estimatedDistanceKm: number; estimatedTimeMinutes: number } {
+  if (!route || route.stops.length === 0) return { estimatedDistanceKm: 0, estimatedTimeMinutes: 0 };
+  let totalKm = 0;
+  const stops = route.stops;
+  const origin = route.origin ?? null;
+  const dest = route.destination ?? null;
+  if (origin && stops.length > 0)
+    totalKm += haversine(origin.latitude, origin.longitude, stops[0].latitude, stops[0].longitude);
+  for (let i = 0; i < stops.length - 1; i++)
+    totalKm += haversine(stops[i].latitude, stops[i].longitude, stops[i + 1].latitude, stops[i + 1].longitude);
+  if (dest && stops.length > 0)
+    totalKm += haversine(stops[stops.length - 1].latitude, stops[stops.length - 1].longitude, dest.latitude, dest.longitude);
+  const speed = SPEED_KMH[route.transportMode] ?? 5;
+  const estimatedTimeMinutes = Math.round((totalKm / speed) * 60);
+  return { estimatedDistanceKm: Math.round(totalKm * 10) / 10, estimatedTimeMinutes };
+}
+
 export function usePromoRoute() {
+  const { user } = useAuth();
   const [activeRoute, setActiveRoute] = useState<PromoRoute | null>(null);
   const [savedRoutes, setSavedRoutes] = useState<PromoRoute[]>(() => readFromStorage<PromoRoute[]>(SAVED_ROUTES_KEY, []));
   const [isBuilding, setIsBuilding] = useState(false);
   const [watchLater, setWatchLater] = useState<RouteStop[]>(() => readFromStorage<RouteStop[]>(WATCH_LATER_KEY, []));
+  const [routesSyncing, setRoutesSyncing] = useState(false);
+  const [watchLaterSyncing, setWatchLaterSyncing] = useState(false);
+  const [lastRoutesSyncAt, setLastRoutesSyncAt] = useState<number | null>(null);
+  const initialFetchDone = useRef(false);
 
-  // Persist to localStorage
+  // Persist to localStorage (backup / offline)
   useEffect(() => { writeToStorage(SAVED_ROUTES_KEY, savedRoutes); }, [savedRoutes]);
   useEffect(() => { writeToStorage(WATCH_LATER_KEY, watchLater); }, [watchLater]);
+
+  // Sync from Supabase when user is present
+  useEffect(() => {
+    if (!user?.id) {
+      initialFetchDone.current = false;
+      return;
+    }
+    let cancelled = false;
+    const sync = async () => {
+      setRoutesSyncing(true);
+      setWatchLaterSyncing(true);
+      try {
+        const [routes, wl] = await Promise.all([fetchUserRoutes(user.id), fetchWatchLater(user.id)]);
+        if (!cancelled) {
+          setSavedRoutes(routes);
+          setWatchLater(wl);
+          setLastRoutesSyncAt(Date.now());
+        }
+      } catch (e) {
+        if (!cancelled) console.error('Route sync failed:', e);
+      } finally {
+        if (!cancelled) {
+          setRoutesSyncing(false);
+          setWatchLaterSyncing(false);
+          initialFetchDone.current = true;
+        }
+      }
+    };
+    sync();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // ─── Basic Route Operations ─────────────────────────────────────
 
@@ -170,6 +243,38 @@ export function usePromoRoute() {
       const [moved] = stops.splice(fromIndex, 1);
       stops.splice(toIndex, 0, moved);
       return { ...prev, stops: stops.map((s, i) => ({ ...s, order: i })) };
+    });
+  }, []);
+
+  /** Reorder stops by nearest-neighbor from start (origin or first stop) to minimize travel. */
+  const optimizeOrder = useCallback((userLat?: number, userLng?: number) => {
+    setActiveRoute(prev => {
+      if (!prev || prev.stops.length < 2) return prev;
+      const startLat = prev.origin?.latitude ?? userLat ?? prev.stops[0].latitude;
+      const startLng = prev.origin?.longitude ?? userLng ?? prev.stops[0].longitude;
+      const remaining = [...prev.stops];
+      const ordered: RouteStop[] = [];
+      let currentLat = startLat;
+      let currentLng = startLng;
+      while (remaining.length > 0) {
+        let bestIdx = 0;
+        let bestDist = haversine(currentLat, currentLng, remaining[0].latitude, remaining[0].longitude);
+        for (let i = 1; i < remaining.length; i++) {
+          const d = haversine(currentLat, currentLng, remaining[i].latitude, remaining[i].longitude);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+        const [next] = remaining.splice(bestIdx, 1);
+        ordered.push(next);
+        currentLat = next.latitude;
+        currentLng = next.longitude;
+      }
+      return {
+        ...prev,
+        stops: ordered.map((s, i) => ({ ...s, order: i })),
+      };
     });
   }, []);
 
@@ -226,17 +331,40 @@ export function usePromoRoute() {
 
   const saveRoute = useCallback(() => {
     if (!activeRoute || activeRoute.stops.length === 0) return null;
+    const { estimatedDistanceKm, estimatedTimeMinutes } = computeRouteEstimate(activeRoute);
+    const withEstimate: PromoRoute = { ...activeRoute, estimatedTime: estimatedTimeMinutes, estimatedDistance: estimatedDistanceKm };
+
     setSavedRoutes(prev => {
       const existing = prev.findIndex(r => r.id === activeRoute.id);
       if (existing >= 0) {
-        const updated = [...prev];
-        updated[existing] = activeRoute;
-        return updated;
+        const next = [...prev];
+        next[existing] = withEstimate;
+        return next;
       }
-      return [...prev, activeRoute];
+      return [...prev, withEstimate];
     });
-    return activeRoute;
-  }, [activeRoute]);
+    setActiveRoute(withEstimate);
+
+    if (user?.id) {
+      setRoutesSyncing(true);
+      saveRouteToServer(user.id, withEstimate)
+        .then((saved) => {
+          setSavedRoutes(prev => {
+            const idx = prev.findIndex(r => r.id === saved.id || r.id === activeRoute.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = saved;
+              return next;
+            }
+            return [...prev, saved];
+          });
+          setActiveRoute(prev => (prev && (prev.id === activeRoute.id || prev.id === saved.id)) ? saved : prev);
+        })
+        .catch((e) => console.error('Save route to server failed:', e))
+        .finally(() => setRoutesSyncing(false));
+    }
+    return withEstimate;
+  }, [activeRoute, user?.id]);
 
   const finishRoute = useCallback(() => setIsBuilding(false), []);
 
@@ -256,6 +384,32 @@ export function usePromoRoute() {
     [savedRoutes],
   );
 
+  /** Add an external route (e.g. imported) to saved routes and optionally sync to server. */
+  const addSavedRoute = useCallback(
+    (route: PromoRoute) => {
+      const withId = route.id.startsWith('route-') ? route : { ...route, id: generateRouteId() };
+      setSavedRoutes(prev => [...prev, withId]);
+      if (user?.id) {
+        setRoutesSyncing(true);
+        saveRouteToServer(user.id, withId)
+          .then((saved) => {
+            setSavedRoutes(prev => {
+              const idx = prev.findIndex(r => r.id === withId.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = saved;
+                return next;
+              }
+              return [...prev, saved];
+            });
+          })
+          .catch((e) => console.error('Sync imported route failed:', e))
+          .finally(() => setRoutesSyncing(false));
+      }
+    },
+    [user?.id],
+  );
+
   const deleteSavedRoute = useCallback(
     (routeId: string) => {
       setSavedRoutes(prev => prev.filter(r => r.id !== routeId));
@@ -263,8 +417,11 @@ export function usePromoRoute() {
         setActiveRoute(null);
         setIsBuilding(false);
       }
+      if (user?.id && !routeId.startsWith('route-')) {
+        deleteRouteFromServer(user.id, routeId).catch((e) => console.error('Delete route on server failed:', e));
+      }
     },
-    [activeRoute],
+    [activeRoute, user?.id],
   );
 
   // ─── Duplicate Route ─────────────────────────────────────────────
@@ -326,13 +483,20 @@ export function usePromoRoute() {
   const addToWatchLater = useCallback((stop: Omit<RouteStop, 'order'>) => {
     setWatchLater(prev => {
       if (prev.some(s => s.promotionId === stop.promotionId)) return prev;
-      return [...prev, { ...stop, order: prev.length }];
+      const next = [...prev, { ...stop, order: prev.length }];
+      if (user?.id) {
+        addWatchLaterOnServer(user.id, stop).catch((e) => console.error('Add watch later failed:', e));
+      }
+      return next;
     });
-  }, []);
+  }, [user?.id]);
 
   const removeFromWatchLater = useCallback((promotionId: string) => {
     setWatchLater(prev => prev.filter(s => s.promotionId !== promotionId));
-  }, []);
+    if (user?.id) {
+      removeWatchLaterOnServer(user.id, promotionId).catch((e) => console.error('Remove watch later failed:', e));
+    }
+  }, [user?.id]);
 
   const isInWatchLater = useCallback(
     (promotionId: string) => watchLater.some(s => s.promotionId === promotionId),
@@ -607,6 +771,7 @@ export function usePromoRoute() {
 
   const totalStops = activeRoute?.stops.length ?? 0;
   const totalReward = activeRoute?.totalReward ?? 0;
+  const activeRouteEstimate = useMemo(() => computeRouteEstimate(activeRoute), [activeRoute]);
 
   return {
     activeRoute,
@@ -615,10 +780,15 @@ export function usePromoRoute() {
     watchLater,
     totalStops,
     totalReward,
+    routesSyncing,
+    lastRoutesSyncAt,
+    activeRouteEstimate,
+    isCloudSynced: !!user?.id,
     startRoute,
     addStop,
     removeStop,
     reorderStops,
+    optimizeOrder,
     isInRoute,
     setTransportMode,
     setRouteFilters,
@@ -633,6 +803,7 @@ export function usePromoRoute() {
     finishRoute,
     discardRoute,
     loadRoute,
+    addSavedRoute,
     deleteSavedRoute,
     addToWatchLater,
     removeFromWatchLater,

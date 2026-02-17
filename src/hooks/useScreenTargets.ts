@@ -3,10 +3,13 @@ import { ComboAction, COMBO_ACTION_LABELS } from './useGestureCombos';
 
 // --- Types ---
 
-export type GestureTrigger =
+export type SimpleGestureTrigger =
   | 'singleBlink'
   | 'doubleBlink'
   | 'tripleBlink'
+  | 'leftWink'
+  | 'rightWink'
+  | 'bothBlink'
   | 'lipRaiseLeft'
   | 'lipRaiseRight'
   | 'faceTurnLeft'
@@ -25,6 +28,10 @@ export type GestureTrigger =
   | 'phoneTiltRight'
   | 'phoneTiltForward'
   | 'phoneTiltBack';
+
+export type GestureTrigger =
+  | SimpleGestureTrigger
+  | { type: 'combined'; steps: SimpleGestureTrigger[] };
 
 export type AppCommand = ComboAction;
 
@@ -69,7 +76,13 @@ const BEHAVIOR_KEY = 'app_target_behavior';
 export const loadTargets = (): ScreenTarget[] => {
   try {
     const saved = localStorage.getItem(TARGETS_KEY);
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    const parsed = JSON.parse(saved) as unknown[];
+    if (!Array.isArray(parsed)) return [];
+    // Filter out corrupted entries that lack required fields
+    return (parsed as ScreenTarget[]).filter(
+      (t) => t && typeof t.id === 'string' && typeof t.command === 'string' && t.trigger != null && t.position != null
+    );
   } catch {
     return [];
   }
@@ -105,10 +118,13 @@ const saveBehavior = (data: BehaviorData) => {
 
 // --- Trigger labels for UI ---
 
-export const TRIGGER_LABELS: Record<GestureTrigger, string> = {
+export const TRIGGER_LABELS: Record<SimpleGestureTrigger, string> = {
   singleBlink: 'Single Blink',
   doubleBlink: 'Double Blink',
   tripleBlink: 'Triple Blink',
+  leftWink: 'Left Eye Wink',
+  rightWink: 'Right Eye Wink',
+  bothBlink: 'Both Eyes Blink',
   lipRaiseLeft: 'Left Lip Raise',
   lipRaiseRight: 'Right Lip Raise',
   faceTurnLeft: 'Face Turn Left',
@@ -129,10 +145,10 @@ export const TRIGGER_LABELS: Record<GestureTrigger, string> = {
   phoneTiltBack: 'Tilt Phone Back',
 };
 
-export const TRIGGER_CATEGORIES: { label: string; triggers: GestureTrigger[] }[] = [
+export const TRIGGER_CATEGORIES: { label: string; triggers: SimpleGestureTrigger[] }[] = [
   {
     label: 'Eyes',
-    triggers: ['singleBlink', 'doubleBlink', 'tripleBlink', 'slowBlink', 'gazeActivated', 'gazeAndBlink'],
+    triggers: ['singleBlink', 'doubleBlink', 'tripleBlink', 'leftWink', 'rightWink', 'bothBlink', 'slowBlink', 'gazeActivated', 'gazeAndBlink'],
   },
   {
     label: 'Face',
@@ -204,26 +220,62 @@ export const TARGET_PRESETS: TargetPreset[] = [
 
 // --- Hit Testing ---
 
+export interface GetTargetAtPositionOptions {
+  /** Scale factor for hit radius (e.g. 1.15 = 15% larger hit area). Default 1. */
+  hitAreaScale?: number;
+  /** When multiple targets overlap, prefer 'smallest' (smaller target wins) or 'closest' (closest to gaze center). Default 'smallest'. */
+  overlapPreference?: 'smallest' | 'closest';
+}
+
+/**
+ * Find the target at the given gaze position (pixel coordinates).
+ * Supports expanded hit area and overlap handling.
+ */
 export const getTargetAtPosition = (
   targets: ScreenTarget[],
   gazeX: number,
   gazeY: number,
   screenWidth: number,
-  screenHeight: number
+  screenHeight: number,
+  options: GetTargetAtPositionOptions = {}
 ): ScreenTarget | null => {
+  const { hitAreaScale = 1, overlapPreference = 'smallest' } = options;
   const normalizedX = gazeX / screenWidth;
   const normalizedY = gazeY / screenHeight;
 
+  const hits: ScreenTarget[] = [];
   for (const target of targets) {
     if (!target.enabled) continue;
     const dx = normalizedX - target.position.x;
     const dy = normalizedY - target.position.y;
-    const radiusNormalized = target.size / 100;
+    const radiusNormalized = (target.size / 100) * hitAreaScale;
     if (Math.sqrt(dx * dx + dy * dy) <= radiusNormalized) {
-      return target;
+      hits.push(target);
     }
   }
-  return null;
+
+  if (hits.length === 0) return null;
+  if (hits.length === 1) return hits[0];
+
+  // Multiple overlaps: prefer smallest area (more specific) or closest to gaze center
+  if (overlapPreference === 'smallest') {
+    hits.sort((a, b) => a.size - b.size);
+    return hits[0];
+  }
+  const distSq = (t: ScreenTarget) => {
+    const dx = normalizedX - t.position.x;
+    const dy = normalizedY - t.position.y;
+    return dx * dx + dy * dy;
+  };
+  hits.sort((a, b) => distSq(a) - distSq(b));
+  return hits[0];
+};
+
+export const getTriggerLabel = (trigger: GestureTrigger): string => {
+  if (typeof trigger === 'string') return TRIGGER_LABELS[trigger] ?? trigger;
+  if (!trigger || !trigger.steps) return 'Combined';
+  const steps = trigger.steps.map((step) => TRIGGER_LABELS[step] ?? step).join(' + ');
+  return steps ? `Combined: ${steps}` : 'Combined';
 };
 
 // --- Hook ---
@@ -343,7 +395,7 @@ export function useScreenTargets() {
           suggestions.push({
             id: `suggest-move-${record.targetId}`,
             type: 'move',
-            message: `"${target.label}" has low accuracy (${Math.round((record.hits / total) * 100)}%) — try repositioning it`,
+            message: `"${target.label ?? 'Target'}" has low accuracy (${Math.round((record.hits / total) * 100)}%) — try repositioning it`,
           });
         }
       }

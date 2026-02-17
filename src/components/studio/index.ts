@@ -1,3 +1,5 @@
+export * from './StudioUploadZone';
+export * from './StudioMediaStrip';
 export * from './VideoTimeline';
 export * from './AIVideoEditor';
 export * from './VideoPreviewFilters';
@@ -11,3 +13,7 @@ export * from './TextDesigner';
 export * from './DrawingCanvas';
 export * from './AITextGenerator';
 export * from './TextOverlayEditor';
+export * from './MediaBlurEditor';
+export * from './BlurVideoOverlay';
+export * from './BlurPreviewPlayer';
+export * from './blurUtils';

@@ -5,54 +5,32 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LiveStreamViewer } from './LiveStreamViewer';
 import { GoLiveScreen } from './GoLiveScreen';
+import { useLiveStreams } from '@/hooks/useLiveStreams';
+import type { LiveStreamWithHost } from '@/services/live.service';
+import type { LiveStreamUI } from './types';
 
-interface LiveStream {
-  id: string;
-  hostId: string;
-  hostUsername: string;
-  hostAvatarUrl?: string;
-  title: string;
-  viewerCount: number;
-  thumbnailUrl: string;
-  isLive: boolean;
+export type { LiveStreamUI } from './types';
+
+const DEFAULT_THUMB = 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&h=600&fit=crop';
+
+function toStreamUI(row: LiveStreamWithHost): LiveStreamUI {
+  return {
+    id: row.id,
+    hostId: row.host_id,
+    hostUsername: row.host_username ?? 'User',
+    hostAvatarUrl: row.host_avatar_url ?? undefined,
+    title: row.title,
+    viewerCount: row.viewer_count,
+    thumbnailUrl: row.thumbnail_url ?? DEFAULT_THUMB,
+    isLive: row.status === 'live',
+  };
 }
 
-const mockLiveStreams: LiveStream[] = [
-  {
-    id: '1',
-    hostId: 'h1',
-    hostUsername: 'gaming_pro',
-    hostAvatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop',
-    title: 'Late night gaming session 🎮',
-    viewerCount: 1234,
-    thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&h=600&fit=crop',
-    isLive: true,
-  },
-  {
-    id: '2',
-    hostId: 'h2',
-    hostUsername: 'chef_maria',
-    hostAvatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop',
-    title: 'Cooking Italian pasta from scratch',
-    viewerCount: 856,
-    thumbnailUrl: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800&h=600&fit=crop',
-    isLive: true,
-  },
-  {
-    id: '3',
-    hostId: 'h3',
-    hostUsername: 'fitness_coach',
-    hostAvatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&h=150&fit=crop',
-    title: 'Morning workout - Join me! 💪',
-    viewerCount: 2341,
-    thumbnailUrl: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&h=600&fit=crop',
-    isLive: true,
-  },
-];
-
 export const LiveFeed: React.FC = () => {
-  const [selectedStream, setSelectedStream] = useState<LiveStream | null>(null);
+  const [selectedStream, setSelectedStream] = useState<LiveStreamUI | null>(null);
   const [showGoLive, setShowGoLive] = useState(false);
+  const { streams, loading, error } = useLiveStreams();
+  const streamsUI = streams.map(toStreamUI);
 
   return (
     <>
@@ -69,9 +47,18 @@ export const LiveFeed: React.FC = () => {
           </Button>
         </div>
 
+        {error && (
+          <p className="text-sm text-destructive">Failed to load live streams. Try again.</p>
+        )}
+
         {/* Live Streams Grid */}
         <div className="grid grid-cols-2 gap-3">
-          {mockLiveStreams.map((stream) => (
+          {loading ? (
+            <p className="col-span-2 text-muted-foreground text-sm">Loading...</p>
+          ) : streamsUI.length === 0 ? (
+            <p className="col-span-2 text-muted-foreground text-sm">No one is live right now. Be the first to go live!</p>
+          ) : (
+          streamsUI.map((stream) => (
             <button
               key={stream.id}
               onClick={() => setSelectedStream(stream)}
@@ -108,7 +95,8 @@ export const LiveFeed: React.FC = () => {
                 <p className="text-white/80 text-xs line-clamp-2">{stream.title}</p>
               </div>
             </button>
-          ))}
+          ))
+          )}
         </div>
       </div>
 

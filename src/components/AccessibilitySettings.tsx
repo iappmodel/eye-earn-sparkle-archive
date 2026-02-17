@@ -47,6 +47,7 @@ const densityOptions: { value: UIDensity; label: string }[] = [
 
 const themeOptions: { value: ThemePack; label: string; icon: React.ReactNode }[] = [
   { value: 'default', label: 'Default', icon: <Sparkles className="w-4 h-4" /> },
+  { value: 'glass', label: 'Glass', icon: <Sparkles className="w-4 h-4" /> },
   { value: 'night', label: 'Night', icon: <Moon className="w-4 h-4" /> },
   { value: 'focus', label: 'Focus', icon: <Eye className="w-4 h-4" /> },
   { value: 'energy', label: 'Energy', icon: <Zap className="w-4 h-4" /> },

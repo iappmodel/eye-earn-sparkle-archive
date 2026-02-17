@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { CreditCard, Upload, Check, RefreshCw, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useLocalization } from '@/contexts/LocalizationContext';
 import type { DocumentType } from './OnboardingFlow';
 
 interface IdUploadStepProps {
@@ -13,10 +14,16 @@ interface IdUploadStepProps {
   existingBackUrl: string | null;
 }
 
-const documentTypes: { id: DocumentType; label: string; icon: React.ReactNode; needsBack: boolean }[] = [
-  { id: 'passport', label: 'Passport', icon: <FileText className="w-5 h-5" />, needsBack: false },
-  { id: 'drivers_license', label: "Driver's License", icon: <CreditCard className="w-5 h-5" />, needsBack: true },
-  { id: 'national_id', label: 'National ID', icon: <CreditCard className="w-5 h-5" />, needsBack: true },
+const documentLabelKeys: Record<DocumentType, string> = {
+  passport: 'onboarding.idUpload.passport',
+  drivers_license: 'onboarding.idUpload.driversLicense',
+  national_id: 'onboarding.idUpload.nationalId',
+};
+
+const documentTypes: { id: DocumentType; labelKey: string; icon: React.ReactNode; needsBack: boolean }[] = [
+  { id: 'passport', labelKey: documentLabelKeys.passport, icon: <FileText className="w-5 h-5" />, needsBack: false },
+  { id: 'drivers_license', labelKey: documentLabelKeys.drivers_license, icon: <CreditCard className="w-5 h-5" />, needsBack: true },
+  { id: 'national_id', labelKey: documentLabelKeys.national_id, icon: <CreditCard className="w-5 h-5" />, needsBack: true },
 ];
 
 export const IdUploadStep: React.FC<IdUploadStepProps> = ({
@@ -34,6 +41,7 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
   
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useLocalization();
 
   const selectedDoc = documentTypes.find(d => d.id === selectedType);
   const needsBack = selectedDoc?.needsBack ?? false;
@@ -63,17 +71,15 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
 
   return (
     <div className="flex flex-col items-center min-h-full">
-      {/* Instructions */}
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold mb-2">Upload ID Document</h2>
+        <h2 className="text-2xl font-bold mb-2">{t('onboarding.idUpload.title' as 'onboarding.idUpload.title')}</h2>
         <p className="text-muted-foreground">
-          Choose a document type and upload clear photos
+          {t('onboarding.idUpload.subtitle' as 'onboarding.idUpload.subtitle')}
         </p>
       </div>
 
-      {/* Document Type Selection */}
       <div className="w-full max-w-sm mb-6">
-        <label className="text-sm font-medium mb-2 block">Document Type</label>
+        <label className="text-sm font-medium mb-2 block">{t('onboarding.idUpload.documentType' as 'onboarding.idUpload.documentType')}</label>
         <div className="grid grid-cols-3 gap-2">
           {documentTypes.map((doc) => (
             <button
@@ -93,7 +99,7 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
               )}
             >
               {doc.icon}
-              <span className="text-xs font-medium text-center">{doc.label}</span>
+              <span className="text-xs font-medium text-center">{t(doc.labelKey as 'onboarding.idUpload.passport')}</span>
             </button>
           ))}
         </div>
@@ -102,10 +108,9 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
       {/* Upload Areas */}
       {selectedType && (
         <div className="w-full max-w-sm space-y-4 mb-6">
-          {/* Front of Document */}
           <div>
             <label className="text-sm font-medium mb-2 block">
-              {selectedType === 'passport' ? 'Photo Page' : 'Front of Document'}
+              {selectedType === 'passport' ? t('onboarding.idUpload.photoPage' as 'onboarding.idUpload.photoPage') : t('onboarding.idUpload.frontLabel' as 'onboarding.idUpload.frontLabel')}
             </label>
             <button
               onClick={() => frontInputRef.current?.click()}
@@ -122,7 +127,7 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
                 <div className="text-center p-4">
                   <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
-                    Tap to upload front
+                    {t('onboarding.idUpload.tapToUploadFront' as 'onboarding.idUpload.tapToUploadFront')}
                   </span>
                 </div>
               )}
@@ -132,7 +137,7 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
           {/* Back of Document (if needed) */}
           {needsBack && (
             <div>
-              <label className="text-sm font-medium mb-2 block">Back of Document</label>
+              <label className="text-sm font-medium mb-2 block">{t('onboarding.idUpload.backLabel' as 'onboarding.idUpload.backLabel')}</label>
               <button
                 onClick={() => backInputRef.current?.click()}
                 className={cn(
@@ -145,12 +150,12 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
                 {backImage ? (
                   <img src={backImage} alt="Back of ID" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="text-center p-4">
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Tap to upload back
-                    </span>
-                  </div>
+                <div className="text-center p-4">
+                  <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    {t('onboarding.idUpload.tapToUploadBack' as 'onboarding.idUpload.tapToUploadBack')}
+                  </span>
+                </div>
                 )}
               </button>
             </div>
@@ -162,12 +167,12 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
       {selectedType && (
         <div className="w-full max-w-sm mb-6">
           <div className="neu-card rounded-xl p-4">
-            <h4 className="font-medium mb-2">Photo requirements:</h4>
+            <h4 className="font-medium mb-2">{t('onboarding.idUpload.requirementsTitle' as 'onboarding.idUpload.requirementsTitle')}</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• All corners visible</li>
-              <li>• No blur or glare</li>
-              <li>• Document not expired</li>
-              <li>• Original document (no copies)</li>
+              <li>• {t('onboarding.idUpload.req1' as 'onboarding.idUpload.req1')}</li>
+              <li>• {t('onboarding.idUpload.req2' as 'onboarding.idUpload.req2')}</li>
+              <li>• {t('onboarding.idUpload.req3' as 'onboarding.idUpload.req3')}</li>
+              <li>• {t('onboarding.idUpload.req4' as 'onboarding.idUpload.req4')}</li>
             </ul>
           </div>
         </div>
@@ -184,12 +189,12 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
           {isLoading ? (
             <>
               <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-              Uploading...
+              {t('onboarding.idUpload.uploading' as 'onboarding.idUpload.uploading')}
             </>
           ) : (
             <>
               <Check className="w-5 h-5 mr-2" />
-              Submit for Verification
+              {t('onboarding.idUpload.submitForVerification' as 'onboarding.idUpload.submitForVerification')}
             </>
           )}
         </Button>
@@ -198,7 +203,7 @@ export const IdUploadStep: React.FC<IdUploadStepProps> = ({
           onClick={onSkip}
           className="w-full text-muted-foreground hover:text-foreground transition-colors py-2"
         >
-          Skip for now
+          {t('onboarding.idUpload.skipForNow' as 'onboarding.idUpload.skipForNow')}
         </button>
       </div>
 

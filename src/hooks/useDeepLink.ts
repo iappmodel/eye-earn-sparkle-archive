@@ -36,7 +36,7 @@ export const useDeepLink = (config?: DeepLinkConfig) => {
   // Generate shareable URL for content
   const generateContentLink = useCallback((contentId: string): string => {
     const baseUrl = window.location.origin;
-    return `${baseUrl}/?content=${contentId}`;
+    return `${baseUrl}/content/${contentId}`;
   }, []);
 
   // Generate shareable URL for user profile

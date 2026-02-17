@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import LinkedSocialAccounts, { LinkedAccount } from '@/components/LinkedSocialAccounts';
 import MediaLinkImporter from '@/components/MediaLinkImporter';
 import { BulkMediaImporter } from '@/components/BulkMediaImporter';
-import { ScheduledPostingManager } from '@/components/ScheduledPostingManager';
+import { ScheduleShell } from '@/components/ScheduleShell';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -108,7 +108,7 @@ const SocialConnect: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="schedule">
-            <ScheduledPostingManager />
+            <ScheduleShell />
           </TabsContent>
 
           <TabsContent value="settings" className="space-y-4">

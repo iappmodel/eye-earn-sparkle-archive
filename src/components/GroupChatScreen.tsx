@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, MoreVertical, Users, Plus, Camera, Mic, Send, Image as ImageIcon, Settings, UserPlus, LogOut } from 'lucide-react';
+import { ArrowLeft, MoreVertical, Users, Plus, Camera, Send, UserPlus, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -9,6 +9,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useTypingIndicator } from '@/hooks/useTypingIndicator';
+import { TypingIndicator, ConnectionStatus } from '@/components/chat';
 
 interface GroupMember {
   id: string;
@@ -27,6 +29,7 @@ interface Message {
   content: string;
   type: 'text' | 'image' | 'video';
   createdAt: string;
+  _pending?: boolean;
 }
 
 interface GroupChatScreenProps {
@@ -47,7 +50,9 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [showMembers, setShowMembers] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'reconnecting' | 'disconnected' | 'closed'>('closed');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { typingUsers, startTyping, stopTyping } = useTypingIndicator(conversationId);
 
   const loadMessages = useCallback(async () => {
     setIsLoading(true);
@@ -92,7 +97,7 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
     loadMessages();
   }, [loadMessages]);
 
-  // Real-time subscription
+  // Real-time subscription: INSERT, UPDATE, DELETE + connection status
   useEffect(() => {
     const channel = supabase
       .channel(`group:${conversationId}`)
@@ -105,26 +110,69 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const newMsg = payload.new as any;
+          const newMsg = payload.new as { id: string; sender_id: string; content: string | null; type: string; created_at: string };
           const sender = members.find(m => m.userId === newMsg.sender_id);
-          
-          setMessages(prev => [...prev, {
-            id: newMsg.id,
-            senderId: newMsg.sender_id,
-            senderName: sender?.displayName || sender?.username || 'Unknown',
-            senderAvatar: sender?.avatarUrl || undefined,
-            content: newMsg.content || '',
-            type: newMsg.type,
-            createdAt: newMsg.created_at,
-          }]);
+          const fromMe = newMsg.sender_id === user?.id;
+          setMessages(prev => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            const mapped = {
+              id: newMsg.id,
+              senderId: newMsg.sender_id,
+              senderName: sender?.displayName || sender?.username || 'Unknown',
+              senderAvatar: sender?.avatarUrl || undefined,
+              content: newMsg.content || '',
+              type: newMsg.type as 'text' | 'image' | 'video',
+              createdAt: newMsg.created_at,
+            };
+            if (fromMe) {
+              const idx = prev.findIndex(m => m._pending);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = mapped;
+                return next;
+              }
+            }
+            return [...prev, mapped];
+          });
         }
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const msg = payload.new as { id: string; content: string | null; type: string };
+          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: msg.content || m.content, type: msg.type || m.type } : m));
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const id = (payload.old as { id: string }).id;
+          setMessages(prev => prev.filter(m => m.id !== id));
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setConnectionStatus('connected');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnectionStatus('disconnected');
+        else if (status === 'CLOSED') setConnectionStatus('closed');
+      });
 
     return () => {
       supabase.removeChannel(channel);
+      setConnectionStatus('closed');
     };
-  }, [conversationId, members]);
+  }, [conversationId, members, user?.id]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -134,18 +182,35 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
   const handleSend = async () => {
     if (!newMessage.trim() || !user) return;
 
+    const content = newMessage.trim();
+    setNewMessage('');
+    stopTyping();
+
+    const optimistic: Message = {
+      id: `temp-${Date.now()}`,
+      senderId: user.id,
+      senderName: profile?.display_name || profile?.username || 'You',
+      senderAvatar: undefined,
+      content,
+      type: 'text',
+      createdAt: new Date().toISOString(),
+      _pending: true,
+    };
+    setMessages(prev => [...prev, optimistic]);
+
     try {
       const { error } = await supabase.from('messages').insert({
         conversation_id: conversationId,
         sender_id: user.id,
-        content: newMessage,
+        content,
         type: 'text',
       });
 
       if (error) throw error;
-      setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      setNewMessage(content);
       toast.error('Failed to send message');
     }
   };
@@ -171,12 +236,13 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
                 <Users className="w-5 h-5 text-primary" />
               </div>
             </div>
-            <div>
-              <h3 className="font-semibold">{groupName}</h3>
+            <div className="min-w-0">
+              <h3 className="font-semibold truncate">{groupName}</h3>
               <p className="text-xs text-muted-foreground">{members.length} members</p>
             </div>
           </div>
         </div>
+        <ConnectionStatus status={connectionStatus} className="shrink-0" />
 
         <Sheet open={showMembers} onOpenChange={setShowMembers}>
           <SheetTrigger asChild>
@@ -288,6 +354,8 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
+      {typingUsers.length > 0 && <TypingIndicator users={typingUsers} />}
+
       {/* Input */}
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-2">
@@ -300,8 +368,9 @@ export const GroupChatScreen: React.FC<GroupChatScreenProps> = ({
           <Input
             placeholder="Message..."
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            onChange={(e) => { setNewMessage(e.target.value); startTyping(); }}
+            onBlur={stopTyping}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
             className="flex-1"
           />
           <Button onClick={handleSend} size="icon" disabled={!newMessage.trim()}>

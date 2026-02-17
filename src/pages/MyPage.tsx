@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings, Grid3X3, Video, Camera, Crown, Heart, Eye, Play, ImageIcon, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,21 +8,18 @@ import { AppLogo } from '@/components/AppLogo';
 import { VerificationBadge } from '@/components/VerificationBadge';
 import { SettingsScreen } from '@/components/SettingsScreen';
 import { CreatorDashboard } from '@/components/analytics';
+import { supabase } from '@/integrations/supabase/client';
+import { getPrimaryMediaUrl } from '@/utils/mediaUrl';
 
 type ContentTab = 'grid' | 'videos' | 'promotions' | 'rewards' | 'analytics';
 
-// Mock user content data
-const mockContent = [
-  { id: '1', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1614850715649-1d0106293bd1?w=300&h=300&fit=crop', likes: 234, views: 1200 },
-  { id: '2', type: 'video', thumbnail: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=300&h=300&fit=crop', likes: 567, views: 3400 },
-  { id: '3', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=300&h=300&fit=crop', likes: 189, views: 890 },
-  { id: '4', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=300&h=300&fit=crop', likes: 445, views: 2100 },
-  { id: '5', type: 'video', thumbnail: 'https://images.unsplash.com/photo-1682687220063-4742bd7fd538?w=300&h=300&fit=crop', likes: 678, views: 4500 },
-  { id: '6', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1682687221038-404670f09439?w=300&h=300&fit=crop', likes: 312, views: 1800 },
-  { id: '7', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=300&h=300&fit=crop', likes: 523, views: 2900 },
-  { id: '8', type: 'video', thumbnail: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=300&h=300&fit=crop', likes: 891, views: 5600 },
-  { id: '9', type: 'image', thumbnail: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop', likes: 267, views: 1400 },
-];
+type ContentItem = {
+  id: string;
+  type: 'image' | 'video';
+  thumbnail: string;
+  likes: number;
+  views: number;
+};
 
 const MyPage: React.FC = () => {
   const navigate = useNavigate();
@@ -30,6 +27,54 @@ const MyPage: React.FC = () => {
   const { tier, tierName } = useSubscription();
   const [activeTab, setActiveTab] = useState<ContentTab>('grid');
   const [showSettings, setShowSettings] = useState(false);
+  const [userContent, setUserContent] = useState<ContentItem[]>([]);
+  const [contentLoading, setContentLoading] = useState(true);
+
+  const loadUserContent = useCallback(async () => {
+    if (!user?.id) {
+      setUserContent([]);
+      setContentLoading(false);
+      return;
+    }
+    setContentLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_content')
+        .select('id, media_url, thumbnail_url, media_type, likes_count, views_count')
+        .eq('user_id', user.id)
+        .eq('is_draft', false)
+        .in('status', ['active', 'scheduled'])
+        .not('media_url', 'is', null)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const items: ContentItem[] = (data || []).map((row) => {
+        const thumb = row.thumbnail_url || getPrimaryMediaUrl(row.media_url);
+        const mediaType = (row.media_type || 'image').toLowerCase();
+        const type = mediaType.includes('video') ? 'video' : 'image';
+        return {
+          id: row.id,
+          type,
+          thumbnail: thumb || '',
+          likes: row.likes_count ?? 0,
+          views: row.views_count ?? 0,
+        };
+      }).filter((item) => item.thumbnail);
+
+      setUserContent(items);
+    } catch (err) {
+      console.error('[MyPage] Error loading user_content:', err);
+      setUserContent([]);
+    } finally {
+      setContentLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadUserContent();
+  }, [loadUserContent]);
 
   const displayName = profile?.display_name || profile?.username || 'User';
   const username = profile?.username || user?.email?.split('@')[0] || 'user';
@@ -44,7 +89,7 @@ const MyPage: React.FC = () => {
     { id: 'rewards' as const, icon: Crown, label: 'Rewards' },
   ];
 
-  const filteredContent = mockContent.filter(item => {
+  const filteredContent = userContent.filter((item) => {
     if (activeTab === 'grid') return true;
     if (activeTab === 'videos') return item.type === 'video';
     return true;
@@ -175,6 +220,11 @@ const MyPage: React.FC = () => {
           </div>
         ) : activeTab === 'analytics' ? (
           <CreatorDashboard />
+        ) : contentLoading ? (
+          <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-muted-foreground text-sm mt-4">Loading your content…</p>
+          </div>
         ) : filteredContent.length > 0 ? (
           <div className="grid grid-cols-3 gap-1">
             {filteredContent.map((item) => (

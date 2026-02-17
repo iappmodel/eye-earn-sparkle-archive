@@ -11,7 +11,7 @@ import {
   Navigation, Sparkles, Save, MapPin, Coins, ExternalLink,
   Filter, Clock, CalendarCheck, ChevronDown, ChevronUp, Edit2,
   Bookmark, Zap, TrendingUp, Timer, Brain, Heart, MapPinned,
-  Copy, Play,
+  Copy, Play, Cloud, CloudOff, Share2, Upload, Download, ArrowDownUp, Loader2,
 } from 'lucide-react';
 import { CategoryIcon } from './PromotionCategories';
 import { RouteFilterSheet } from './RouteFilterSheet';
@@ -35,7 +35,7 @@ interface RouteBuilderProps {
   onSaveRoute: () => PromoRoute | null;
   onDiscardRoute: () => void;
   onOpenInGoogleMaps: (userLat?: number, userLng?: number) => void;
-  onSuggestRoute: (optimization?: string) => void;
+  onSuggestRoute: (optimization?: string) => void | Promise<void>;
   onLoadRoute: (routeId: string) => void;
   onDeleteSavedRoute: (routeId: string) => void;
   onRemoveFromWatchLater: (promotionId: string) => void;
@@ -44,14 +44,27 @@ interface RouteBuilderProps {
   onSetSchedule?: (schedule: RouteSchedule | null) => void;
   onSetSegmentTransport?: (fromIdx: number, toIdx: number, mode: TransportMode) => void;
   onSetOrigin?: (origin: RouteOrigin | null) => void;
-  onSuggestFromSaved?: () => void;
-  onSuggestByInterests?: () => void;
-  onSuggestSmartRoute?: () => void;
+  onSuggestFromSaved?: () => void | Promise<void>;
+  onSuggestByInterests?: () => void | Promise<void>;
+  onSuggestSmartRoute?: () => void | Promise<void>;
   onDuplicateRoute?: (routeId: string) => void;
   onOpenSavedRouteInMaps?: (routeId: string) => void;
+  /** Reorder stops by nearest-neighbor to minimize distance */
+  onOptimizeOrder?: (userLat?: number, userLng?: number) => void;
   getSegmentTransport?: (fromIdx: number, toIdx: number) => TransportMode;
   userLocation?: { lat: number; lng: number } | null;
   mapboxToken?: string | null;
+  /** True while a suggestion (Smart / From Saved / etc.) is loading */
+  suggestLoading?: boolean;
+  /** True while resolving user location (e.g. when opened from feed) */
+  locationLoading?: boolean;
+  /** Sync status (when user is logged in) */
+  routesSyncing?: boolean;
+  lastRoutesSyncAt?: number | null;
+  activeRouteEstimate?: { estimatedDistanceKm: number; estimatedTimeMinutes: number };
+  isCloudSynced?: boolean;
+  /** Add an imported route to saved routes */
+  onAddSavedRoute?: (route: PromoRoute) => void;
 }
 
 const TRANSPORT_MODES: { id: TransportMode; label: string; icon: React.ElementType }[] = [
@@ -115,9 +128,17 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   onSuggestSmartRoute,
   onDuplicateRoute,
   onOpenSavedRouteInMaps,
+  onOptimizeOrder,
   getSegmentTransport,
   userLocation,
   mapboxToken,
+  suggestLoading = false,
+  locationLoading = false,
+  routesSyncing = false,
+  lastRoutesSyncAt = null,
+  activeRouteEstimate,
+  isCloudSynced = false,
+  onAddSavedRoute,
 }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
@@ -128,6 +149,8 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
   const [showDestination, setShowDestination] = useState(false);
   const [scheduleDay, setScheduleDay] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
+  const [showImportPaste, setShowImportPaste] = useState(false);
+  const [importJson, setImportJson] = useState('');
 
   const { getDragHandlers, getItemStyle, isDragging } = useDragReorder(
     route?.stops.length ?? 0,
@@ -186,6 +209,57 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
     onSetSegmentTransport?.(fromIdx, toIdx, next);
   };
 
+  const handleExportRoute = (r: PromoRoute) => {
+    const json = JSON.stringify(r, null, 2);
+    navigator.clipboard.writeText(json).then(() => toast.success('Route copied to clipboard'));
+  };
+
+  const handleShareRoute = () => {
+    if (!route) return;
+    const json = JSON.stringify(route, null, 2);
+    navigator.clipboard.writeText(json).then(() =>
+      toast.success('Route copied. Share this with others to import in Route Builder.')
+    );
+  };
+
+  const handleCopyShareableLink = () => {
+    if (!route) return;
+    try {
+      const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(route)))));
+      const url = `${window.location.origin}${window.location.pathname || '/'}?route=${encoded}`;
+      navigator.clipboard.writeText(url).then(() =>
+        toast.success('Link copied. Anyone who opens it can import this route.')
+      );
+    } catch {
+      toast.error('Could not create share link');
+    }
+  };
+
+  const handleImportSubmit = () => {
+    try {
+      const parsed = JSON.parse(importJson) as PromoRoute;
+      if (!parsed?.name || !Array.isArray(parsed.stops)) {
+        toast.error('Invalid route: needs name and stops array');
+        return;
+      }
+      const routeId = parsed.id && !String(parsed.id).startsWith('route-') ? parsed.id : `route-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const normalized: PromoRoute = {
+        ...parsed,
+        id: routeId,
+        stops: (parsed.stops || []).map((s: RouteStop, i: number) => ({ ...s, order: i })),
+        filters: parsed.filters || defaultRouteFilters,
+        segmentTransport: parsed.segmentTransport || {},
+        totalReward: (parsed.stops || []).reduce((sum: number, st: RouteStop) => sum + (st.rewardAmount ?? 0), 0),
+      };
+      onAddSavedRoute?.(normalized);
+      setImportJson('');
+      setShowImportPaste(false);
+      toast.success('Route imported');
+    } catch {
+      toast.error('Invalid JSON');
+    }
+  };
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -213,10 +287,44 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                 ) : 'Route Planner'}
               </SheetTitle>
             </div>
-            <SheetDescription>
-              {route
-                ? `${route.stops.length} stops · ${route.totalReward} coins${route.smartLabel ? ` · ${route.smartLabel}` : ''}`
-                : 'Plan your earning route'}
+            <SheetDescription className="flex flex-col gap-1">
+              <span>
+                {route
+                  ? `${route.stops.length} stops · ${route.totalReward} coins${route.smartLabel ? ` · ${route.smartLabel}` : ''}`
+                  : 'Plan your earning route'}
+              </span>
+              {locationLoading && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Getting your location…
+                </span>
+              )}
+              {suggestLoading && (
+                <span className="flex items-center gap-1.5 text-xs text-primary">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Building route…
+                </span>
+              )}
+              {isCloudSynced && !locationLoading && !suggestLoading && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {routesSyncing ? (
+                    <>
+                      <Cloud className="w-3.5 h-3.5 animate-pulse" />
+                      Syncing…
+                    </>
+                  ) : lastRoutesSyncAt ? (
+                    <>
+                      <Cloud className="w-3.5 h-3.5 text-primary" />
+                      Synced to cloud
+                    </>
+                  ) : (
+                    <>
+                      <CloudOff className="w-3.5 h-3.5" />
+                      Local only
+                    </>
+                  )}
+                </span>
+              )}
             </SheetDescription>
           </SheetHeader>
 
@@ -259,7 +367,24 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     <CalendarCheck className="w-4 h-4" />
                     {route.isCommuteRoute ? 'Commute ✓' : 'Commute'}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => onSuggestRoute()} className="gap-2">
+                  {route.stops.length >= 2 && onOptimizeOrder && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onOptimizeOrder(userLocation?.lat, userLocation?.lng)}
+                      className="gap-2"
+                      title="Reorder stops by nearest distance"
+                    >
+                      <ArrowDownUp className="w-4 h-4" /> Optimize order
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onSuggestRoute()}
+                    className="gap-2"
+                    disabled={suggestLoading}
+                  >
                     <Sparkles className="w-4 h-4" /> Re-suggest
                   </Button>
                 </div>
@@ -480,7 +605,7 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
 
                   {/* Route Summary */}
                   <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-primary/10 to-blue-500/10 border border-primary/20">
-                    <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                       <div>
                         <div className="text-lg font-bold text-primary">{route.stops.length}</div>
                         <div className="text-xs text-muted-foreground">Stops</div>
@@ -491,9 +616,19 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                       </div>
                       <div>
                         <div className="text-lg font-bold text-primary">
-                          {route.estimatedTime ? `${route.estimatedTime}m` : '~'}
+                          {(activeRouteEstimate?.estimatedTimeMinutes ?? route.estimatedTime) != null
+                            ? `${activeRouteEstimate?.estimatedTimeMinutes ?? route.estimatedTime}m`
+                            : '~'}
                         </div>
                         <div className="text-xs text-muted-foreground">Est. Time</div>
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold text-primary">
+                          {(activeRouteEstimate?.estimatedDistanceKm ?? route.estimatedDistance) != null
+                            ? `${activeRouteEstimate?.estimatedDistanceKm ?? route.estimatedDistance} km`
+                            : '~'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Distance</div>
                       </div>
                     </div>
                     {route.smartLabel && (
@@ -504,12 +639,23 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                   </div>
                 </div>
               ) : route ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <MapPin className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p className="font-medium">No stops yet</p>
-                  <p className="text-sm mt-1">Tap promotions on the map to add them</p>
-                  <Button variant="outline" size="sm" className="mt-4 gap-2" onClick={() => onSuggestRoute()}>
-                    <Sparkles className="w-4 h-4" /> Generate Suggested Route
+                <div className="text-center py-8 px-4">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-muted/50 flex items-center justify-center">
+                    <MapPin className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <p className="font-semibold text-foreground">No stops yet</p>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+                    Get a suggested route below, or open the Discovery Map and tap promos to add them.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 gap-2"
+                    onClick={() => onSuggestRoute()}
+                    disabled={suggestLoading}
+                  >
+                    {suggestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Generate Suggested Route
                   </Button>
                 </div>
               ) : null}
@@ -517,14 +663,24 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
               {/* ─── Suggestion Cards (when no route is active) ─── */}
               {!route && (
                 <div className="space-y-3">
+                  {locationLoading && (
+                    <div className="flex items-center gap-3 p-4 rounded-2xl border border-border/50 bg-muted/20">
+                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">Getting your location for suggestions…</span>
+                    </div>
+                  )}
                   {/* Smart Route – primary option */}
                   <button
                     onClick={() => onSuggestSmartRoute?.()}
-                    className="w-full rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-4 text-left hover:border-primary/40 transition-all"
+                    disabled={suggestLoading || locationLoading}
+                    className={cn(
+                      'w-full rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/5 to-accent/5 p-4 text-left transition-all',
+                      suggestLoading || locationLoading ? 'opacity-70 cursor-not-allowed' : 'hover:border-primary/40'
+                    )}
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                        <Brain className="w-5 h-5 text-primary" />
+                        {suggestLoading ? <Loader2 className="w-5 h-5 text-primary animate-spin" /> : <Brain className="w-5 h-5 text-primary" />}
                       </div>
                       <div>
                         <h3 className="font-semibold text-sm">Smart Route</h3>
@@ -550,21 +706,33 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         onClick={() => onSuggestRoute('more_earnings')}
-                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                        disabled={suggestLoading || locationLoading}
+                        className={cn(
+                          'flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 transition-all',
+                          suggestLoading || locationLoading ? 'opacity-60 cursor-not-allowed' : 'hover:border-primary/50 hover:bg-primary/5'
+                        )}
                       >
                         <TrendingUp className="w-5 h-5 text-primary" />
                         <span className="text-xs font-medium">Max Earnings</span>
                       </button>
                       <button
                         onClick={() => onSuggestRoute('faster')}
-                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                        disabled={suggestLoading || locationLoading}
+                        className={cn(
+                          'flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 transition-all',
+                          suggestLoading || locationLoading ? 'opacity-60 cursor-not-allowed' : 'hover:border-primary/50 hover:bg-primary/5'
+                        )}
                       >
                         <Timer className="w-5 h-5 text-primary" />
                         <span className="text-xs font-medium">Fastest</span>
                       </button>
                       <button
                         onClick={() => onSuggestRoute('effective')}
-                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 transition-all"
+                        disabled={suggestLoading || locationLoading}
+                        className={cn(
+                          'flex flex-col items-center gap-1.5 p-3 rounded-xl border border-border/50 bg-muted/20 transition-all',
+                          suggestLoading || locationLoading ? 'opacity-60 cursor-not-allowed' : 'hover:border-primary/50 hover:bg-primary/5'
+                        )}
                       >
                         <Zap className="w-5 h-5 text-primary" />
                         <span className="text-xs font-medium">Most Effective</span>
@@ -577,7 +745,11 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     {watchLater.length > 0 && (
                       <button
                         onClick={() => onSuggestFromSaved?.()}
-                        className="flex items-center gap-2 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 transition-all"
+                        disabled={suggestLoading}
+                        className={cn(
+                          'flex items-center gap-2 p-3 rounded-xl border border-border/50 bg-card transition-all',
+                          suggestLoading ? 'opacity-60 cursor-not-allowed' : 'hover:border-primary/50'
+                        )}
                       >
                         <Bookmark className="w-4 h-4 text-primary" />
                         <div className="text-left">
@@ -588,7 +760,11 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     )}
                     <button
                       onClick={() => onSuggestByInterests?.()}
-                      className="flex items-center gap-2 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/50 transition-all"
+                      disabled={suggestLoading || locationLoading}
+                      className={cn(
+                        'flex items-center gap-2 p-3 rounded-xl border border-border/50 bg-card transition-all',
+                        suggestLoading || locationLoading ? 'opacity-60 cursor-not-allowed' : 'hover:border-primary/50'
+                      )}
                     >
                       <Heart className="w-4 h-4 text-primary" />
                       <div className="text-left">
@@ -598,7 +774,12 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                     </button>
                   </div>
 
-                  <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => onStartRoute?.()}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => onStartRoute?.()}
+                  >
                     <Route className="w-4 h-4" /> Start New Route Manually
                   </Button>
                 </div>
@@ -607,15 +788,46 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
               {/* Saved Routes Section */}
               {!route && (
                 <div className="space-y-3 mt-2">
-                  <button
-                    onClick={() => setShowSaved(!showSaved)}
-                    className="flex items-center justify-between w-full text-left"
-                  >
-                    <span className="text-sm font-semibold flex items-center gap-2">
-                      <Save className="w-4 h-4" /> Saved Routes ({savedRoutes.length})
-                    </span>
-                    {showSaved ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setShowSaved(!showSaved)}
+                      className="flex-1 flex items-center justify-between text-left"
+                    >
+                      <span className="text-sm font-semibold flex items-center gap-2">
+                        <Save className="w-4 h-4" /> Saved Routes ({savedRoutes.length})
+                      </span>
+                      {showSaved ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                    {onAddSavedRoute && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 shrink-0"
+                        onClick={() => setShowImportPaste(!showImportPaste)}
+                      >
+                        <Upload className="w-3.5 h-3.5" /> Import
+                      </Button>
+                    )}
+                  </div>
+                  {showImportPaste && onAddSavedRoute && (
+                    <div className="p-3 rounded-xl border border-border space-y-2">
+                      <p className="text-xs text-muted-foreground">Paste exported route JSON below</p>
+                      <textarea
+                        value={importJson}
+                        onChange={(e) => setImportJson(e.target.value)}
+                        placeholder='{"name":"My Route","stops":[...],...}'
+                        className="w-full min-h-[80px] rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleImportSubmit} disabled={!importJson.trim()}>
+                          Import route
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setShowImportPaste(false); setImportJson(''); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {showSaved && savedRoutes.map((r) => {
                     const TransportIcon = getTransportIcon(r.transportMode);
                     const savedAgo = (() => {
@@ -664,6 +876,14 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
                             onClick={() => onOpenSavedRouteInMaps?.(r.id)}
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm" variant="outline"
+                            className="h-8 px-2.5"
+                            title="Export route"
+                            onClick={() => { handleExportRoute(r); }}
+                          >
+                            <Download className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             size="sm" variant="outline"
@@ -731,9 +951,18 @@ export const RouteBuilder: React.FC<RouteBuilderProps> = ({
 
           {/* Bottom Actions */}
           {route && (
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t border-border flex gap-2">
-              <Button variant="outline" size="sm" onClick={onDiscardRoute} className="gap-1">
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t border-border flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={onDiscardRoute} className="gap-1" title="Discard route">
                 <Trash2 className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleExportRoute(route)} className="gap-1" title="Copy as JSON">
+                <Download className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleShareRoute} className="gap-1" title="Copy JSON to share">
+                <Share2 className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleCopyShareableLink} className="gap-1" title="Copy shareable link">
+                <Copy className="w-4 h-4" />
               </Button>
               <Button variant="outline" size="sm" onClick={handleSave} className="gap-1 flex-1">
                 <Save className="w-4 h-4" /> Save

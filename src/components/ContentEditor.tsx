@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { CONTENT_STATUS_ACTIVE } from '@/constants/contentStatus';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -171,7 +172,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({ contentId, onClose
       const { error } = await supabase
         .from('user_content')
         .update({
-          status: 'active',
+          status: CONTENT_STATUS_ACTIVE,
           published_at: new Date().toISOString(),
           is_draft: false,
           scheduled_at: null,
@@ -221,8 +222,9 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({ contentId, onClose
     }
   };
 
-  const handleUploadComplete = (url: string, type: 'image' | 'video') => {
-    setContent(prev => ({ ...prev, media_url: url, media_type: type }));
+  const handleUploadComplete = (url: string | string[], type: 'image' | 'video' | 'carousel') => {
+    const media_url = Array.isArray(url) ? JSON.stringify(url) : url;
+    setContent(prev => ({ ...prev, media_url, media_type: type }));
   };
 
   if (loading) {
@@ -298,7 +300,17 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({ contentId, onClose
       <ContentUpload
         onUploadComplete={handleUploadComplete}
         mediaType={content.media_type as 'image' | 'video' | 'carousel'}
-        existingUrl={content.media_url || undefined}
+        existingUrl={
+          content.media_url?.startsWith('[')
+            ? (() => {
+                try {
+                  return JSON.parse(content.media_url!) as string[];
+                } catch {
+                  return content.media_url || undefined;
+                }
+              })()
+            : content.media_url || undefined
+        }
         onRemove={() => setContent(prev => ({ ...prev, media_url: null }))}
       />
 

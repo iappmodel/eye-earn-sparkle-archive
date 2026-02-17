@@ -10,6 +10,7 @@ interface SubscriptionCardProps {
   isCurrentPlan: boolean;
   onSelect: () => void;
   isLoading?: boolean;
+  badge?: 'popular' | 'best-value' | null;
 }
 
 const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
@@ -17,6 +18,7 @@ const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
   isCurrentPlan,
   onSelect,
   isLoading,
+  badge,
 }) => {
   const { formatCurrency } = useLocalization();
   const config = SUBSCRIPTION_TIERS[tier];
@@ -38,11 +40,23 @@ const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
       'relative rounded-2xl p-5 transition-all',
       isCurrentPlan 
         ? 'neu-button border-2 border-primary/50 bg-primary/5' 
-        : 'neu-card hover:scale-[1.02]'
+        : 'neu-card hover:scale-[1.02]',
+      badge === 'popular' && 'ring-2 ring-primary/30',
+      badge === 'best-value' && 'ring-2 ring-icoin/30'
     )}>
       {isCurrentPlan && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-bold">
           Current Plan
+        </div>
+      )}
+      {!isCurrentPlan && badge === 'popular' && (
+        <div className="absolute -top-3 right-3 px-2.5 py-0.5 rounded-full bg-primary/90 text-primary-foreground text-xs font-semibold">
+          Most Popular
+        </div>
+      )}
+      {!isCurrentPlan && badge === 'best-value' && (
+        <div className="absolute -top-3 right-3 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-icoin to-yellow-600 text-primary-foreground text-xs font-semibold">
+          Best Value
         </div>
       )}
 
@@ -63,17 +77,20 @@ const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
             {config.name}
           </h3>
           <p className="text-sm text-muted-foreground">
-            {config.rewardMultiplier}x Rewards
+            {config.reward_multiplier}x Rewards
           </p>
         </div>
       </div>
 
       <div className="mb-4">
         <span className="font-display text-3xl font-bold">
-          {config.price === 0 ? 'Free' : formatCurrency(config.price / 100)}
+          {config.price === 0 ? 'Free' : formatCurrency(config.price)}
         </span>
         {config.price > 0 && (
           <span className="text-muted-foreground text-sm">/month</span>
+        )}
+        {config.trial_days > 0 && (
+          <p className="text-xs text-primary mt-1">{config.trial_days}-day free trial</p>
         )}
       </div>
 
@@ -115,7 +132,19 @@ interface SubscriptionPlansProps {
 export const SubscriptionPlans: React.FC<SubscriptionPlansProps> = ({ 
   compact = false 
 }) => {
-  const { tier, isLoading, isCheckingOut, subscribe, openCustomerPortal, subscribed } = useSubscription();
+  const {
+    tier: currentTier,
+    isLoading,
+    isCheckingOut,
+    subscribe,
+    openCustomerPortal,
+    subscribed,
+    trialEnd,
+    subscriptionEnd,
+    cancelAtPeriodEnd,
+    isInTrial,
+    daysLeftInTrial,
+  } = useSubscription();
 
   if (isLoading) {
     return (
@@ -129,6 +158,12 @@ export const SubscriptionPlans: React.FC<SubscriptionPlansProps> = ({
     ? (['pro', 'creator'] as const) 
     : (['free', 'pro', 'creator'] as const);
 
+  const getBadge = (t: 'free' | 'pro' | 'creator'): 'popular' | 'best-value' | null => {
+    if (t === 'pro') return 'popular';
+    if (t === 'creator') return 'best-value';
+    return null;
+  };
+
   return (
     <div className="space-y-4">
       <div className={cn(
@@ -139,20 +174,41 @@ export const SubscriptionPlans: React.FC<SubscriptionPlansProps> = ({
           <SubscriptionCard
             key={t}
             tier={t}
-            isCurrentPlan={tier === t}
+            isCurrentPlan={currentTier === t}
             onSelect={() => subscribe(t as 'pro' | 'creator')}
             isLoading={isCheckingOut}
+            badge={getBadge(t)}
           />
         ))}
       </div>
 
       {subscribed && (
-        <button
-          onClick={openCustomerPortal}
-          className="w-full text-center text-sm text-primary hover:underline py-2"
-        >
-          Manage Subscription
-        </button>
+        <div className="space-y-2">
+          {(trialEnd || subscriptionEnd || cancelAtPeriodEnd) && (
+            <div className="rounded-xl bg-muted/50 p-3 text-sm text-muted-foreground space-y-1">
+              {isInTrial && daysLeftInTrial > 0 && (
+                <p className="text-primary font-medium">
+                  {daysLeftInTrial} {daysLeftInTrial === 1 ? 'day' : 'days'} left in free trial — ends {new Date(trialEnd!).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                </p>
+              )}
+              {trialEnd && !isInTrial && (
+                <p>Trial ended: {new Date(trialEnd).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
+              )}
+              {subscriptionEnd && (
+                <p>{isInTrial ? 'Billing starts' : 'Next billing'}: {new Date(subscriptionEnd).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
+              )}
+              {cancelAtPeriodEnd && (
+                <p className="text-amber-600 dark:text-amber-400 font-medium">Subscription will not renew at period end</p>
+              )}
+            </div>
+          )}
+          <button
+            onClick={openCustomerPortal}
+            className="w-full py-3 rounded-xl neu-button font-medium text-center text-sm"
+          >
+            Manage Subscription
+          </button>
+        </div>
       )}
     </div>
   );

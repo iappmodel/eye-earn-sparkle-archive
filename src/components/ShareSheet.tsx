@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,17 +13,37 @@ import {
   Check,
   QrCode,
   MoreHorizontal,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useDeepLink } from '@/hooks/useDeepLink';
+import { QRCodeSheet } from '@/components/QRCodeSheet';
+
+/** Sanitize a string for use in a filename (one line, no path chars). */
+function slugForFilename(s: string, maxLen = 60): string {
+  const slug = s
+    .replace(/[\n\r\t/\\:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+  return slug || 'download';
+}
 
 interface ShareSheetProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When set, share URL is the per-item deep link (origin/?content=contentId). Takes precedence over url. */
+  contentId?: string | null;
   title?: string;
+  /** Share URL. Ignored when contentId is provided (deep link is used instead). */
   url?: string;
   description?: string;
+  /** When set, "Save to device" downloads this media URL (image or video). */
+  mediaUrl?: string | null;
+  /** Hint for file extension when mediaUrl is set (e.g. 'video' → .mp4, 'image' → .jpg). */
+  mediaType?: 'image' | 'video';
 }
 
 interface ShareOption {
@@ -37,11 +57,23 @@ interface ShareOption {
 export const ShareSheet: React.FC<ShareSheetProps> = ({
   isOpen,
   onClose,
+  contentId,
   title = 'Check out this content!',
-  url = window.location.href,
+  url: urlProp = window.location.href,
   description = '',
+  mediaUrl,
+  mediaType = 'video',
 }) => {
   const [copied, setCopied] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { generateContentLink } = useDeepLink();
+
+  // Per-item deep link when contentId is set; otherwise use provided url (or current page)
+  const url = useMemo(
+    () => (contentId ? generateContentLink(contentId) : urlProp),
+    [contentId, urlProp, generateContentLink],
+  );
 
   const handleCopyLink = useCallback(async () => {
     try {
@@ -135,6 +167,61 @@ export const ShareSheet: React.FC<ShareSheetProps> = ({
     }
   }, [title, description, url, handleCopyLink]);
 
+  const handleSaveToDevice = useCallback(async () => {
+    setSaving(true);
+    try {
+      if (mediaUrl?.trim()) {
+        const ext = mediaType === 'image' ? '.jpg' : '.mp4';
+        const baseName = slugForFilename(title || 'content') || (contentId ?? 'download');
+        const filename = `${baseName}${ext}`;
+        try {
+          const res = await fetch(mediaUrl, { mode: 'cors' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+          // Download is the feedback; no success toast
+        } catch {
+          // CORS or network failure: open in new tab so user can save from there
+          const link = document.createElement('a');
+          link.href = mediaUrl;
+          link.download = filename;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          // Download/open is the feedback; no toast
+        }
+      } else {
+        const text = [title, description, url].filter(Boolean).join('\n\n');
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `${slugForFilename(title || 'link')}.txt`;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        // File download is the feedback; no success toast
+      }
+    } catch (e) {
+      toast.error('Download failed');
+      console.warn('[ShareSheet] Save to device failed:', e);
+    } finally {
+      setSaving(false);
+    }
+  }, [mediaUrl, mediaType, title, contentId, url, description]);
+
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent side="bottom" className="rounded-t-3xl">
@@ -174,7 +261,7 @@ export const ShareSheet: React.FC<ShareSheetProps> = ({
           
           {/* QR Code */}
           <button
-            onClick={() => toast.info('QR Code generator coming soon!')}
+            onClick={() => setShowQRCode(true)}
             className="flex flex-col items-center gap-2"
           >
             <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
@@ -183,6 +270,13 @@ export const ShareSheet: React.FC<ShareSheetProps> = ({
             <span className="text-xs text-muted-foreground">QR Code</span>
           </button>
         </div>
+
+        <QRCodeSheet
+          isOpen={showQRCode}
+          onClose={() => setShowQRCode(false)}
+          url={url}
+          title={title}
+        />
 
         {/* Copy link section */}
         <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-xl">
@@ -211,13 +305,18 @@ export const ShareSheet: React.FC<ShareSheetProps> = ({
           </Button>
         </div>
 
-        {/* Save to device (for media) */}
+        {/* Save to device (media or link file) */}
         <Button
           variant="outline"
           className="w-full mt-4"
-          onClick={() => toast.info('Download feature coming soon!')}
+          onClick={handleSaveToDevice}
+          disabled={saving}
         >
-          <Download className="w-4 h-4 mr-2" />
+          {saving ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4 mr-2" />
+          )}
           Save to device
         </Button>
       </SheetContent>

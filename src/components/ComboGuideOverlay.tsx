@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronLeft, ChevronRight, Eye, Play, Pause } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Eye, Play, Pause, Gauge } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -9,6 +9,7 @@ import {
   loadGestureCombos, 
   COMBO_ACTION_LABELS 
 } from '@/hooks/useGestureCombos';
+import { TRIGGER_LABELS } from '@/hooks/useScreenTargets';
 
 interface ComboGuideOverlayProps {
   isOpen: boolean;
@@ -26,6 +27,9 @@ const ComboGuideOverlay: React.FC<ComboGuideOverlayProps> = ({
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [animationPhase, setAnimationPhase] = useState<'idle' | 'executing' | 'complete'>('idle');
+  const [playbackSpeed, setPlaybackSpeed] = useState<0.5 | 1 | 2>(1);
+
+  const stepDuration = useMemo(() => Math.round(1200 / playbackSpeed), [playbackSpeed]);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,9 +51,6 @@ const ComboGuideOverlay: React.FC<ComboGuideOverlayProps> = ({
   // Animation loop
   useEffect(() => {
     if (!isOpen || !isPlaying || !currentCombo) return;
-
-    const stepDuration = 1200;
-    const pauseBetweenCycles = 1500;
     
     const timer = setInterval(() => {
       setCurrentStepIndex(prev => {
@@ -63,7 +64,7 @@ const ComboGuideOverlay: React.FC<ComboGuideOverlayProps> = ({
     }, stepDuration);
 
     return () => clearInterval(timer);
-  }, [isOpen, isPlaying, currentCombo]);
+  }, [isOpen, isPlaying, currentCombo, stepDuration]);
 
   // Reset animation when changing combos
   useEffect(() => {
@@ -93,6 +94,20 @@ const ComboGuideOverlay: React.FC<ComboGuideOverlayProps> = ({
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-xl font-bold text-foreground">Combo Guide</h2>
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+              <Gauge className="h-4 w-4 text-muted-foreground ml-1" />
+              {([0.5, 1, 2] as const).map((speed) => (
+                <button
+                  key={speed}
+                  onClick={() => setPlaybackSpeed(speed)}
+                  className={`px-2 py-1 rounded text-sm font-medium transition-colors ${
+                    playbackSpeed === speed ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}
+                >
+                  {speed}×
+                </button>
+              ))}
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -115,7 +130,7 @@ const ComboGuideOverlay: React.FC<ComboGuideOverlayProps> = ({
             </h3>
             <p className="text-muted-foreground mb-2">{currentCombo.description}</p>
             <Badge variant={currentCombo.enabled ? "default" : "secondary"}>
-              {COMBO_ACTION_LABELS[currentCombo.action]}
+              {COMBO_ACTION_LABELS[currentCombo.action] ?? currentCombo.action}
             </Badge>
           </div>
 
@@ -127,6 +142,7 @@ const ComboGuideOverlay: React.FC<ComboGuideOverlayProps> = ({
                 steps={currentCombo.steps}
                 currentStepIndex={currentStepIndex}
                 isPlaying={isPlaying}
+                stepDurationMs={stepDuration}
               />
             </div>
           </div>
@@ -209,15 +225,32 @@ interface EyeAnimationProps {
   steps: GestureStep[];
   currentStepIndex: number;
   isPlaying: boolean;
+  stepDurationMs: number;
 }
 
 const EyeAnimation: React.FC<EyeAnimationProps> = ({
   steps,
   currentStepIndex,
   isPlaying,
+  stepDurationMs,
 }) => {
   const currentStep = currentStepIndex > 0 ? steps[currentStepIndex - 1] : null;
-  
+  const isHoldStep = currentStep?.type === 'hold';
+  const [holdProgress, setHoldProgress] = useState(0);
+
+  useEffect(() => {
+    if (!isHoldStep || !isPlaying) {
+      setHoldProgress(0);
+      return;
+    }
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - start;
+      setHoldProgress(Math.min(100, (elapsed / stepDurationMs) * 100));
+    }, 50);
+    return () => clearInterval(timer);
+  }, [isHoldStep, isPlaying, currentStepIndex, stepDurationMs]);
+
   // Calculate pupil position based on direction
   const getPupilPosition = () => {
     if (!currentStep || currentStep.type !== 'direction') {
@@ -318,6 +351,27 @@ const EyeAnimation: React.FC<EyeAnimationProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Hold step progress bar */}
+      <AnimatePresence>
+        {isHoldStep && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-32"
+          >
+            <div className="text-[10px] text-center text-muted-foreground mb-1">Hold</div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <motion.div
+                className="h-full bg-primary rounded-full"
+                animate={{ width: `${holdProgress}%` }}
+                transition={{ type: 'tween', duration: 0.05 }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -385,6 +439,8 @@ const StepIndicator: React.FC<StepIndicatorProps> = ({
         return getDirectionIcon((step as { type: 'direction'; direction: string }).direction);
       case 'blink':
         return `${(step as { type: 'blink'; count: number }).count}×`;
+      case 'gesture':
+        return '✦';
       case 'hold':
         return '⏱';
       default:
@@ -438,6 +494,8 @@ const getStepDescription = (step: GestureStep): string => {
     case 'blink':
       const count = (step as { type: 'blink'; count: number }).count;
       return `Blink ${count} time${count > 1 ? 's' : ''}`;
+    case 'gesture':
+      return TRIGGER_LABELS[(step as { type: 'gesture'; trigger: any }).trigger] || 'Face gesture';
     case 'hold':
       return `Hold for ${(step as { type: 'hold'; duration: number }).duration}ms`;
     default:

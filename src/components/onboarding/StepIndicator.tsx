@@ -2,28 +2,54 @@
 import React from 'react';
 import { X, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocalization } from '@/contexts/LocalizationContext';
 import type { OnboardingStep } from './OnboardingFlow';
 
 interface StepIndicatorProps {
   steps: OnboardingStep[];
   currentStep: number;
   onClose: () => void;
+  /** 0–100 for overall onboarding progress bar */
+  progressPercentage?: number;
 }
 
-const stepLabels: Record<OnboardingStep, string> = {
-  welcome: 'Welcome',
-  selfie: 'Selfie',
-  'id-upload': 'ID Upload',
-  verification: 'Verify',
+const stepKeys: Record<OnboardingStep, keyof typeof stepLabelKeys> = {
+  welcome: 'welcome',
+  selfie: 'selfie',
+  'id-upload': 'idUpload',
+  verification: 'verify',
 };
+
+const stepLabelKeys = {
+  welcome: 'onboarding.steps.welcome',
+  selfie: 'onboarding.steps.selfie',
+  idUpload: 'onboarding.steps.idUpload',
+  verify: 'onboarding.steps.verify',
+} as const;
 
 export const StepIndicator: React.FC<StepIndicatorProps> = ({
   steps,
   currentStep,
   onClose,
+  progressPercentage,
 }) => {
+  const { t } = useLocalization();
+
   return (
-    <div className="flex items-center justify-between">
+    <div className="space-y-2">
+      {progressPercentage != null && (
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
+            style={{ width: `${Math.min(100, progressPercentage)}%` }}
+            role="progressbar"
+            aria-valuenow={progressPercentage}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          />
+        </div>
+      )}
+      <div className="flex items-center justify-between">
       {/* Progress dots */}
       <div className="flex items-center gap-2">
         {steps.map((step, index) => (
@@ -37,6 +63,7 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
                   ? 'bg-primary/20 text-primary border-2 border-primary'
                   : 'bg-muted text-muted-foreground'
               )}
+              title={t(stepLabelKeys[stepKeys[step]])}
             >
               {index < currentStep ? (
                 <Check className="w-4 h-4" />
@@ -60,9 +87,11 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
       <button
         onClick={onClose}
         className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-muted/80 transition-colors"
+        aria-label="Close"
       >
         <X className="w-5 h-5" />
       </button>
+    </div>
     </div>
   );
 };

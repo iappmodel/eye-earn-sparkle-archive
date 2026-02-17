@@ -1,117 +1,56 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  subscriptionService,
+  SUBSCRIPTION_TIERS,
+  type SubscriptionStatus,
+  isInTrial as checkIsInTrial,
+  daysLeftInTrial as getDaysLeftInTrial,
+} from '@/services/subscription.service';
 import { toast } from '@/hooks/use-toast';
 
-export interface SubscriptionStatus {
-  subscribed: boolean;
-  tier: 'free' | 'pro' | 'creator';
-  tierName: string;
-  subscriptionEnd: string | null;
-  rewardMultiplier: number;
-}
-
-export const SUBSCRIPTION_TIERS = {
-  free: {
-    name: 'Free',
-    price: 0,
-    priceId: null,
-    productId: null,
-    rewardMultiplier: 1,
-    features: [
-      'Basic feed access',
-      'Standard rewards (1x)',
-      'Community support',
-    ],
-  },
-  pro: {
-    name: 'Pro',
-    price: 499,
-    priceId: 'price_1Sj6GwA5pO96HvRnf7ck3M9G',
-    productId: 'prod_TgTDyU5HXIH8hh',
-    rewardMultiplier: 2,
-    features: [
-      'All Free features',
-      '2x Reward Multiplier',
-      'Advanced Analytics',
-      'Custom Themes',
-      'Priority Feed',
-      'Boost Credits',
-    ],
-  },
-  creator: {
-    name: 'Creator',
-    price: 1499,
-    priceId: 'price_1Sj6HGA5pO96HvRnEi3u1FqQ',
-    productId: 'prod_TgTDRhBdlgafaX',
-    rewardMultiplier: 3,
-    features: [
-      'All Pro features',
-      '3x Reward Multiplier',
-      'Creator Tools',
-      'Audience Analytics',
-      'Priority Support',
-      'Ad-free Experience',
-      'Early Feature Access',
-    ],
-  },
+const DEFAULT_STATUS: SubscriptionStatus = {
+  subscribed: false,
+  tier: 'free',
+  tier_name: 'Free',
+  subscription_end: null,
+  reward_multiplier: 1,
+  trial_end: null,
+  cancel_at_period_end: false,
+  current_period_start: null,
 };
 
+export type { SubscriptionStatus };
+export { SUBSCRIPTION_TIERS };
+
 export function useSubscription() {
-  const { user } = useAuth();
-  const [status, setStatus] = useState<SubscriptionStatus>({
-    subscribed: false,
-    tier: 'free',
-    tierName: 'Free',
-    subscriptionEnd: null,
-    rewardMultiplier: 1,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, subscription, refreshSubscription, loading: authLoading } = useAuth();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
-  const checkSubscription = useCallback(async () => {
-    if (!user) {
-      setStatus({
-        subscribed: false,
-        tier: 'free',
-        tierName: 'Free',
-        subscriptionEnd: null,
-        rewardMultiplier: 1,
-      });
-      setIsLoading(false);
-      return;
-    }
+  const status: SubscriptionStatus = subscription ?? DEFAULT_STATUS;
+  const isInTrial = checkIsInTrial(status);
+  const daysLeftInTrial = getDaysLeftInTrial(status);
 
-    try {
-      const { data, error } = await supabase.functions.invoke('check-subscription');
-      
-      if (error) throw error;
-
-      setStatus({
-        subscribed: data.subscribed,
-        tier: data.tier || 'free',
-        tierName: data.tier_name || 'Free',
-        subscriptionEnd: data.subscription_end,
-        rewardMultiplier: data.reward_multiplier || 1,
-      });
-    } catch (error) {
-      console.error('Failed to check subscription:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
+  // Refresh subscription when user is present and we have no subscription yet (e.g. first load)
   useEffect(() => {
-    checkSubscription();
-  }, [checkSubscription]);
+    if (user && !subscription) {
+      refreshSubscription();
+    }
+  }, [user, subscription, refreshSubscription]);
 
-  // Auto-refresh subscription status periodically
+  // When user returns from Stripe (e.g. new tab), refresh subscription on window focus
   useEffect(() => {
-    const interval = setInterval(checkSubscription, 60000); // Every minute
-    return () => clearInterval(interval);
-  }, [checkSubscription]);
+    const handleFocus = () => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('subscription') === 'success' && user) {
+        refreshSubscription();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user, refreshSubscription]);
 
-  const subscribe = async (tier: 'pro' | 'creator') => {
+  const subscribe = useCallback(async (tier: 'pro' | 'creator') => {
     if (!user) {
       toast({
         title: 'Authentication Required',
@@ -123,14 +62,21 @@ export function useSubscription() {
 
     setIsCheckingOut(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { tier },
-      });
-
-      if (error) throw error;
-
-      if (data?.url) {
-        window.open(data.url, '_blank');
+      const result = await subscriptionService.createCheckout(tier);
+      if (result.error) {
+        toast({
+          title: 'Checkout Error',
+          description: result.error,
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (result.url) {
+        window.open(result.url, '_blank');
+        toast({
+          title: 'Checkout opened',
+          description: 'Complete payment in the new tab. Your plan will update when done.',
+        });
       }
     } catch (error) {
       console.error('Checkout error:', error);
@@ -142,16 +88,21 @@ export function useSubscription() {
     } finally {
       setIsCheckingOut(false);
     }
-  };
+  }, [user]);
 
-  const openCustomerPortal = async () => {
+  const openCustomerPortal = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('customer-portal');
-      
-      if (error) throw error;
-
-      if (data?.url) {
-        window.open(data.url, '_blank');
+      const result = await subscriptionService.openCustomerPortal();
+      if (result.error) {
+        toast({
+          title: 'Portal Error',
+          description: result.error,
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (result.url) {
+        window.open(result.url, '_blank');
       }
     } catch (error) {
       console.error('Portal error:', error);
@@ -161,13 +112,21 @@ export function useSubscription() {
         variant: 'destructive',
       });
     }
-  };
+  }, []);
 
   return {
     ...status,
-    isLoading,
+    tierName: status.tier_name,
+    subscriptionEnd: status.subscription_end,
+    rewardMultiplier: status.reward_multiplier,
+    trialEnd: status.trial_end,
+    cancelAtPeriodEnd: status.cancel_at_period_end,
+    currentPeriodStart: status.current_period_start,
+    isInTrial,
+    daysLeftInTrial,
+    isLoading: authLoading,
     isCheckingOut,
-    checkSubscription,
+    checkSubscription: refreshSubscription,
     subscribe,
     openCustomerPortal,
     tiers: SUBSCRIPTION_TIERS,

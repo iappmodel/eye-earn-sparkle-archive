@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GazeDirection } from './useGazeDirection';
+import { logger } from '@/lib/logger';
+import type { SimpleGestureTrigger } from './useScreenTargets';
 
 // Storage keys
 export const GESTURE_COMBOS_KEY = 'app_gesture_combos';
 
-export type GestureStep = 
+export type GestureStep =
   | { type: 'direction'; direction: GazeDirection }
   | { type: 'blink'; count: 1 | 2 | 3 }
+  | { type: 'gesture'; trigger: SimpleGestureTrigger }
   | { type: 'hold'; duration: number }; // Hold gaze for X ms
 
 export type ComboAction = 
@@ -31,6 +34,8 @@ export type ComboAction =
   | 'toggleRemoteControl'
   | 'checkIn'
   | 'tipCreator'
+  | 'viewCreatorProfile'
+  | 'report'
   | 'none';
 
 export interface GestureCombo {
@@ -100,7 +105,7 @@ const DEFAULT_COMBOS: GestureCombo[] = [
       { type: 'direction', direction: 'up' },
     ],
     action: 'comment',
-    enabled: false,
+    enabled: true,
   },
   {
     id: 'follow-creator',
@@ -112,22 +117,77 @@ const DEFAULT_COMBOS: GestureCombo[] = [
       { type: 'blink', count: 1 },
     ],
     action: 'follow',
-    enabled: false,
+    enabled: true,
+  },
+  {
+    id: 'next-video',
+    name: 'Next Video',
+    description: 'Look up, blink once',
+    steps: [
+      { type: 'direction', direction: 'up' },
+      { type: 'blink', count: 1 },
+    ],
+    action: 'nextVideo',
+    enabled: true,
+  },
+  {
+    id: 'prev-video',
+    name: 'Previous Video',
+    description: 'Look down, blink once',
+    steps: [
+      { type: 'direction', direction: 'down' },
+      { type: 'blink', count: 1 },
+    ],
+    action: 'prevVideo',
+    enabled: true,
+  },
+  {
+    id: 'toggle-mute',
+    name: 'Toggle Mute',
+    description: 'Blink three times',
+    steps: [{ type: 'blink', count: 3 }],
+    action: 'toggleMute',
+    enabled: true,
   },
 ];
+
+// Schema version for future migrations
+const COMBOS_STORAGE_VERSION = 1;
+
+export interface SavedCombosPayload {
+  version: number;
+  combos: GestureCombo[];
+}
 
 // Load/save functions
 export const loadGestureCombos = (): GestureCombo[] => {
   try {
     const saved = localStorage.getItem(GESTURE_COMBOS_KEY);
-    return saved ? JSON.parse(saved) : DEFAULT_COMBOS;
+    if (!saved) return DEFAULT_COMBOS;
+    const parsed = JSON.parse(saved) as unknown;
+    // Support both legacy array and versioned payload
+    const combos: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : (parsed as SavedCombosPayload)?.combos ?? [];
+    if (!Array.isArray(combos)) return DEFAULT_COMBOS;
+    // Validate each combo has required fields; drop corrupted entries
+    const valid = (combos as GestureCombo[]).filter(
+      (c) =>
+        c &&
+        typeof c.id === 'string' &&
+        typeof c.name === 'string' &&
+        typeof c.action === 'string' &&
+        Array.isArray(c.steps)
+    );
+    return valid.length > 0 ? valid : DEFAULT_COMBOS;
   } catch {
     return DEFAULT_COMBOS;
   }
 };
 
 export const saveGestureCombos = (combos: GestureCombo[]) => {
-  localStorage.setItem(GESTURE_COMBOS_KEY, JSON.stringify(combos));
+  const payload: SavedCombosPayload = { version: COMBOS_STORAGE_VERSION, combos };
+  localStorage.setItem(GESTURE_COMBOS_KEY, JSON.stringify(payload));
   window.dispatchEvent(new CustomEvent('gestureCombosChanged'));
 };
 
@@ -160,8 +220,44 @@ export const removeCombo = (id: string) => {
   saveGestureCombos(combos);
 };
 
+/** Duplicate a combo with a new id and "(copy)" in the name. Returns the new combo. */
+export const duplicateCombo = (id: string): GestureCombo | null => {
+  const combos = loadGestureCombos();
+  const source = combos.find(c => c.id === id);
+  if (!source) return null;
+  const newCombo: GestureCombo = {
+    ...source,
+    id: `custom-${Date.now()}`,
+    name: `${source.name} (copy)`,
+  };
+  combos.push(newCombo);
+  saveGestureCombos(combos);
+  return newCombo;
+};
+
+/** Reorder combos by moving item at fromIndex to toIndex. */
+export const reorderCombos = (fromIndex: number, toIndex: number) => {
+  const combos = [...loadGestureCombos()];
+  if (fromIndex < 0 || fromIndex >= combos.length || toIndex < 0 || toIndex >= combos.length) return;
+  const [removed] = combos.splice(fromIndex, 1);
+  combos.splice(toIndex, 0, removed);
+  saveGestureCombos(combos);
+};
+
+/** Check if two step sequences are identical. */
+export const stepsEqual = (a: GestureStep[], b: GestureStep[]): boolean => {
+  if (a.length !== b.length) return false;
+  return a.every((step, i) => stepsMatch(step, b[i]));
+};
+
+/** Find another combo with the same step sequence (optionally excluding an id). */
+export const getConflictingCombo = (steps: GestureStep[], excludeId?: string): GestureCombo | null => {
+  const combos = loadGestureCombos();
+  return combos.find(c => c.id !== excludeId && stepsEqual(c.steps, steps)) ?? null;
+};
+
 // Check if two steps match
-const stepsMatch = (a: GestureStep, b: GestureStep): boolean => {
+export const stepsMatch = (a: GestureStep, b: GestureStep): boolean => {
   if (a.type !== b.type) return false;
   
   switch (a.type) {
@@ -169,8 +265,10 @@ const stepsMatch = (a: GestureStep, b: GestureStep): boolean => {
       return (b as typeof a).direction === a.direction;
     case 'blink':
       return (b as typeof a).count === a.count;
+    case 'gesture':
+      return (b as typeof a).trigger === a.trigger;
     case 'hold':
-      return true; // Hold is checked via duration
+      return (b as typeof a).duration === a.duration;
     default:
       return false;
   }
@@ -292,7 +390,7 @@ export function useGestureCombos(options: UseGestureCombosOptions = {}) {
     // Check for complete match
     const matchedCombo = checkForMatch();
     if (matchedCombo) {
-      console.log('[GestureCombos] Combo matched:', matchedCombo.name);
+      logger.log('[GestureCombos] Combo matched:', matchedCombo.name);
       onComboExecutedRef.current?.(matchedCombo);
       
       setState(prev => ({
@@ -334,6 +432,10 @@ export function useGestureCombos(options: UseGestureCombosOptions = {}) {
     addStep({ type: 'blink', count });
   }, [addStep]);
 
+  const addGestureStep = useCallback((trigger: SimpleGestureTrigger) => {
+    addStep({ type: 'gesture', trigger });
+  }, [addStep]);
+
   // Cleanup
   useEffect(() => {
     if (!enabled) {
@@ -353,10 +455,13 @@ export function useGestureCombos(options: UseGestureCombosOptions = {}) {
     addStep,
     addDirectionStep,
     addBlinkStep,
+    addGestureStep,
     resetTracking,
     updateCombo,
     addCombo,
     removeCombo,
+    duplicateCombo,
+    reorderCombos,
   };
 }
 
@@ -367,6 +472,8 @@ export const describeStep = (step: GestureStep): string => {
       return `Look ${step.direction}`;
     case 'blink':
       return `Blink ${step.count}×`;
+    case 'gesture':
+      return `Gesture: ${step.trigger}`;
     case 'hold':
       return `Hold for ${step.duration}ms`;
     default:
@@ -402,5 +509,7 @@ export const COMBO_ACTION_LABELS: Record<ComboAction, string> = {
   toggleRemoteControl: 'Toggle Remote',
   checkIn: 'Check In',
   tipCreator: 'Tip Creator',
+  viewCreatorProfile: 'View Creator Profile',
+  report: 'Report Content',
   none: 'No Action',
 };

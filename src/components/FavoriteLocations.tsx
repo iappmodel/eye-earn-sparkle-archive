@@ -1,233 +1,428 @@
-import React, { useState, useEffect } from 'react';
-import { Heart, MapPin, Trash2, Navigation, Star } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import {
+  Heart,
+  Trash2,
+  Navigation,
+  Star,
+  RefreshCw,
+  Share2,
+  ChevronDown,
+  StickyNote,
+  ExternalLink,
+  CheckSquare,
+  Square,
+} from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { useFavoriteLocations, type FavoriteLocation, type FavoriteSortOption } from '@/hooks/useFavoriteLocations';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { CategoryIcon } from './PromotionCategories';
 
-interface FavoriteLocation {
-  id: string;
-  business_name: string;
-  latitude: number;
-  longitude: number;
-  address: string | null;
-  category: string | null;
-  notes: string | null;
-  created_at: string;
-}
+const SORT_OPTIONS: { value: FavoriteSortOption; label: string }[] = [
+  { value: 'date_added', label: 'Recently added' },
+  { value: 'distance', label: 'Nearest first' },
+  { value: 'reward_desc', label: 'Highest reward' },
+  { value: 'expiring_soon', label: 'Expiring soon' },
+];
 
 interface FavoriteLocationsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onNavigate: (lat: number, lng: number, name: string) => void;
+  userLocation?: { lat: number; lng: number } | null;
+  onOpenPromotionDetails?: (promotionId: string) => void;
+  /** Optional: pass to render as embedded list (e.g. in FavoritesPage) instead of sheet */
+  embedded?: boolean;
 }
 
 export const FavoriteLocations: React.FC<FavoriteLocationsProps> = ({
   open,
   onOpenChange,
   onNavigate,
+  userLocation,
+  onOpenPromotionDetails,
+  embedded = false,
 }) => {
   const { user } = useAuth();
-  const [favorites, setFavorites] = useState<FavoriteLocation[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<FavoriteSortOption>('date_added');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [notesDialog, setNotesDialog] = useState<FavoriteLocation | null>(null);
+  const [notesDraft, setNotesDraft] = useState('');
 
-  const fetchFavorites = async () => {
-    if (!user) return;
-    
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('favorite_locations')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+  const {
+    favorites,
+    isLoading,
+    removeFavorite,
+    updateNotes,
+    refetch,
+  } = useFavoriteLocations({
+    userLat: userLocation?.lat,
+    userLng: userLocation?.lng,
+    sortBy,
+    enabled: open || embedded,
+  });
 
-      if (error) throw error;
-      setFavorites(data || []);
-    } catch (error) {
-      console.error('Error fetching favorites:', error);
-      toast.error('Failed to load favorites');
-    } finally {
-      setIsLoading(false);
+  const handleRemoveFavorite = useCallback(
+    async (id: string) => {
+      await removeFavorite(id);
+    },
+    [removeFavorite]
+  );
+
+  const handleNavigate = useCallback(
+    (fav: FavoriteLocation) => {
+      onNavigate(fav.latitude, fav.longitude, fav.businessName);
+      if (!embedded) onOpenChange(false);
+    },
+    [onNavigate, onOpenChange, embedded]
+  );
+
+  const handleShare = useCallback(() => {
+    if (favorites.length === 0) {
+      toast.info('No favorites to share');
+      return;
     }
+    const text = favorites
+      .map(
+        (f) =>
+          `${f.businessName}${f.address ? ` - ${f.address}` : ''}${f.rewardAmount ? ` (+${f.rewardAmount})` : ''}`
+      )
+      .join('\n');
+    if (navigator.share) {
+      navigator.share({
+        title: 'My Favorite Locations',
+        text,
+      }).catch(() => {
+        navigator.clipboard.writeText(text);
+        toast.success('Copied to clipboard');
+      });
+    } else {
+      navigator.clipboard.writeText(text);
+      toast.success('Copied to clipboard');
+    }
+  }, [favorites]);
+
+  const handleBulkRemove = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    for (const id of selectedIds) {
+      await removeFavorite(id);
+    }
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    toast.success(`Removed ${selectedIds.size} favorite${selectedIds.size > 1 ? 's' : ''}`);
+  }, [selectedIds, removeFavorite]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
-  useEffect(() => {
-    if (open && user) {
-      fetchFavorites();
-    }
-  }, [open, user]);
-
-  const removeFavorite = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('favorite_locations')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      setFavorites(prev => prev.filter(f => f.id !== id));
-      toast.success('Removed from favorites');
-    } catch (error) {
-      console.error('Error removing favorite:', error);
-      toast.error('Failed to remove');
-    }
+  const openNotesDialog = (fav: FavoriteLocation) => {
+    setNotesDialog(fav);
+    setNotesDraft(fav.notes ?? '');
   };
 
-  const handleNavigate = (fav: FavoriteLocation) => {
-    onNavigate(fav.latitude, fav.longitude, fav.business_name);
-    onOpenChange(false);
-  };
+  const saveNotes = useCallback(async () => {
+    if (!notesDialog) return;
+    await updateNotes(notesDialog.id, notesDraft.trim() || null);
+    setNotesDialog(null);
+    setNotesDraft('');
+  }, [notesDialog, notesDraft, updateNotes]);
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-[70vh] rounded-t-3xl">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <Heart className="w-5 h-5 text-primary fill-primary" />
-            Favorite Locations
-          </SheetTitle>
-        </SheetHeader>
-
-        <div className="space-y-3 overflow-y-auto pb-8">
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-20 bg-muted/50 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : favorites.length === 0 ? (
-            <div className="text-center py-12">
-              <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-              <p className="text-muted-foreground">No favorite locations yet</p>
-              <p className="text-sm text-muted-foreground/70 mt-1">
-                Tap the heart icon on any promotion to save it
-              </p>
-            </div>
-          ) : (
-            favorites.map((fav) => (
-              <div
-                key={fav.id}
-                className="p-4 rounded-xl bg-muted/30 border border-border/50"
+  const content = (
+    <>
+      {/* Header bar with sort and actions */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5">
+              {SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Sort'}
+              <ChevronDown className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {SORT_OPTIONS.map((opt) => (
+              <DropdownMenuItem
+                key={opt.value}
+                onClick={() => setSortBy(opt.value)}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <MapPin className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate">{fav.business_name}</h4>
-                    {fav.address && (
-                      <p className="text-xs text-muted-foreground truncate">{fav.address}</p>
+                {opt.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div className="flex items-center gap-1">
+          {favorites.length > 0 && (
+            <>
+              <Button variant="ghost" size="sm" onClick={handleShare} className="h-8 w-8 p-0">
+                <Share2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={selectMode ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  setSelectMode((p) => !p);
+                  if (selectMode) setSelectedIds(new Set());
+                }}
+                className="h-8 w-8 p-0"
+              >
+                <CheckSquare className="w-4 h-4" />
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => refetch()} className="h-8 w-8 p-0">
+            <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Bulk actions when selecting */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="flex items-center justify-between p-3 rounded-xl bg-destructive/10 border border-destructive/20">
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <Button variant="destructive" size="sm" onClick={handleBulkRemove}>
+            <Trash2 className="w-4 h-4 mr-1" />
+            Remove
+          </Button>
+        </div>
+      )}
+
+      <div className="space-y-3 overflow-y-auto pb-8">
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-24 bg-muted/50 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : favorites.length === 0 ? (
+          <div className="text-center py-12">
+            <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <p className="text-muted-foreground font-medium">No favorite locations yet</p>
+            <p className="text-sm text-muted-foreground/70 mt-1">
+              Tap the heart icon on any promotion on the map to save it here
+            </p>
+          </div>
+        ) : (
+          favorites.map((fav) => (
+            <div
+              key={fav.id}
+              className={cn(
+                'p-4 rounded-xl border transition-colors',
+                'bg-muted/30 border-border/50',
+                selectMode && selectedIds.has(fav.id) && 'ring-2 ring-primary'
+              )}
+            >
+              <div className="flex items-start gap-3">
+                {selectMode ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelect(fav.id)}
+                    className="mt-1 shrink-0"
+                  >
+                    {selectedIds.has(fav.id) ? (
+                      <CheckSquare className="w-5 h-5 text-primary fill-primary" />
+                    ) : (
+                      <Square className="w-5 h-5 text-muted-foreground" />
                     )}
+                  </button>
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <CategoryIcon category={fav.category ?? 'general'} size="sm" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="flex-1 min-w-0 text-left"
+                  onClick={() => {
+                    if (selectMode) {
+                      toggleSelect(fav.id);
+                    } else if (fav.promotionId && onOpenPromotionDetails) {
+                      onOpenPromotionDetails(fav.promotionId);
+                    } else {
+                      handleNavigate(fav);
+                    }
+                  }}
+                >
+                  <h4 className="font-medium truncate">{fav.businessName}</h4>
+                  {fav.address && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {fav.address}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-2">
                     {fav.category && (
-                      <span className="inline-block mt-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
+                      <span className="inline-block px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
                         {fav.category}
                       </span>
                     )}
+                    {fav.rewardAmount != null && (
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium',
+                          fav.rewardType === 'vicoin' && 'bg-violet-500/20 text-violet-400',
+                          fav.rewardType === 'icoin' && 'bg-blue-500/20 text-blue-400',
+                          fav.rewardType === 'both' && 'bg-gradient-to-r from-violet-500/20 to-blue-500/20 text-purple-300'
+                        )}
+                      >
+                        +{fav.rewardAmount}
+                      </span>
+                    )}
+                    {fav.distanceKm != null && (
+                      <span className="text-xs text-muted-foreground">
+                        {fav.distanceKm < 1
+                          ? `${(fav.distanceKm * 1000).toFixed(0)} m`
+                          : `${fav.distanceKm.toFixed(1)} km`}{' '}
+                        away
+                      </span>
+                    )}
                   </div>
-                  <div className="flex gap-2">
+                  {fav.notes && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1 flex items-center gap-1">
+                      <StickyNote className="w-3 h-3 shrink-0" />
+                      {fav.notes}
+                    </p>
+                  )}
+                </button>
+                {!selectMode && (
+                  <div className="flex flex-col gap-1 shrink-0">
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-8 w-8 p-0"
-                      onClick={() => handleNavigate(fav)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNavigate(fav);
+                      }}
+                      title="Navigate"
                     >
                       <Navigation className="w-4 h-4" />
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openNotesDialog(fav);
+                      }}
+                      title="Notes"
+                    >
+                      <StickyNote
+                        className={cn('w-4 h-4', fav.notes && 'text-primary fill-primary/20')}
+                      />
+                    </Button>
+                    {fav.promotionId && onOpenPromotionDetails && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenPromotionDetails(fav.promotionId!);
+                        }}
+                        title="Details"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                      onClick={() => removeFavorite(fav.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveFavorite(fav.id);
+                      }}
+                      title="Remove"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
-                </div>
+                )}
               </div>
-            ))
-          )}
-        </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Notes dialog */}
+      <Dialog open={!!notesDialog} onOpenChange={(o) => !o && setNotesDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Notes for {notesDialog?.businessName}</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            placeholder="Add a personal note..."
+            value={notesDraft}
+            onChange={(e) => setNotesDraft(e.target.value)}
+            rows={4}
+            className="resize-none"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotesDialog(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveNotes}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Heart className="w-5 h-5 text-primary fill-primary" />
+          Favorite Locations
+        </h2>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="h-[80vh] rounded-t-3xl">
+        <SheetHeader className="pb-4">
+          <SheetTitle className="flex items-center gap-2">
+            <Heart className="w-5 h-5 text-primary fill-primary" />
+            Favorite Locations
+          </SheetTitle>
+        </SheetHeader>
+        {content}
       </SheetContent>
     </Sheet>
   );
 };
 
-// Hook to manage favorites
+/** Hook for components that only need toggle + isFavorite (e.g. map markers, promotion cards) */
 export const useFavoriteLocation = () => {
   const { user } = useAuth();
-  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchFavoriteIds = async () => {
-      const { data } = await supabase
-        .from('favorite_locations')
-        .select('promotion_id')
-        .eq('user_id', user.id);
-
-      if (data) {
-        setFavoriteIds(new Set(data.map(f => f.promotion_id).filter(Boolean) as string[]));
-      }
-    };
-
-    fetchFavoriteIds();
-  }, [user]);
-
-  const toggleFavorite = async (promotion: {
-    id: string;
-    business_name: string;
-    latitude: number;
-    longitude: number;
-    address?: string;
-    category?: string;
-  }) => {
-    if (!user) {
-      toast.error('Please sign in to save favorites');
-      return;
-    }
-
-    const isFavorite = favoriteIds.has(promotion.id);
-
-    if (isFavorite) {
-      const { error } = await supabase
-        .from('favorite_locations')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('promotion_id', promotion.id);
-
-      if (!error) {
-        setFavoriteIds(prev => {
-          const next = new Set(prev);
-          next.delete(promotion.id);
-          return next;
-        });
-        toast.success('Removed from favorites');
-      }
-    } else {
-      const { error } = await supabase
-        .from('favorite_locations')
-        .insert({
-          user_id: user.id,
-          promotion_id: promotion.id,
-          business_name: promotion.business_name,
-          latitude: promotion.latitude,
-          longitude: promotion.longitude,
-          address: promotion.address || null,
-          category: promotion.category || null,
-        });
-
-      if (!error) {
-        setFavoriteIds(prev => new Set([...prev, promotion.id]));
-        toast.success('Added to favorites');
-      }
-    }
-  };
-
-  const isFavorite = (promotionId: string) => favoriteIds.has(promotionId);
+  const { toggleFavorite, isFavorite } = useFavoriteLocations({ enabled: true });
 
   return { toggleFavorite, isFavorite };
 };

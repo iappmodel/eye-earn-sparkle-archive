@@ -14,12 +14,14 @@ const SUBSCRIPTION_TIERS = {
     product_id: "prod_TgTDyU5HXIH8hh",
     name: "Pro",
     reward_multiplier: 2,
+    trial_period_days: 14,
   },
   creator: {
     price_id: "price_1Sj6HGA5pO96HvRnEi3u1FqQ",
     product_id: "prod_TgTDRhBdlgafaX",
     name: "Creator",
     reward_multiplier: 3,
+    trial_period_days: 14,
   },
 };
 
@@ -68,6 +70,8 @@ serve(async (req) => {
     }
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
+    const successUrl = `${origin}/?subscription=success&tab=subscription`;
+    const cancelUrl = `${origin}/?subscription=canceled&tab=subscription`;
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
@@ -78,8 +82,16 @@ serve(async (req) => {
         },
       ],
       mode: "subscription",
-      success_url: `${origin}/?subscription=success`,
-      cancel_url: `${origin}/?subscription=canceled`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      allow_promotion_codes: true,
+      subscription_data: {
+        trial_period_days: tierConfig.trial_period_days ?? 0,
+        metadata: {
+          user_id: user.id,
+          tier: tier,
+        },
+      },
       metadata: {
         user_id: user.id,
         tier: tier,

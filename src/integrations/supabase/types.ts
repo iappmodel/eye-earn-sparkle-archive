@@ -404,13 +404,17 @@ export type Database = {
           action_taken: string | null
           content_id: string
           content_type: string
+          content_user_id: string | null
           created_at: string
           description: string | null
           flagged_by: string
           id: string
+          moderator_notes: string | null
           reason: string
           reviewed_at: string | null
           reviewed_by: string | null
+          severity: string
+          source: string
           status: string
           updated_at: string
         }
@@ -418,13 +422,17 @@ export type Database = {
           action_taken?: string | null
           content_id: string
           content_type?: string
+          content_user_id?: string | null
           created_at?: string
           description?: string | null
           flagged_by: string
           id?: string
+          moderator_notes?: string | null
           reason: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          severity?: string
+          source?: string
           status?: string
           updated_at?: string
         }
@@ -432,13 +440,17 @@ export type Database = {
           action_taken?: string | null
           content_id?: string
           content_type?: string
+          content_user_id?: string | null
           created_at?: string
           description?: string | null
           flagged_by?: string
           id?: string
+          moderator_notes?: string | null
           reason?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          severity?: string
+          source?: string
           status?: string
           updated_at?: string
         }
@@ -449,14 +461,19 @@ export type Database = {
           attention_score: number | null
           category: string | null
           content_id: string
+          content_owner_id: string | null
           content_type: string
           created_at: string
           id: string
+          last_event_type: string | null
           liked: boolean | null
+          metadata: Record<string, unknown> | null
+          saved: boolean | null
           shared: boolean | null
           skipped: boolean | null
           tags: string[] | null
           total_duration: number | null
+          updated_at: string | null
           user_id: string
           watch_completion_rate: number | null
           watch_duration: number | null
@@ -465,14 +482,19 @@ export type Database = {
           attention_score?: number | null
           category?: string | null
           content_id: string
+          content_owner_id?: string | null
           content_type?: string
           created_at?: string
           id?: string
+          last_event_type?: string | null
           liked?: boolean | null
+          metadata?: Record<string, unknown> | null
+          saved?: boolean | null
           shared?: boolean | null
           skipped?: boolean | null
           tags?: string[] | null
           total_duration?: number | null
+          updated_at?: string | null
           user_id: string
           watch_completion_rate?: number | null
           watch_duration?: number | null
@@ -481,14 +503,19 @@ export type Database = {
           attention_score?: number | null
           category?: string | null
           content_id?: string
+          content_owner_id?: string | null
           content_type?: string
           created_at?: string
           id?: string
+          last_event_type?: string | null
           liked?: boolean | null
+          metadata?: Record<string, unknown> | null
+          saved?: boolean | null
           shared?: boolean | null
           skipped?: boolean | null
           tags?: string[] | null
           total_duration?: number | null
+          updated_at?: string | null
           user_id?: string
           watch_completion_rate?: number | null
           watch_duration?: number | null
@@ -513,6 +540,48 @@ export type Database = {
           created_at?: string
           id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      moderation_appeals: {
+        Row: {
+          appealable_id: string
+          appealable_type: string
+          appealed_by: string
+          created_at: string
+          id: string
+          reason: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          appealable_id: string
+          appealable_type: string
+          appealed_by: string
+          created_at?: string
+          id?: string
+          reason: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          appealable_id?: string
+          appealable_type?: string
+          appealed_by?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1044,6 +1113,115 @@ export type Database = {
         }
         Relationships: []
       }
+      live_stream_comments: {
+        Row: {
+          created_at: string
+          gift_amount: number | null
+          id: string
+          is_gift: boolean
+          message: string
+          stream_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          gift_amount?: number | null
+          id?: string
+          is_gift?: boolean
+          message?: string
+          stream_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          gift_amount?: number | null
+          id?: string
+          is_gift?: boolean
+          message?: string
+          stream_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_stream_comments_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "live_streams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_streams: {
+        Row: {
+          allow_comments: boolean
+          allow_gifts: boolean
+          created_at: string
+          ended_at: string | null
+          host_id: string
+          id: string
+          started_at: string
+          status: string
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+          viewer_count: number
+        }
+        Insert: {
+          allow_comments?: boolean
+          allow_gifts?: boolean
+          created_at?: string
+          ended_at?: string | null
+          host_id: string
+          id?: string
+          started_at?: string
+          status?: string
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string
+          viewer_count?: number
+        }
+        Update: {
+          allow_comments?: boolean
+          allow_gifts?: boolean
+          created_at?: string
+          ended_at?: string | null
+          host_id?: string
+          id?: string
+          started_at?: string
+          status?: string
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          viewer_count?: number
+        }
+        Relationships: []
+      }
+      live_stream_viewers: {
+        Row: {
+          joined_at: string
+          stream_id: string
+          user_id: string
+        }
+        Insert: {
+          joined_at?: string
+          stream_id: string
+          user_id: string
+        }
+        Update: {
+          joined_at?: string
+          stream_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_stream_viewers_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "live_streams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_reactions: {
         Row: {
           created_at: string
@@ -1346,6 +1524,7 @@ export type Database = {
         Row: {
           avatar_url: string | null
           bio: string | null
+          calibration_data: Json | null
           cover_photo_url: string | null
           created_at: string
           display_name: string | null
@@ -1371,6 +1550,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           bio?: string | null
+          calibration_data?: Json | null
           cover_photo_url?: string | null
           created_at?: string
           display_name?: string | null
@@ -1396,6 +1576,7 @@ export type Database = {
         Update: {
           avatar_url?: string | null
           bio?: string | null
+          calibration_data?: Json | null
           cover_photo_url?: string | null
           created_at?: string
           display_name?: string | null
@@ -1593,6 +1774,7 @@ export type Database = {
           reward_amount: number
           reward_type: string
           updated_at: string
+          video_url: string | null
         }
         Insert: {
           address?: string | null
@@ -1613,6 +1795,7 @@ export type Database = {
           reward_amount: number
           reward_type: string
           updated_at?: string
+          video_url?: string | null
         }
         Update: {
           address?: string | null
@@ -1633,6 +1816,7 @@ export type Database = {
           reward_amount?: number
           reward_type?: string
           updated_at?: string
+          video_url?: string | null
         }
         Relationships: []
       }
@@ -1743,53 +1927,203 @@ export type Database = {
           content_id: string
           created_at: string
           id: string
+          metadata: Json | null
           user_id: string
         }
         Insert: {
           content_id: string
           created_at?: string
           id?: string
+          metadata?: Json | null
           user_id: string
         }
         Update: {
           content_id?: string
           created_at?: string
           id?: string
+          metadata?: Json | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      promo_routes: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          transport_mode: string
+          filters: Json
+          is_commute_route: boolean
+          origin: Json | null
+          destination: Json | null
+          schedule: Json | null
+          segment_transport: Json
+          smart_label: string | null
+          total_reward: number
+          estimated_time: number | null
+          estimated_distance: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name?: string
+          transport_mode?: string
+          filters?: Json
+          is_commute_route?: boolean
+          origin?: Json | null
+          destination?: Json | null
+          schedule?: Json | null
+          segment_transport?: Json
+          smart_label?: string | null
+          total_reward?: number
+          estimated_time?: number | null
+          estimated_distance?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          transport_mode?: string
+          filters?: Json
+          is_commute_route?: boolean
+          origin?: Json | null
+          destination?: Json | null
+          schedule?: Json | null
+          segment_transport?: Json
+          smart_label?: string | null
+          total_reward?: number
+          estimated_time?: number | null
+          estimated_distance?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      promo_route_stops: {
+        Row: {
+          id: string
+          route_id: string
+          promotion_id: string
+          business_name: string
+          latitude: number
+          longitude: number
+          address: string | null
+          category: string | null
+          reward_type: string
+          reward_amount: number
+          required_action: string | null
+          order: number
+          from_feed: boolean | null
+          content_id: string | null
+        }
+        Insert: {
+          id?: string
+          route_id: string
+          promotion_id: string
+          business_name: string
+          latitude: number
+          longitude: number
+          address?: string | null
+          category?: string | null
+          reward_type: string
+          reward_amount?: number
+          required_action?: string | null
+          order?: number
+          from_feed?: boolean | null
+          content_id?: string | null
+        }
+        Update: {
+          id?: string
+          route_id?: string
+          promotion_id?: string
+          business_name?: string
+          latitude?: number
+          longitude?: number
+          address?: string | null
+          category?: string | null
+          reward_type?: string
+          reward_amount?: number
+          required_action?: string | null
+          order?: number
+          from_feed?: boolean | null
+          content_id?: string | null
+        }
+        Relationships: []
+      }
+      promo_watch_later: {
+        Row: {
+          id: string
+          user_id: string
+          promotion_id: string
+          payload: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          promotion_id: string
+          payload?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          promotion_id?: string
+          payload?: Json
+          created_at?: string
         }
         Relationships: []
       }
       subscription_status: {
         Row: {
+          cancel_at_period_end: boolean
           created_at: string
+          current_period_start: string | null
           id: string
           is_subscribed: boolean
           product_id: string | null
+          reward_multiplier: number
           stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           subscription_end: string | null
           tier: string | null
+          trial_end: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          cancel_at_period_end?: boolean
           created_at?: string
+          current_period_start?: string | null
           id?: string
           is_subscribed?: boolean
           product_id?: string | null
+          reward_multiplier?: number
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           subscription_end?: string | null
           tier?: string | null
+          trial_end?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          cancel_at_period_end?: boolean
           created_at?: string
+          current_period_start?: string | null
           id?: string
           is_subscribed?: boolean
           product_id?: string | null
+          reward_multiplier?: number
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           subscription_end?: string | null
           tier?: string | null
+          trial_end?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -1998,6 +2332,7 @@ export type Database = {
           media_type: string | null
           media_url: string | null
           published_at: string | null
+          reward_amount: number | null
           reward_type: string | null
           scheduled_at: string | null
           shares_count: number | null
@@ -2031,6 +2366,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           published_at?: string | null
+          reward_amount?: number | null
           reward_type?: string | null
           scheduled_at?: string | null
           shares_count?: number | null
@@ -2064,6 +2400,7 @@ export type Database = {
           media_type?: string | null
           media_url?: string | null
           published_at?: string | null
+          reward_amount?: number | null
           reward_type?: string | null
           scheduled_at?: string | null
           shares_count?: number | null
@@ -2190,11 +2527,13 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          moderator_notes: string | null
           reason: string
           reported_by: string
           reported_user_id: string
           reviewed_at: string | null
           reviewed_by: string | null
+          severity: string
           status: string
           updated_at: string
         }
@@ -2203,11 +2542,13 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          moderator_notes?: string | null
           reason: string
           reported_by: string
           reported_user_id: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          severity?: string
           status?: string
           updated_at?: string
         }
@@ -2216,11 +2557,13 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          moderator_notes?: string | null
           reason?: string
           reported_by?: string
           reported_user_id?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          severity?: string
           status?: string
           updated_at?: string
         }
@@ -2341,6 +2684,10 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      get_content_like_counts: {
+        Args: { ids: string[]; p_user_id?: string | null }
+        Returns: { content_id: string; like_count: number; is_liked: boolean }[]
       }
       has_role: {
         Args: {
@@ -2483,3 +2830,12 @@ export const Constants = {
     },
   },
 } as const
+
+/** Public table names (no views/functions). Use for partial insert; tables and RLS must exist. */
+export type PublicTableName = keyof DefaultSchema["Tables"]
+
+/**
+ * Payload for partial insert: a subset of the table's Insert type.
+ * Only include columns you want to set; others use DB defaults. Tables and RLS must exist.
+ */
+export type PartialInsertRow<T extends PublicTableName> = Partial<TablesInsert<T>>

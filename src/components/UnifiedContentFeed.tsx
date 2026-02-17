@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useImportedMediaRealtime } from '@/hooks/useImportedMediaRealtime';
+import { useFeedInteraction } from '@/hooks/useFeedInteraction';
+import { PullToRefresh } from '@/components/ui/PullToRefresh';
 import { 
   Play, Heart, Share2, ThumbsUp, ThumbsDown, Sparkles, TrendingUp, 
   MapPin, RefreshCw, Instagram, Youtube, Facebook, Music2, Camera, 
@@ -104,8 +106,21 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
   const navigate = useNavigate();
   const [feed, setFeed] = useState<UnifiedFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<'all' | 'native' | 'imported'>('all');
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  const feedInteraction = useFeedInteraction();
+  const { isLiked, handleLike, trackShare, trackFeedback } = feedInteraction;
+
+  // Real location for personalized/near-you feed; never send default coords
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: false, maximumAge: 300000 }
+    );
+  }, []);
 
   // Real-time updates for imported media
   useImportedMediaRealtime({
@@ -133,11 +148,16 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
     try {
       const results: UnifiedFeedItem[] = [];
 
-      // Load native content from personalized feed
+      // Load native content from personalized feed (use real location only; no default coords)
       if (!showOnlyImported && activeFilter !== 'imported') {
         try {
+          const body: { latitude?: number; longitude?: number } = {};
+          if (coords?.latitude != null && coords?.longitude != null) {
+            body.latitude = coords.latitude;
+            body.longitude = coords.longitude;
+          }
           const { data: nativeData, error: nativeError } = await supabase.functions.invoke('get-personalized-feed', {
-            body: {},
+            body,
           });
 
           if (!nativeError && nativeData?.feed) {
@@ -186,55 +206,65 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [user, activeFilter, showOnlyImported]);
+  }, [user, activeFilter, showOnlyImported, coords?.latitude, coords?.longitude]);
 
   useEffect(() => {
     loadFeed();
   }, [loadFeed]);
 
-  const handleInteraction = async (contentId: string, action: 'like' | 'unlike' | 'share' | 'feedback', feedback?: 'more' | 'less') => {
-    if (!user) {
-      toast.error('Please sign in to interact');
-      return;
-    }
-
-    const item = feed.find(f => f.id === contentId);
-    if (!item) return;
-
-    try {
-      if (item.source === 'native') {
-        const nativeItem = item as NativeFeedItem;
-        await supabase.functions.invoke('track-interaction', {
-          body: {
-            contentId,
-            contentType: 'video',
-            action,
-            feedback,
-            tags: nativeItem.tags,
-            category: nativeItem.category,
-          },
-        });
+  const onLike = useCallback(
+    async (item: NativeFeedItem) => {
+      if (!user) {
+        toast.error('Please sign in to interact');
+        return;
       }
-
-      if (action === 'like') {
-        setLikedItems(prev => new Set([...prev, contentId]));
-        toast.success('Added to your likes!');
-      } else if (action === 'unlike') {
-        setLikedItems(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(contentId);
-          return newSet;
-        });
-      } else if (action === 'share') {
-        toast.success('Shared!');
-      } else if (action === 'feedback') {
-        toast.success(feedback === 'more' ? 'Showing more like this' : 'Showing less like this');
-        setTimeout(loadFeed, 500);
+      const result = await handleLike(item.id, {
+        tags: item.tags,
+        category: item.category,
+        contentType: 'video',
+      });
+      if (result.success) {
+        if (result.liked) toast.success('Liked! Synced across your feeds');
+        else toast('Unliked', { description: 'Removed from favorites' });
+      } else {
+        toast.error('Could not update like');
       }
-    } catch (error) {
-      console.error('Interaction error:', error);
-    }
-  };
+    },
+    [user, handleLike]
+  );
+
+  const onShare = useCallback(
+    async (item: NativeFeedItem) => {
+      if (!user) {
+        toast.error('Please sign in to interact');
+        return;
+      }
+      await trackShare(item.id, {
+        tags: item.tags,
+        category: item.category,
+        contentType: 'video',
+      });
+      toast.success('Shared!');
+    },
+    [user, trackShare]
+  );
+
+  const onFeedback = useCallback(
+    async (item: NativeFeedItem, feedback: 'more' | 'less') => {
+      if (!user) {
+        toast.error('Please sign in to personalize');
+        return;
+      }
+      await trackFeedback(item.id, feedback, {
+        tags: item.tags,
+        category: item.category,
+        contentType: 'video',
+      });
+      toast.success(feedback === 'more' ? 'Showing more like this' : 'Showing less like this');
+      setTimeout(loadFeed, 500);
+    },
+    [user, trackFeedback, loadFeed]
+  );
 
   const formatDuration = (seconds: number | null) => {
     if (!seconds) return '--:--';
@@ -322,13 +352,13 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              className={`h-8 px-2 ${likedItems.has(item.id) ? 'text-red-500' : ''}`}
+              className={cn('h-8 px-2', isLiked(item.id) && 'text-red-500')}
               onClick={(e) => {
                 e.stopPropagation();
-                handleInteraction(item.id, likedItems.has(item.id) ? 'unlike' : 'like');
+                onLike(item);
               }}
             >
-              <Heart className={`w-4 h-4 ${likedItems.has(item.id) ? 'fill-red-500' : ''}`} />
+              <Heart className={cn('w-4 h-4', isLiked(item.id) && 'fill-red-500')} />
             </Button>
             <Button
               variant="ghost"
@@ -336,13 +366,13 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
               className="h-8 px-2"
               onClick={(e) => {
                 e.stopPropagation();
-                handleInteraction(item.id, 'share');
+                onShare(item);
               }}
             >
               <Share2 className="w-4 h-4" />
             </Button>
           </div>
-          
+
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -350,7 +380,7 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
               className="h-7 px-2 text-xs text-muted-foreground hover:text-green-500"
               onClick={(e) => {
                 e.stopPropagation();
-                handleInteraction(item.id, 'feedback', 'more');
+                onFeedback(item, 'more');
               }}
             >
               <ThumbsUp className="w-3 h-3 mr-1" />
@@ -362,7 +392,7 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
               className="h-7 px-2 text-xs text-muted-foreground hover:text-red-500"
               onClick={(e) => {
                 e.stopPropagation();
-                handleInteraction(item.id, 'feedback', 'less');
+                onFeedback(item, 'less');
               }}
             >
               <ThumbsDown className="w-3 h-3 mr-1" />
@@ -516,26 +546,28 @@ export const UnifiedContentFeed: React.FC<UnifiedContentFeedProps> = ({
         </Tabs>
       </div>
 
-      {/* Feed */}
-      <div className="flex-1 overflow-y-auto">
-        {feed.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-            <Video className="w-16 h-16 text-muted-foreground mb-4" />
-            <h3 className="font-medium text-lg mb-2">No content yet</h3>
-            <p className="text-sm text-muted-foreground">
-              Import media from your social accounts or create native content
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4 p-4">
-            {feed.map((item) => 
-              item.source === 'native' 
-                ? renderNativeItem(item as NativeFeedItem)
-                : renderImportedItem(item as ImportedFeedItem)
-            )}
-          </div>
-        )}
-      </div>
+      {/* Feed with pull-to-refresh */}
+      <PullToRefresh onRefresh={loadFeed} disabled={loading} className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+          {feed.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+              <Video className="w-16 h-16 text-muted-foreground mb-4" />
+              <h3 className="font-medium text-lg mb-2">No content yet</h3>
+              <p className="text-sm text-muted-foreground">
+                Import media from your social accounts or create native content
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 p-4">
+              {feed.map((item) =>
+                item.source === 'native'
+                  ? renderNativeItem(item as NativeFeedItem)
+                  : renderImportedItem(item as ImportedFeedItem)
+              )}
+            </div>
+          )}
+        </div>
+      </PullToRefresh>
     </div>
   );
 };

@@ -77,8 +77,15 @@ serve(async (req) => {
       const msg = rpcError.message || '';
 
       if (msg.includes('INSUFFICIENT_BALANCE')) {
+        // Parse "Current: X, Requested: Y" from RPC message for richer client feedback
+        const match = msg.match(/Current:\s*(\d+)/);
+        const currentBalance = match ? parseInt(match[1], 10) : undefined;
         return new Response(
-          JSON.stringify({ error: `Insufficient ${coinType} balance`, success: false }),
+          JSON.stringify({
+            error: `Insufficient ${coinType} balance`,
+            current_balance: currentBalance,
+            success: false,
+          }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

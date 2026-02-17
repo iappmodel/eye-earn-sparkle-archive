@@ -4,6 +4,7 @@ import { Camera, RefreshCw, Check, Upload, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useLocalization } from '@/contexts/LocalizationContext';
 
 interface SelfieStepProps {
   onCapture: (file: File) => void;
@@ -19,6 +20,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
   existingUrl,
 }) => {
   const { toast } = useToast();
+  const { t } = useLocalization();
   const [mode, setMode] = useState<'initial' | 'camera' | 'preview'>('initial');
   const [capturedImage, setCapturedImage] = useState<string | null>(existingUrl);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
@@ -110,9 +112,9 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
     <div className="flex flex-col items-center justify-center min-h-full">
       {/* Instructions */}
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold mb-2">Take a Selfie</h2>
+        <h2 className="text-2xl font-bold mb-2">{t('onboarding.selfie.title' as 'onboarding.selfie.title')}</h2>
         <p className="text-muted-foreground">
-          We need a clear photo of your face for verification
+          {t('onboarding.selfie.subtitle' as 'onboarding.selfie.subtitle')}
         </p>
       </div>
 
@@ -154,12 +156,12 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
       {mode !== 'preview' && (
         <div className="w-full max-w-sm mb-8">
           <div className="neu-card rounded-xl p-4">
-            <h4 className="font-medium mb-2">Tips for a good selfie:</h4>
+            <h4 className="font-medium mb-2">{t('onboarding.selfie.tipsTitle' as 'onboarding.selfie.tipsTitle')}</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Good lighting on your face</li>
-              <li>• No sunglasses or hats</li>
-              <li>• Look directly at the camera</li>
-              <li>• Neutral expression</li>
+              <li>• {t('onboarding.selfie.tip1' as 'onboarding.selfie.tip1')}</li>
+              <li>• {t('onboarding.selfie.tip2' as 'onboarding.selfie.tip2')}</li>
+              <li>• {t('onboarding.selfie.tip3' as 'onboarding.selfie.tip3')}</li>
+              <li>• {t('onboarding.selfie.tip4' as 'onboarding.selfie.tip4')}</li>
             </ul>
           </div>
         </div>
@@ -175,7 +177,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
               size="lg"
             >
               <Camera className="w-5 h-5 mr-2" />
-              Open Camera
+              {t('onboarding.selfie.openCamera' as 'onboarding.selfie.openCamera')}
             </Button>
             <Button
               onClick={() => fileInputRef.current?.click()}
@@ -183,7 +185,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
               className="w-full h-12 rounded-2xl"
             >
               <Upload className="w-5 h-5 mr-2" />
-              Upload Photo
+              {t('onboarding.selfie.uploadPhoto' as 'onboarding.selfie.uploadPhoto')}
             </Button>
           </>
         )}
@@ -195,7 +197,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
             size="lg"
           >
             <Camera className="w-5 h-5 mr-2" />
-            Capture
+            {t('onboarding.selfie.capture' as 'onboarding.selfie.capture')}
           </Button>
         )}
 
@@ -212,7 +214,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
               ) : (
                 <Check className="w-5 h-5 mr-2" />
               )}
-              {isLoading ? 'Uploading...' : 'Use This Photo'}
+              {isLoading ? t('onboarding.selfie.uploading' as 'onboarding.selfie.uploading') : t('onboarding.selfie.useThisPhoto' as 'onboarding.selfie.useThisPhoto')}
             </Button>
             <Button
               onClick={retake}
@@ -221,7 +223,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
               disabled={isLoading}
             >
               <RefreshCw className="w-5 h-5 mr-2" />
-              Retake
+              {t('onboarding.selfie.retake' as 'onboarding.selfie.retake')}
             </Button>
           </>
         )}
@@ -230,7 +232,7 @@ export const SelfieStep: React.FC<SelfieStepProps> = ({
           onClick={onSkip}
           className="w-full text-muted-foreground hover:text-foreground transition-colors py-2"
         >
-          Skip for now
+          {t('onboarding.selfie.skipForNow' as 'onboarding.selfie.skipForNow')}
         </button>
       </div>
 

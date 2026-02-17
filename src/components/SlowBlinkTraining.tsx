@@ -1,8 +1,26 @@
+/**
+ * Slow Blink Training – validates and trains users to perform intentional slow blinks
+ * (400–2000ms) for attention detection and hands-free control.
+ *
+ * Features:
+ * - Real eye detection via camera + useVisionEngine (primary)
+ * - Tap-and-hold fallback for accessibility / no camera
+ * - Retry failed intervals with adaptive tolerance
+ * - Practice mode for specific intervals
+ * - Personalized optimal range (optimalMinMs, optimalMaxMs) for calibration
+ */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Eye, EyeOff, Check, X, Clock, Target } from 'lucide-react';
+import { Eye, EyeOff, Check, X, Clock, Target, Camera, Hand, RotateCcw } from 'lucide-react';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { useVisionEngine } from '@/hooks/useVisionEngine';
+import {
+  loadRemoteControlSettings,
+  loadCalibrationData,
+  applyCalibration,
+} from '@/hooks/useBlinkRemoteControl';
+import { cn } from '@/lib/utils';
 
 export interface SlowBlinkResult {
   intervals: {
@@ -10,9 +28,30 @@ export interface SlowBlinkResult {
     actualDuration: number;
     accuracy: number;
     completed: boolean;
+    attempt: number;
   }[];
   averageAccuracy: number;
+  /** Personalized range (ms) derived from successful blinks for calibration */
+  optimalMinMs: number;
+  optimalMaxMs: number;
   completedAt: string;
+  /** Whether real eye detection was used (vs tap-and-hold) */
+  usedRealEyes: boolean;
+}
+
+/** Derive slow blink calibration thresholds from training result */
+export function deriveSlowBlinkCalibration(result: SlowBlinkResult): { slowBlinkMinMs: number; slowBlinkMaxMs: number } {
+  const successful = result.intervals.filter((r) => r.completed);
+  if (successful.length === 0) {
+    return { slowBlinkMinMs: 400, slowBlinkMaxMs: 2000 };
+  }
+  const durationsMs = successful.map((r) => r.actualDuration * 1000);
+  const minActual = Math.min(...durationsMs);
+  const maxActual = Math.max(...durationsMs);
+  return {
+    slowBlinkMinMs: Math.max(350, Math.floor(minActual * 0.85)),
+    slowBlinkMaxMs: Math.min(2500, Math.ceil(maxActual * 1.15)),
+  };
 }
 
 interface SlowBlinkTrainingProps {
@@ -24,17 +63,28 @@ interface SlowBlinkTrainingProps {
 
 // Training intervals from 0.5s to 2s
 const TRAINING_INTERVALS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const MAX_RETRIES_PER_INTERVAL = 2;
+const CLOSED_THRESHOLD = 0.50;
+const OPEN_THRESHOLD = 0.80;
+const MIN_SLOW_BLINK_MS = 350;
+const MAX_SLOW_BLINK_MS = 2500;
+const MAX_RULER_TIME = 2.5;
 
-type TrainingStep = 'intro' | 'training' | 'complete';
+type TrainingStep = 'intro' | 'camera-check' | 'training' | 'complete';
+type DetectionMode = 'eyes' | 'tap';
 
 export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
   isOpen,
   onClose,
   onComplete,
-  onSkip
+  onSkip,
 }) => {
   const [step, setStep] = useState<TrainingStep>('intro');
+  const [detectionMode, setDetectionMode] = useState<DetectionMode | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<'idle' | 'starting' | 'ready' | 'error'>('idle');
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [currentIntervalIndex, setCurrentIntervalIndex] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);
   const [blinkStartTime, setBlinkStartTime] = useState<number | null>(null);
   const [blinkDuration, setBlinkDuration] = useState(0);
@@ -44,16 +94,91 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
   const [countdown, setCountdown] = useState(3);
   const [isCountingDown, setIsCountingDown] = useState(false);
   const [rulerPosition, setRulerPosition] = useState(0);
-  
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);
   const rulerAnimationRef = useRef<number | null>(null);
-  
+  const slowBlinkStateRef = useRef<{ isClosed: boolean; closedAt: number }>({ isClosed: false, closedAt: 0 });
+  const visionRef = useRef<{ eyeOpenness: number; hasFace: boolean }>({ eyeOpenness: 1, hasFace: false });
+  const eyeCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const blinkStartTimeRef = useRef<number | null>(null);
+
   const { light, medium, success, error } = useHapticFeedback();
+
+  const vision = useVisionEngine({
+    enabled: isOpen && cameraStatus === 'ready' && detectionMode === 'eyes',
+    videoRef,
+    mirrorX: true,
+    driverPriority: true,
+    visionBackend: loadRemoteControlSettings().visionBackend ?? 'face_mesh',
+    blinkConfig: { calibrationMode: true },
+  });
+
+  visionRef.current = { eyeOpenness: vision.eyeOpenness, hasFace: vision.hasFace };
+
+  // Notify RC to suspend vision (this component owns the camera) and broadcast
+  // visionEngineSample so useEyeTracking receives attention data during calibration.
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      window.dispatchEvent(new CustomEvent('calibrationMode', { detail: { active: true } }));
+    } catch {
+      // ignore
+    }
+    return () => {
+      try {
+        window.dispatchEvent(new CustomEvent('calibrationMode', { detail: { active: false } }));
+      } catch {
+        // ignore
+      }
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || cameraStatus !== 'ready' || detectionMode !== 'eyes') return;
+    if (!vision.hasFace && !vision.gazePosition) return;
+
+    const calibration = loadCalibrationData();
+    const calibratedGazePosition =
+      vision.gazePosition && calibration?.isCalibrated
+        ? applyCalibration(vision.gazePosition.x, vision.gazePosition.y, calibration)
+        : vision.gazePosition ?? null;
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('visionEngineSample', {
+          detail: {
+            hasFace: vision.hasFace,
+            eyeEAR: vision.eyeEAR,
+            eyeOpenness: vision.eyeOpenness,
+            gazePosition: vision.gazePosition,
+            calibratedGazePosition,
+            headYaw: vision.headYaw,
+            headPitch: vision.headPitch,
+            timestamp: Date.now(),
+            source: 'calibration' as const,
+          },
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }, [
+    isOpen,
+    cameraStatus,
+    detectionMode,
+    vision.hasFace,
+    vision.eyeEAR,
+    vision.eyeOpenness,
+    vision.gazePosition,
+    vision.headYaw,
+    vision.headPitch,
+  ]);
 
   const currentInterval = TRAINING_INTERVALS[currentIntervalIndex];
 
-  // Initialize audio context
+  // Audio context
   useEffect(() => {
     if (isOpen && !audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -66,142 +191,62 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
     };
   }, [isOpen]);
 
-  // Play beep sound
   const playBeep = useCallback((frequency: number = 800, duration: number = 100) => {
     if (!audioContextRef.current) return;
-    
-    const oscillator = audioContextRef.current.createOscillator();
-    const gainNode = audioContextRef.current.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContextRef.current.destination);
-    
-    oscillator.frequency.value = frequency;
-    oscillator.type = 'sine';
-    
-    gainNode.gain.setValueAtTime(0.3, audioContextRef.current.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + duration / 1000);
-    
-    oscillator.start(audioContextRef.current.currentTime);
-    oscillator.stop(audioContextRef.current.currentTime + duration / 1000);
+    const osc = audioContextRef.current.createOscillator();
+    const gain = audioContextRef.current.createGain();
+    osc.connect(gain);
+    gain.connect(audioContextRef.current.destination);
+    osc.frequency.value = frequency;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, audioContextRef.current.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + duration / 1000);
+    osc.start(audioContextRef.current.currentTime);
+    osc.stop(audioContextRef.current.currentTime + duration / 1000);
   }, []);
 
-  // Play tick sound for ruler
-  const playTick = useCallback(() => {
-    playBeep(600, 50);
-  }, [playBeep]);
+  const playTick = useCallback(() => playBeep(600, 50), [playBeep]);
+  const playResultSound = useCallback(
+    (isSuccess: boolean) => {
+      if (isSuccess) {
+        playBeep(880, 150);
+        setTimeout(() => playBeep(1100, 150), 150);
+      } else {
+        playBeep(300, 300);
+      }
+    },
+    [playBeep]
+  );
 
-  // Play success/error sound
-  const playResultSound = useCallback((isSuccess: boolean) => {
-    if (isSuccess) {
-      playBeep(880, 150);
-      setTimeout(() => playBeep(1100, 150), 150);
-    } else {
-      playBeep(300, 300);
-    }
-  }, [playBeep]);
-
-  // Animate ruler position during blink
+  // Animate ruler during blink (uses ref for eyes mode so it works before state updates)
   const animateRuler = useCallback(() => {
-    if (!blinkStartTime) return;
-    
-    const elapsed = (Date.now() - blinkStartTime) / 1000;
-    const maxTime = 2.5; // Max ruler display time
-    const position = Math.min(elapsed / maxTime, 1);
-    
+    const start = blinkStartTimeRef.current ?? blinkStartTime;
+    if (!start) return;
+    const elapsed = (Date.now() - start) / 1000;
+    const position = Math.min(elapsed / MAX_RULER_TIME, 1);
     setRulerPosition(position);
     setBlinkDuration(elapsed);
-    
-    // Play tick at each 0.25s interval
+
     const tickInterval = 0.25;
     const currentTick = Math.floor(elapsed / tickInterval);
     const prevTick = Math.floor((elapsed - 0.016) / tickInterval);
-    if (currentTick > prevTick && elapsed < maxTime) {
+    if (currentTick > prevTick && elapsed < MAX_RULER_TIME) {
       playTick();
       light();
     }
-    
-    if (isBlinking && elapsed < maxTime) {
+
+    if (elapsed < MAX_RULER_TIME && (blinkStartTimeRef.current ?? blinkStartTime)) {
       rulerAnimationRef.current = requestAnimationFrame(animateRuler);
     }
-  }, [blinkStartTime, isBlinking, playTick, light]);
+  }, [blinkStartTime, playTick, light]);
 
-  // Start blink detection
-  const handleBlinkStart = useCallback(() => {
-    if (isCountingDown || showFeedback) return;
-    
-    setIsBlinking(true);
-    setBlinkStartTime(Date.now());
-    setRulerPosition(0);
-    playBeep(1000, 100);
-    medium();
-    
-    rulerAnimationRef.current = requestAnimationFrame(animateRuler);
-  }, [isCountingDown, showFeedback, playBeep, medium, animateRuler]);
-
-  // End blink detection
-  const handleBlinkEnd = useCallback(() => {
-    if (!isBlinking || !blinkStartTime) return;
-    
-    if (rulerAnimationRef.current) {
-      cancelAnimationFrame(rulerAnimationRef.current);
-    }
-    
-    const duration = (Date.now() - blinkStartTime) / 1000;
-    setIsBlinking(false);
-    setBlinkDuration(duration);
-    
-    // Calculate accuracy (how close to target)
-    const targetDuration = currentInterval;
-    const difference = Math.abs(duration - targetDuration);
-    const maxAllowedDiff = targetDuration * 0.3; // 30% tolerance
-    const accuracy = Math.max(0, 1 - (difference / maxAllowedDiff)) * 100;
-    const isSuccess = accuracy >= 50;
-    
-    // Record result
-    const newResult = {
-      targetDuration,
-      actualDuration: duration,
-      accuracy,
-      completed: isSuccess
-    };
-    setResults(prev => [...prev, newResult]);
-    
-    // Show feedback
-    setFeedbackType(isSuccess ? 'success' : 'error');
-    setShowFeedback(true);
-    playResultSound(isSuccess);
-    
-    if (isSuccess) {
-      success();
-    } else {
-      error();
-    }
-    
-    // Move to next interval after feedback
-    setTimeout(() => {
-      setShowFeedback(false);
-      setBlinkStartTime(null);
-      setRulerPosition(0);
-      
-      if (currentIntervalIndex < TRAINING_INTERVALS.length - 1) {
-        setCurrentIntervalIndex(prev => prev + 1);
-        startCountdown();
-      } else {
-        setStep('complete');
-      }
-    }, 1500);
-  }, [isBlinking, blinkStartTime, currentInterval, currentIntervalIndex, playResultSound, success, error]);
-
-  // Start countdown before each interval
   const startCountdown = useCallback(() => {
     setIsCountingDown(true);
     setCountdown(3);
-    
-    const countdownInterval = setInterval(() => {
-      setCountdown(prev => {
+    const iv = setInterval(() => {
+      setCountdown((prev) => {
         if (prev <= 1) {
-          clearInterval(countdownInterval);
+          clearInterval(iv);
           setIsCountingDown(false);
           return 0;
         }
@@ -212,113 +257,345 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
     }, 1000);
   }, [playBeep, light]);
 
-  // Start training
-  const startTraining = useCallback(() => {
-    setStep('training');
-    setCurrentIntervalIndex(0);
-    setResults([]);
-    startCountdown();
-  }, [startCountdown]);
+  // Process blink result and advance or retry
+  const processBlinkResult = useCallback(
+    (duration: number) => {
+      const targetDuration = currentInterval;
+      const difference = Math.abs(duration - targetDuration);
+      const tolerance = Math.max(0.2, 0.35 - retryCount * 0.05);
+      const maxAllowedDiff = targetDuration * tolerance;
+      const accuracy = Math.max(0, 1 - difference / maxAllowedDiff) * 100;
+      const isSuccess = accuracy >= 50;
 
-  // Complete training
-  const handleComplete = useCallback(() => {
-    const averageAccuracy = results.length > 0
-      ? results.reduce((sum, r) => sum + r.accuracy, 0) / results.length
-      : 0;
-    
-    onComplete({
-      intervals: results,
-      averageAccuracy,
-      completedAt: new Date().toISOString()
-    });
-  }, [results, onComplete]);
+      const newResult = {
+        targetDuration,
+        actualDuration: duration,
+        accuracy,
+        completed: isSuccess,
+        attempt: retryCount + 1,
+      };
+      setResults((prev) => [...prev, newResult]);
+      setFeedbackType(isSuccess ? 'success' : 'error');
+      setShowFeedback(true);
+      playResultSound(isSuccess);
+      if (isSuccess) success();
+      else error();
 
-  // Cleanup on unmount
+      setTimeout(() => {
+        setShowFeedback(false);
+        setBlinkStartTime(null);
+        setRulerPosition(0);
+        setRetryCount(0);
+
+        if (isSuccess) {
+          if (currentIntervalIndex < TRAINING_INTERVALS.length - 1) {
+            setCurrentIntervalIndex((prev) => prev + 1);
+            startCountdown();
+          } else {
+            setStep('complete');
+          }
+        } else if (retryCount < MAX_RETRIES_PER_INTERVAL) {
+          setRetryCount((prev) => prev + 1);
+          setResults((prev) => prev.slice(0, -1));
+          startCountdown();
+        } else {
+          if (currentIntervalIndex < TRAINING_INTERVALS.length - 1) {
+            setCurrentIntervalIndex((prev) => prev + 1);
+            startCountdown();
+          } else {
+            setStep('complete');
+          }
+        }
+      }, 1500);
+    },
+    [
+      currentInterval,
+      currentIntervalIndex,
+      retryCount,
+      playResultSound,
+      success,
+      error,
+      startCountdown,
+    ]
+  );
+
+  // Tap-and-hold handlers
+  const handleBlinkStart = useCallback(() => {
+    if (isCountingDown || showFeedback) return;
+    const now = Date.now();
+    blinkStartTimeRef.current = now;
+    setIsBlinking(true);
+    setBlinkStartTime(now);
+    setRulerPosition(0);
+    playBeep(1000, 100);
+    medium();
+    rulerAnimationRef.current = requestAnimationFrame(animateRuler);
+  }, [isCountingDown, showFeedback, playBeep, medium, animateRuler]);
+
+  const handleBlinkEnd = useCallback(() => {
+    const start = blinkStartTimeRef.current ?? blinkStartTime;
+    if (!isBlinking || !start) return;
+    if (rulerAnimationRef.current) cancelAnimationFrame(rulerAnimationRef.current);
+    blinkStartTimeRef.current = null;
+    const duration = (Date.now() - start) / 1000;
+    setIsBlinking(false);
+    setBlinkDuration(duration);
+    processBlinkResult(duration);
+  }, [isBlinking, blinkStartTime, processBlinkResult]);
+
+  // Real eye detection loop (runs when training with camera)
   useEffect(() => {
-    return () => {
-      if (blinkTimerRef.current) {
-        clearTimeout(blinkTimerRef.current);
+    if (step !== 'training' || detectionMode !== 'eyes' || isCountingDown || showFeedback) {
+      return;
+    }
+
+    eyeCheckIntervalRef.current = setInterval(() => {
+      const { eyeOpenness } = visionRef.current;
+      const now = Date.now();
+
+      if (eyeOpenness < CLOSED_THRESHOLD && !slowBlinkStateRef.current.isClosed) {
+        const closedAt = now;
+        slowBlinkStateRef.current = { isClosed: true, closedAt };
+        blinkStartTimeRef.current = closedAt;
+        setIsBlinking(true);
+        setBlinkStartTime(closedAt);
+        setRulerPosition(0);
+        setBlinkDuration(0);
+        playBeep(1000, 100);
+        medium();
+        rulerAnimationRef.current = requestAnimationFrame(animateRuler);
+      } else if (eyeOpenness > OPEN_THRESHOLD && slowBlinkStateRef.current.isClosed) {
+        const duration = now - slowBlinkStateRef.current.closedAt;
+        slowBlinkStateRef.current = { isClosed: false, closedAt: 0 };
+        blinkStartTimeRef.current = null;
+        if (rulerAnimationRef.current) cancelAnimationFrame(rulerAnimationRef.current);
+
+        if (duration >= MIN_SLOW_BLINK_MS && duration <= MAX_SLOW_BLINK_MS) {
+          setIsBlinking(false);
+          setBlinkDuration(duration / 1000);
+          processBlinkResult(duration / 1000);
+        } else {
+          setIsBlinking(false);
+        }
       }
-      if (rulerAnimationRef.current) {
-        cancelAnimationFrame(rulerAnimationRef.current);
+    }, 60);
+
+    return () => {
+      if (eyeCheckIntervalRef.current) {
+        clearInterval(eyeCheckIntervalRef.current);
+        eyeCheckIntervalRef.current = null;
       }
     };
+  }, [step, detectionMode, isCountingDown, showFeedback, processBlinkResult, playBeep, medium, animateRuler]);
+
+  const startTrainingWithMode = useCallback(
+    (mode: DetectionMode) => {
+      setDetectionMode(mode);
+      if (mode === 'eyes') {
+        setStep('camera-check');
+        setCameraStatus('starting');
+      } else {
+        setStep('training');
+        setCurrentIntervalIndex(0);
+        setResults([]);
+        setRetryCount(0);
+        startCountdown();
+      }
+    },
+    [startCountdown]
+  );
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    if (streamRef.current && videoRef.current?.srcObject) {
+      setCameraStatus('ready');
+      return true;
+    }
+
+    const attempts: MediaStreamConstraints[] = [
+      {
+        audio: false,
+        video: {
+          facingMode: { ideal: 'user' },
+          width: { ideal: 320 },
+          height: { ideal: 240 },
+        },
+      },
+      { audio: false, video: { facingMode: 'user' } },
+      { audio: false, video: true },
+    ];
+
+    for (const c of attempts) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(c);
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.muted = true;
+          videoRef.current.playsInline = true;
+          videoRef.current.autoplay = true;
+          videoRef.current.srcObject = stream;
+          await new Promise<void>((res) => {
+            const v = videoRef.current!;
+            const onData = () => {
+              v.removeEventListener('loadeddata', onData);
+              res();
+            };
+            v.addEventListener('loadeddata', onData);
+            setTimeout(() => res(), 3000);
+          });
+          try {
+            await videoRef.current.play();
+          } catch {
+            /* */
+          }
+        }
+        setCameraStatus('ready');
+        return true;
+      } catch (err) {
+        setCameraError(err instanceof Error ? err.message : 'Camera access failed');
+      }
+    }
+    setCameraStatus('error');
+    return false;
   }, []);
 
-  // Reset state when opening
+  useEffect(() => {
+    if (step === 'camera-check' && cameraStatus === 'starting') {
+      startCamera();
+    }
+  }, [step, cameraStatus, startCamera]);
+
+  useEffect(() => {
+    if (step === 'camera-check' && cameraStatus === 'ready') {
+      setStep('training');
+      setCurrentIntervalIndex(0);
+      setResults([]);
+      setRetryCount(0);
+      startCountdown();
+    }
+  }, [step, cameraStatus, startCountdown]);
+
+  const handleComplete = useCallback(() => {
+    const avgAccuracy =
+      results.length > 0 ? results.reduce((s, r) => s + r.accuracy, 0) / results.length : 0;
+    const successful = results.filter((r) => r.completed);
+    const durationsMs = successful.map((r) => r.actualDuration * 1000);
+    const optimalMinMs =
+      durationsMs.length > 0 ? Math.max(350, Math.floor(Math.min(...durationsMs) * 0.85)) : 400;
+    const optimalMaxMs =
+      durationsMs.length > 0 ? Math.min(2500, Math.ceil(Math.max(...durationsMs) * 1.15)) : 2000;
+
+    onComplete({
+      intervals: results,
+      averageAccuracy: avgAccuracy,
+      optimalMinMs,
+      optimalMaxMs,
+      completedAt: new Date().toISOString(),
+      usedRealEyes: detectionMode === 'eyes',
+    });
+  }, [results, onComplete, detectionMode]);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        (videoRef.current as HTMLVideoElement & { srcObject: MediaStream | null }).srcObject = null;
+      } catch {
+        /* */
+      }
+    }
+    setCameraStatus('idle');
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (rulerAnimationRef.current) cancelAnimationFrame(rulerAnimationRef.current);
+      if (eyeCheckIntervalRef.current) clearInterval(eyeCheckIntervalRef.current);
+      stopCamera();
+    };
+  }, [stopCamera]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopCamera();
+      setDetectionMode(null);
+      setCameraStatus('idle');
+      setCameraError(null);
+    }
+  }, [isOpen, stopCamera]);
+
   useEffect(() => {
     if (isOpen) {
       setStep('intro');
       setCurrentIntervalIndex(0);
       setResults([]);
+      setRetryCount(0);
       setIsBlinking(false);
       setBlinkStartTime(null);
       setShowFeedback(false);
+      slowBlinkStateRef.current = { isClosed: false, closedAt: 0 };
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // Render ruler graphic
   const renderRuler = () => {
-    const tickMarks = [];
-    const numTicks = 10; // 0 to 2.5s with 0.25s intervals
-    
-    for (let i = 0; i <= numTicks; i++) {
-      const time = i * 0.25;
-      const isTarget = Math.abs(time - currentInterval) < 0.01;
-      const isMajor = time % 0.5 === 0;
-      
-      tickMarks.push(
-        <div
-          key={i}
-          className="absolute flex flex-col items-center"
-          style={{ left: `${(i / numTicks) * 100}%`, transform: 'translateX(-50%)' }}
-        >
-          <div 
-            className={`w-0.5 ${isMajor ? 'h-4' : 'h-2'} ${
-              isTarget ? 'bg-primary' : 'bg-muted-foreground/50'
-            }`}
-          />
-          {isMajor && (
-            <span className={`text-xs mt-1 ${isTarget ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
-              {time}s
-            </span>
-          )}
-          {isTarget && (
-            <div className="absolute -top-6 left-1/2 -translate-x-1/2">
-              <Target className="w-4 h-4 text-primary animate-pulse" />
-            </div>
-          )}
-        </div>
-      );
-    }
-    
+    const numTicks = 10;
     return (
       <div className="relative h-16 bg-muted/30 rounded-lg border border-border overflow-hidden">
-        {/* Progress fill */}
-        <div 
+        <div
           className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary/30 to-primary/50 transition-all duration-75"
           style={{ width: `${rulerPosition * 100}%` }}
         />
-        
-        {/* Target zone indicator */}
-        <div 
+        <div
           className="absolute inset-y-0 bg-primary/20 border-x-2 border-primary"
-          style={{ 
-            left: `${((currentInterval - 0.15) / 2.5) * 100}%`,
-            width: `${(0.3 / 2.5) * 100}%`
+          style={{
+            left: `${((currentInterval - 0.15) / MAX_RULER_TIME) * 100}%`,
+            width: `${(0.3 / MAX_RULER_TIME) * 100}%`,
           }}
         />
-        
-        {/* Tick marks */}
-        <div className="absolute bottom-0 left-0 right-0 px-2">
-          {tickMarks}
+        <div className="absolute bottom-0 left-0 right-0 px-2 flex justify-between">
+          {Array.from({ length: numTicks + 1 }).map((_, i) => {
+            const time = (i / numTicks) * MAX_RULER_TIME;
+            const isTarget = Math.abs(time - currentInterval) < 0.02;
+            const isMajor = time % 0.5 === 0;
+            return (
+              <div
+                key={i}
+                className="absolute flex flex-col items-center"
+                style={{ left: `${(i / numTicks) * 100}%`, transform: 'translateX(-50%)' }}
+              >
+                <div
+                  className={cn(
+                    'w-0.5',
+                    isMajor ? 'h-4' : 'h-2',
+                    isTarget ? 'bg-primary' : 'bg-muted-foreground/50'
+                  )}
+                />
+                {isMajor && (
+                  <span
+                    className={cn(
+                      'text-xs mt-1',
+                      isTarget ? 'text-primary font-bold' : 'text-muted-foreground'
+                    )}
+                  >
+                    {time}s
+                  </span>
+                )}
+                {isTarget && (
+                  <div className="absolute -top-6 left-1/2 -translate-x-1/2">
+                    <Target className="w-4 h-4 text-primary animate-pulse" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-        
-        {/* Current position indicator */}
         {isBlinking && (
-          <div 
+          <div
             className="absolute top-0 bottom-8 w-1 bg-primary shadow-[0_0_10px_hsl(var(--primary))]"
             style={{ left: `${rulerPosition * 100}%`, transform: 'translateX(-50%)' }}
           />
@@ -327,6 +604,7 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
     );
   };
 
+  // Intro: choose mode
   if (step === 'intro') {
     return (
       <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
@@ -335,18 +613,14 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
             <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
               <Clock className="w-10 h-10 text-primary" />
             </div>
-            
             <div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">
-                Slow Blink Training
-              </h2>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Slow Blink Training</h2>
               <p className="text-muted-foreground">
-                Learn to control your blink duration for attention detection
+                Learn to control your blink duration for attention detection and hands-free control
               </p>
             </div>
-            
             <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-              <h3 className="font-semibold text-foreground">How it works:</h3>
+              <h3 className="font-semibold text-foreground">How it works</h3>
               <ul className="text-sm text-muted-foreground space-y-2 text-left">
                 <li className="flex items-start gap-2">
                   <Eye className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
@@ -354,29 +628,40 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
                 </li>
                 <li className="flex items-start gap-2">
                   <Target className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
-                  <span>The ruler shows your target time with beeps</span>
+                  <span>Match intervals from 0.5s to 2s with the timing ruler</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Clock className="w-4 h-4 mt-0.5 text-primary flex-shrink-0" />
-                  <span>Practice intervals from 0.5s to 2s</span>
+                  <span>Retry failed intervals up to {MAX_RETRIES_PER_INTERVAL} times each</span>
                 </li>
               </ul>
             </div>
-            
-            <div className="text-sm text-muted-foreground">
-              <p>Tap and hold to simulate closing your eyes</p>
-              <p className="text-primary font-semibold mt-1">
-                {TRAINING_INTERVALS.length} intervals to complete
-              </p>
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-foreground">Choose detection mode</p>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1 flex flex-col gap-2 h-auto py-4"
+                  onClick={() => startTrainingWithMode('eyes')}
+                >
+                  <Camera className="w-6 h-6" />
+                  <span>Camera (real eyes)</span>
+                  <span className="text-xs text-muted-foreground">Recommended</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 flex flex-col gap-2 h-auto py-4"
+                  onClick={() => startTrainingWithMode('tap')}
+                >
+                  <Hand className="w-6 h-6" />
+                  <span>Tap & Hold</span>
+                  <span className="text-xs text-muted-foreground">Accessibility</span>
+                </Button>
+              </div>
             </div>
-            
             <div className="flex gap-3">
               <Button variant="outline" onClick={onSkip || onClose} className="flex-1">
                 Skip
-              </Button>
-              <Button onClick={startTraining} className="flex-1">
-                <Eye className="w-4 h-4 mr-2" />
-                Start Training
               </Button>
             </div>
           </div>
@@ -385,67 +670,154 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
     );
   }
 
-  if (step === 'complete') {
-    const avgAccuracy = results.length > 0
-      ? results.reduce((sum, r) => sum + r.accuracy, 0) / results.length
-      : 0;
-    
+  // Camera check (starting / error)
+  if (step === 'camera-check') {
     return (
       <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
+        <Card className="p-6 w-full max-w-md border-primary/20">
+          <div className="text-center space-y-6">
+            {cameraStatus === 'starting' && (
+              <>
+                <div className="w-20 h-20 mx-auto rounded-full bg-primary/20 animate-pulse flex items-center justify-center">
+                  <Camera className="w-10 h-10 text-primary" />
+                </div>
+                <p className="text-muted-foreground">Starting camera...</p>
+                <p className="text-sm text-muted-foreground">Position your face in frame</p>
+              </>
+            )}
+            {cameraStatus === 'error' && (
+              <>
+                <div className="w-20 h-20 mx-auto rounded-full bg-red-500/20 flex items-center justify-center">
+                  <X className="w-10 h-10 text-red-500" />
+                </div>
+                <p className="text-destructive font-medium">Camera unavailable</p>
+                <p className="text-sm text-muted-foreground">{cameraError || 'Could not access camera'}</p>
+                <div className="flex gap-3">
+                  <Button variant="outline" onClick={() => startTrainingWithMode('tap')}>
+                    Use Tap & Hold instead
+                  </Button>
+                  <Button onClick={() => setStep('intro')}>Back</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Complete
+  if (step === 'complete') {
+    const avgAccuracy =
+      results.length > 0 ? results.reduce((s, r) => s + r.accuracy, 0) / results.length : 0;
+    const successfulCount = results.filter((r) => r.completed).length;
+
+    return (
+      <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4 overflow-auto">
         <Card className="p-6 w-full max-w-md border-primary/20">
           <div className="text-center space-y-6">
             <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
               <Check className="w-10 h-10 text-green-500" />
             </div>
-            
             <div>
-              <h2 className="text-2xl font-bold text-foreground mb-2">
-                Training Complete!
-              </h2>
+              <h2 className="text-2xl font-bold text-foreground mb-2">Training Complete!</h2>
               <p className="text-muted-foreground">
-                Average Accuracy: <span className="text-primary font-bold">{Math.round(avgAccuracy)}%</span>
+                Score: <span className="text-primary font-bold">{successfulCount}/{results.length}</span> passed
+                {' · '}
+                Avg accuracy: <span className="text-primary font-bold">{Math.round(avgAccuracy)}%</span>
               </p>
+              {detectionMode === 'eyes' && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Your personalized slow-blink range has been saved
+                </p>
+              )}
             </div>
-            
-            <div className="space-y-2">
-              {results.map((result, index) => (
-                <div 
-                  key={index}
-                  className={`flex items-center justify-between p-3 rounded-lg ${
-                    result.completed ? 'bg-green-500/10' : 'bg-red-500/10'
-                  }`}
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {results.map((r, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'flex items-center justify-between p-3 rounded-lg',
+                    r.completed ? 'bg-green-500/10' : 'bg-red-500/10'
+                  )}
                 >
                   <div className="flex items-center gap-2">
-                    {result.completed ? (
+                    {r.completed ? (
                       <Check className="w-4 h-4 text-green-500" />
                     ) : (
                       <X className="w-4 h-4 text-red-500" />
                     )}
-                    <span className="text-sm text-foreground">
-                      Target: {result.targetDuration}s
-                    </span>
+                    <span className="text-sm text-foreground">Target: {r.targetDuration}s</span>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Actual: {result.actualDuration.toFixed(2)}s ({Math.round(result.accuracy)}%)
+                    {r.actualDuration.toFixed(2)}s ({Math.round(r.accuracy)}%)
                   </div>
                 </div>
               ))}
             </div>
-            
-            <Button onClick={handleComplete} className="w-full">
-              Continue
-            </Button>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStep('training');
+                  setCurrentIntervalIndex(0);
+                  setResults([]);
+                  setRetryCount(0);
+                  startCountdown();
+                }}
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Practice Again
+              </Button>
+              <Button onClick={handleComplete} className="flex-1">
+                Continue
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
     );
   }
 
+  // Training view
+  const showTapButton = detectionMode === 'tap';
+  const showEyesHint = detectionMode === 'eyes';
+
   return (
-    <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[200] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4 overflow-auto">
       <Card className="p-6 w-full max-w-md border-primary/20">
         <div className="space-y-6">
-          {/* Header */}
+          {detectionMode === 'eyes' && (
+            <div className="relative rounded-lg overflow-hidden bg-black aspect-video max-h-32">
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover"
+                playsInline
+                muted
+                style={{ transform: 'scaleX(-1)' }}
+              />
+              <div className="absolute bottom-1 left-2 right-2 flex items-center gap-2">
+                <div
+                  className={cn(
+                    'flex-1 h-2 rounded-full overflow-hidden',
+                    vision.hasFace ? 'bg-muted' : 'bg-red-500/50'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'h-full transition-all duration-75',
+                      vision.eyeOpenness < CLOSED_THRESHOLD ? 'bg-primary' : 'bg-primary/50'
+                    )}
+                    style={{ width: `${(1 - vision.eyeOpenness) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {vision.hasFace ? 'Eyes' : 'No face'}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-primary" />
@@ -453,50 +825,46 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
             </div>
             <span className="text-sm text-muted-foreground">
               {currentIntervalIndex + 1} / {TRAINING_INTERVALS.length}
+              {retryCount > 0 && (
+                <span className="ml-1 text-amber-600">(retry {retryCount})</span>
+              )}
             </span>
           </div>
-          
-          {/* Progress dots */}
+
           <div className="flex justify-center gap-2">
-            {TRAINING_INTERVALS.map((_, index) => (
+            {TRAINING_INTERVALS.map((_, i) => (
               <div
-                key={index}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  index < currentIntervalIndex
-                    ? 'bg-green-500'
-                    : index === currentIntervalIndex
-                    ? 'bg-primary'
-                    : 'bg-muted'
-                }`}
+                key={i}
+                className={cn(
+                  'w-2 h-2 rounded-full transition-colors',
+                  i < currentIntervalIndex ? 'bg-green-500' : i === currentIntervalIndex ? 'bg-primary' : 'bg-muted'
+                )}
               />
             ))}
           </div>
-          
-          {/* Target display */}
+
           <div className="text-center">
             <p className="text-sm text-muted-foreground mb-2">Target Duration</p>
-            <div className="text-5xl font-bold text-primary">
-              {currentInterval}s
-            </div>
+            <div className="text-5xl font-bold text-primary">{currentInterval}s</div>
           </div>
-          
-          {/* Ruler graphic */}
+
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground text-center">Timing Ruler</p>
             {renderRuler()}
           </div>
-          
-          {/* Current duration display */}
+
           <div className="text-center">
             <p className="text-sm text-muted-foreground">Current Duration</p>
-            <div className={`text-3xl font-mono font-bold ${
-              isBlinking ? 'text-primary' : 'text-muted-foreground'
-            }`}>
+            <div
+              className={cn(
+                'text-3xl font-mono font-bold',
+                isBlinking ? 'text-primary' : 'text-muted-foreground'
+              )}
+            >
               {blinkDuration.toFixed(2)}s
             </div>
           </div>
-          
-          {/* Countdown or Blink button */}
+
           {isCountingDown ? (
             <div className="flex flex-col items-center gap-4">
               <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center">
@@ -505,9 +873,12 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
               <p className="text-sm text-muted-foreground">Get ready...</p>
             </div>
           ) : showFeedback ? (
-            <div className={`flex flex-col items-center gap-4 p-6 rounded-xl ${
-              feedbackType === 'success' ? 'bg-green-500/20' : 'bg-red-500/20'
-            }`}>
+            <div
+              className={cn(
+                'flex flex-col items-center gap-4 p-6 rounded-xl',
+                feedbackType === 'success' ? 'bg-green-500/20' : 'bg-red-500/20'
+              )}
+            >
               {feedbackType === 'success' ? (
                 <>
                   <Check className="w-12 h-12 text-green-500" />
@@ -519,16 +890,20 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
                   <p className="text-lg font-semibold text-red-500">
                     {blinkDuration < currentInterval ? 'Too short!' : 'Too long!'}
                   </p>
+                  {retryCount < MAX_RETRIES_PER_INTERVAL && (
+                    <p className="text-sm text-muted-foreground">Try again</p>
+                  )}
                 </>
               )}
             </div>
-          ) : (
+          ) : showTapButton ? (
             <button
-              className={`w-full aspect-square max-w-[200px] mx-auto rounded-full transition-all duration-150 flex flex-col items-center justify-center ${
-                isBlinking 
-                  ? 'bg-primary scale-95 shadow-[0_0_30px_hsl(var(--primary)/0.5)]' 
+              className={cn(
+                'w-full aspect-square max-w-[200px] mx-auto rounded-full transition-all duration-150 flex flex-col items-center justify-center',
+                isBlinking
+                  ? 'bg-primary scale-95 shadow-[0_0_30px_hsl(var(--primary)/0.5)]'
                   : 'bg-muted hover:bg-muted/80'
-              }`}
+              )}
               onMouseDown={handleBlinkStart}
               onMouseUp={handleBlinkEnd}
               onMouseLeave={isBlinking ? handleBlinkEnd : undefined}
@@ -543,20 +918,23 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
               ) : (
                 <>
                   <Eye className="w-12 h-12 text-muted-foreground mb-2" />
-                  <span className="text-sm text-muted-foreground">
-                    Press & Hold
-                  </span>
+                  <span className="text-sm text-muted-foreground">Press & Hold</span>
                 </>
               )}
             </button>
-          )}
-          
-          {/* Skip button */}
-          <Button 
-            variant="ghost" 
-            onClick={onSkip || onClose} 
-            className="w-full text-muted-foreground"
-          >
+          ) : showEyesHint ? (
+            <div className="flex flex-col items-center gap-4 p-6 rounded-xl bg-muted/50 border border-border">
+              <Eye className="w-12 h-12 text-primary" />
+              <p className="text-center text-muted-foreground">
+                Close your eyes and hold for <strong>{currentInterval}s</strong>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Keep both eyes gently closed until you hear the result
+              </p>
+            </div>
+          ) : null}
+
+          <Button variant="ghost" onClick={onSkip || onClose} className="w-full text-muted-foreground">
             Skip Training
           </Button>
         </div>

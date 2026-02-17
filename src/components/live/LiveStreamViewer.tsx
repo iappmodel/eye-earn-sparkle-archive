@@ -1,68 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import { X, Heart, MessageCircle, Share2, Gift, Users, Radio, Sparkles } from 'lucide-react';
+import { useFollow } from '@/hooks/useFollow';
+import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-
-interface LiveComment {
-  id: string;
-  userId: string;
-  username: string;
-  avatarUrl?: string;
-  message: string;
-  isGift?: boolean;
-  giftAmount?: number;
-}
-
-interface LiveStream {
-  id: string;
-  hostId: string;
-  hostUsername: string;
-  hostAvatarUrl?: string;
-  title: string;
-  viewerCount: number;
-  thumbnailUrl: string;
-  isLive: boolean;
-}
+import { useLiveStreamComments } from '@/hooks/useLiveStreamComments';
+import { useLiveStreamViewer } from '@/hooks/useLiveStreamViewer';
+import { supabase } from '@/integrations/supabase/client';
+import type { LiveStreamUI } from './types';
 
 interface LiveStreamViewerProps {
-  stream: LiveStream;
+  stream: LiveStreamUI;
   onClose: () => void;
 }
 
 export const LiveStreamViewer: React.FC<LiveStreamViewerProps> = ({ stream, onClose }) => {
-  const [comments, setComments] = useState<LiveComment[]>([]);
   const [message, setMessage] = useState('');
   const [viewerCount, setViewerCount] = useState(stream.viewerCount);
-  const [isFollowing, setIsFollowing] = useState(false);
+  const { user } = useAuth();
+  const follow = useFollow({ creatorId: stream.hostId });
 
-  // Simulate incoming comments
+  useLiveStreamViewer(stream.id, user?.id, true);
+
+  const {
+    comments: commentsRaw,
+    loading: commentsLoading,
+    sending,
+    sendComment,
+  } = useLiveStreamComments(stream.id, user?.id);
+
+  const comments = commentsRaw.map((c) => ({
+    id: c.id,
+    userId: c.user_id,
+    username: c.username ?? 'User',
+    avatarUrl: c.avatar_url ?? undefined,
+    message: c.message,
+    isGift: c.is_gift,
+    giftAmount: c.gift_amount ?? undefined,
+  }));
+
+  // Realtime viewer count for this stream
   useEffect(() => {
-    const mockComments: LiveComment[] = [
-      { id: '1', userId: 'u1', username: 'viewer1', message: '🔥 This is amazing!', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=50&h=50&fit=crop' },
-      { id: '2', userId: 'u2', username: 'viewer2', message: 'Love it!', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=50&h=50&fit=crop' },
-      { id: '3', userId: 'u3', username: 'big_tipper', message: 'Sent a gift!', isGift: true, giftAmount: 100, avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=50&h=50&fit=crop' },
-    ];
-    setComments(mockComments);
-
-    const interval = setInterval(() => {
-      setViewerCount(prev => prev + Math.floor(Math.random() * 5) - 2);
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
+    const channel = supabase
+      .channel(`live-stream-viewer-count:${stream.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'live_streams',
+          filter: `id=eq.${stream.id}`,
+        },
+        (payload: { new: { viewer_count: number } }) => {
+          setViewerCount(payload.new.viewer_count);
+        }
+      )
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [stream.id]);
 
   const handleSendMessage = () => {
     if (!message.trim()) return;
-    
-    setComments(prev => [...prev, {
-      id: Date.now().toString(),
-      userId: 'current',
-      username: 'You',
-      message: message,
-    }]);
+    if (!user?.id) return;
+    sendComment(message);
     setMessage('');
   };
 
@@ -102,11 +107,12 @@ export const LiveStreamViewer: React.FC<LiveStreamViewerProps> = ({ stream, onCl
 
         <div className="flex items-center gap-2">
           <Button
-            variant={isFollowing ? "secondary" : "default"}
+            variant={follow.isFollowing ? "secondary" : "default"}
             size="sm"
-            onClick={() => setIsFollowing(!isFollowing)}
+            onClick={() => follow.toggleFollow(stream.hostId)}
+            disabled={follow.isLoading}
           >
-            {isFollowing ? 'Following' : 'Follow'}
+            {follow.isFollowing ? 'Following' : 'Follow'}
           </Button>
           <Button variant="ghost" size="icon" onClick={onClose} className="text-white">
             <X className="w-6 h-6" />
@@ -121,6 +127,9 @@ export const LiveStreamViewer: React.FC<LiveStreamViewerProps> = ({ stream, onCl
 
       {/* Comments */}
       <div className="absolute bottom-32 left-4 right-20 max-h-[40vh] overflow-y-auto z-10 space-y-2">
+        {commentsLoading && comments.length === 0 && (
+          <p className="text-white/60 text-sm">Loading comments...</p>
+        )}
         {comments.map((comment) => (
           <div
             key={comment.id}
@@ -168,13 +177,19 @@ export const LiveStreamViewer: React.FC<LiveStreamViewerProps> = ({ stream, onCl
       {/* Input Bar */}
       <div className="absolute bottom-4 left-4 right-4 flex items-center gap-3 z-10">
         <Input
-          placeholder="Say something..."
+          placeholder={user?.id ? 'Say something...' : 'Sign in to comment'}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
           className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-white/50"
+          disabled={!user?.id || sending}
         />
-        <Button onClick={handleSendMessage} size="icon" className="bg-primary">
+        <Button
+          onClick={handleSendMessage}
+          size="icon"
+          className="bg-primary"
+          disabled={!user?.id || sending || !message.trim()}
+        >
           <Sparkles className="w-5 h-5" />
         </Button>
       </div>

@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { notificationSoundService } from '@/services/notificationSound.service';
 
+export type NotificationType = 'engagement' | 'promotion' | 'system' | 'earnings';
+
 export interface Notification {
   id: string;
   user_id: string;
-  type: 'engagement' | 'promotion' | 'system';
+  type: NotificationType;
   title: string;
   body: string | null;
   data: Record<string, unknown>;
@@ -27,38 +29,111 @@ export interface NotificationPreferences {
   quiet_hours_end: string | null;
 }
 
-export const useNotifications = () => {
+const PAGE_SIZE = 30;
+const DEFAULT_TYPE = undefined as NotificationType | undefined;
+
+/** Check if current time is within quiet hours (times in HH:mm or HH:mm:ss). */
+function isWithinQuietHours(
+  quietStart: string | null,
+  quietEnd: string | null
+): boolean {
+  if (!quietStart || !quietEnd) return false;
+  const now = new Date();
+  const [sh, sm] = quietStart.split(':').map(Number);
+  const [eh, em] = quietEnd.split(':').map(Number);
+  const startMins = sh * 60 + (sm || 0);
+  const endMins = eh * 60 + (em || 0);
+  const currentMins = now.getHours() * 60 + now.getMinutes();
+  if (startMins <= endMins) {
+    return currentMins >= startMins && currentMins < endMins;
+  }
+  return currentMins >= startMins || currentMins < endMins;
+}
+
+export interface UseNotificationsConfig {
+  /** Max notifications to fetch per page. Default 30. */
+  pageSize?: number;
+  /** If true, in-app toasts for new notifications are disabled. */
+  disableToasts?: boolean;
+  /** If true, notification sound is not played on new notification. */
+  disableSound?: boolean;
+  /** Respect quiet hours from preferences for toasts/sound. Default true. */
+  respectQuietHours?: boolean;
+}
+
+export const useNotifications = (config: UseNotificationsConfig = {}) => {
   const { user } = useAuth();
+  const {
+    pageSize = PAGE_SIZE,
+    disableToasts = false,
+    disableSound = false,
+    respectQuietHours = true,
+  } = config;
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [typeFilter, setTypeFilterState] = useState<NotificationType | undefined>(DEFAULT_TYPE);
 
-  // Fetch notifications
-  const fetchNotifications = useCallback(async () => {
-    if (!user) return;
+  const mapRow = (n: Record<string, unknown>): Notification => ({
+    ...n,
+    type: n.type as NotificationType,
+    data: (n.data as Record<string, unknown>) || {},
+  } as Notification);
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
+  // Fetch notifications (optionally filtered by type)
+  const fetchNotifications = useCallback(
+    async (typeFilter?: NotificationType | null, append = false) => {
+      if (!user) return;
 
-    if (error) {
-      console.error('Error fetching notifications:', error);
-      return;
-    }
+      const from = append ? notifications.length : 0;
+      let query = supabase
+        .from('notifications')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
 
-    const typedData = (data || []).map(n => ({
-      ...n,
-      type: n.type as 'engagement' | 'promotion' | 'system',
-      data: n.data as Record<string, unknown>
-    }));
+      if (typeFilter) {
+        query = query.eq('type', typeFilter);
+      }
 
-    setNotifications(typedData);
-    setUnreadCount(typedData.filter(n => !n.seen).length);
-  }, [user]);
+      if (append) setIsLoadingMore(true);
+      else setIsLoading(true);
+
+      const { data, error, count } = await query;
+
+      if (error) {
+        console.error('Error fetching notifications:', error);
+        if (append) setIsLoadingMore(false);
+        else setIsLoading(false);
+        return;
+      }
+
+      const typedData = (data || []).map(mapRow);
+      setHasMore((data?.length ?? 0) >= pageSize);
+      if (append) {
+        setNotifications(prev => (from === 0 ? typedData : [...prev, ...typedData]));
+      } else {
+        setNotifications(typedData);
+      }
+      if (!append) {
+        setUnreadCount(typedData.filter(n => !n.seen).length);
+      } else {
+        setUnreadCount(prevCount => {
+          const existingIds = new Set(notifications.map(n => n.id));
+          const newUnread = typedData.filter(n => !n.seen && !existingIds.has(n.id)).length;
+          return prevCount + newUnread;
+        });
+      }
+      if (append) setIsLoadingMore(false);
+      else setIsLoading(false);
+    },
+    [user, pageSize, notifications.length]
+  );
 
   // Fetch preferences
   const fetchPreferences = useCallback(async () => {
@@ -78,7 +153,6 @@ export const useNotifications = () => {
     if (data) {
       setPreferences(data as NotificationPreferences);
     } else {
-      // Create default preferences
       const { data: newPrefs, error: insertError } = await supabase
         .from('notification_preferences')
         .insert({ user_id: user.id })
@@ -92,7 +166,7 @@ export const useNotifications = () => {
   }, [user]);
 
   // Mark notification as seen
-  const markAsSeen = async (notificationId: string) => {
+  const markAsSeen = useCallback(async (notificationId: string) => {
     const { error } = await supabase
       .from('notifications')
       .update({ seen: true, read_at: new Date().toISOString() })
@@ -100,14 +174,14 @@ export const useNotifications = () => {
 
     if (!error) {
       setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, seen: true } : n)
+        prev.map(n => (n.id === notificationId ? { ...n, seen: true, read_at: new Date().toISOString() } : n))
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
     }
-  };
+  }, []);
 
   // Mark all as seen
-  const markAllAsSeen = async () => {
+  const markAllAsSeen = useCallback(async () => {
     if (!user) return;
 
     const { error } = await supabase
@@ -117,42 +191,97 @@ export const useNotifications = () => {
       .eq('seen', false);
 
     if (!error) {
-      setNotifications(prev => prev.map(n => ({ ...n, seen: true })));
+      setNotifications(prev => prev.map(n => ({ ...n, seen: true, read_at: new Date().toISOString() })));
       setUnreadCount(0);
     }
-  };
+  }, [user]);
 
-  // Update preferences
-  const updatePreferences = async (updates: Partial<NotificationPreferences>) => {
-    if (!user || !preferences) return;
+  // Delete single notification
+  const deleteNotification = useCallback(async (notificationId: string) => {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId);
+
+    if (!error) {
+      setNotifications(prev => {
+        const n = prev.find(x => x.id === notificationId);
+        const wasUnread = n && !n.seen;
+        if (wasUnread) setUnreadCount(c => Math.max(0, c - 1));
+        return prev.filter(x => x.id !== notificationId);
+      });
+    } else {
+      console.error('Error deleting notification:', error);
+    }
+  }, []);
+
+  // Delete all notifications for current user
+  const deleteAllNotifications = useCallback(async () => {
+    if (!user) return;
 
     const { error } = await supabase
-      .from('notification_preferences')
-      .update(updates)
+      .from('notifications')
+      .delete()
       .eq('user_id', user.id);
 
-    if (error) {
-      toast.error('Failed to update preferences');
-      return false;
+    if (!error) {
+      setNotifications([]);
+      setUnreadCount(0);
+    } else {
+      console.error('Error deleting all notifications:', error);
     }
+  }, [user]);
 
-    setPreferences(prev => prev ? { ...prev, ...updates } : null);
-    toast.success('Preferences updated');
-    return true;
-  };
+  // Update preferences
+  const updatePreferences = useCallback(
+    async (updates: Partial<NotificationPreferences>) => {
+      if (!user || !preferences) return false;
+
+      const { error } = await supabase
+        .from('notification_preferences')
+        .update(updates)
+        .eq('user_id', user.id);
+
+      if (error) {
+        toast.error('Failed to update preferences');
+        return false;
+      }
+
+      setPreferences(prev => (prev ? { ...prev, ...updates } : null));
+      toast.success('Preferences updated');
+      return true;
+    },
+    [user, preferences]
+  );
+
+  // Load more (pagination)
+  const loadMore = useCallback(() => {
+    if (!hasMore || isLoadingMore || isLoading) return;
+    fetchNotifications(typeFilter ?? undefined, true);
+  }, [hasMore, isLoadingMore, isLoading, fetchNotifications, typeFilter]);
+
+  // Set filter and refetch
+  const setTypeFilter = useCallback(
+    (type: NotificationType | undefined) => {
+      setTypeFilterState(type);
+      fetchNotifications(type ?? undefined, false);
+    },
+    [fetchNotifications]
+  );
 
   // Initial fetch
   useEffect(() => {
-    const loadData = async () => {
+    if (!user) return;
+    const load = async () => {
       setIsLoading(true);
-      await Promise.all([fetchNotifications(), fetchPreferences()]);
+      await Promise.all([
+        fetchNotifications(undefined, false),
+        fetchPreferences(),
+      ]);
       setIsLoading(false);
     };
-
-    if (user) {
-      loadData();
-    }
-  }, [user, fetchNotifications, fetchPreferences]);
+    load();
+  }, [user]);
 
   // Real-time subscription
   useEffect(() => {
@@ -169,20 +298,16 @@ export const useNotifications = () => {
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          const newNotification = {
-            ...payload.new,
-            type: payload.new.type as 'engagement' | 'promotion' | 'system',
-            data: payload.new.data as Record<string, unknown>
-          } as Notification;
+          const newNotification = mapRow(payload.new as Record<string, unknown>);
 
           setNotifications(prev => [newNotification, ...prev]);
           setUnreadCount(prev => prev + 1);
 
-          // Show in-app toast if enabled
-          if (preferences?.in_app_enabled) {
-            // Play notification sound
-            notificationSoundService.playNotification();
-            
+          const prefs = preferences;
+          const quiet = respectQuietHours && prefs && isWithinQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end);
+          const showToast = !disableToasts && prefs?.in_app_enabled && !quiet;
+          if (showToast) {
+            if (!disableSound) notificationSoundService.playNotification();
             toast(newNotification.title, {
               description: newNotification.body || undefined,
             });
@@ -194,16 +319,23 @@ export const useNotifications = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, preferences?.in_app_enabled]);
+  }, [user, preferences?.in_app_enabled, preferences?.quiet_hours_start, preferences?.quiet_hours_end, disableToasts, disableSound, respectQuietHours]);
 
   return {
     notifications,
     preferences,
     unreadCount,
     isLoading,
+    isLoadingMore,
+    hasMore,
     markAsSeen,
     markAllAsSeen,
+    deleteNotification,
+    deleteAllNotifications,
     updatePreferences,
-    refetch: fetchNotifications,
+    refetch: (typeFilter?: NotificationType | null) => fetchNotifications(typeFilter ?? undefined, false),
+    loadMore,
+    setTypeFilter,
+    typeFilter,
   };
 };

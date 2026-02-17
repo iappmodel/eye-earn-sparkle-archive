@@ -6,10 +6,11 @@ import {
   Lock, Check, ChevronRight, RefreshCw, Download, Share2,
   Scissors, Copy, Trash2, RotateCcw, Sun, Contrast, Droplet,
   Eye, Heart, Users, Video, Image as ImageIcon, Music,
-  Cpu, Brain, Clapperboard, Timer, Gauge, Target, Upload, X, Plus
+  Cpu, Brain, Clapperboard, Timer, Gauge, Target, Upload, X, Plus,
+  Hash, Shield, Tag
 } from 'lucide-react';
 import { VideoTimeline, TrimClip } from '@/components/studio/VideoTimeline';
-import { AIVideoEditor, AIStyle, AIEditOptions, aiStyles } from '@/components/studio/AIVideoEditor';
+import { AIVideoEditor, AIStyle, AIEditOptions, AIAnalysisResult, aiStyles } from '@/components/studio/AIVideoEditor';
 import { VideoPreviewFilters } from '@/components/studio/VideoPreviewFilters';
 import { ComparisonSlider } from '@/components/studio/ComparisonSlider';
 import { AudioLibrary, AudioTrack } from '@/components/studio/AudioLibrary';
@@ -19,6 +20,7 @@ import { AISubtitleGenerator } from '@/components/studio/AISubtitleGenerator';
 import { FacetuneBeautyEditor } from '@/components/studio/FacetuneBeautyEditor';
 import { MediaBlurEditor, BlurSegment } from '@/components/studio/MediaBlurEditor';
 import { CAFConfigPanel } from '@/components/studio/CAFConfigPanel';
+import { BlurVideoOverlay } from '@/components/studio/BlurVideoOverlay';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -27,6 +29,9 @@ import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useStudioMedia } from '@/hooks/useStudioMedia';
+import { useBeautyComparisonUrls } from '@/hooks/useBeautyComparisonUrls';
+import { StudioUploadZone } from '@/components/studio/StudioUploadZone';
+import { StudioMediaStrip } from '@/components/studio/StudioMediaStrip';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { PublishToFeedButton } from '@/components/PublishToFeedButton';
@@ -163,7 +168,12 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
     isUploading, 
     addMedia, 
     removeMedia, 
-    selectMedia 
+    selectMedia,
+    cancelUpload,
+    moveMedia,
+    retryUpload,
+    hasDraft,
+    restoreDraft,
   } = useStudioMedia();
   
   // Load imported media if ID is provided
@@ -230,9 +240,14 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   // Filter state
   const [selectedFilter, setSelectedFilter] = useState('none');
   const [filterIntensity, setFilterIntensity] = useState([100]);
+  const [filterOnlyMode, setFilterOnlyMode] = useState(false); // performance: no overlays/grain
   
   // Beauty state
   const [beautyValues, setBeautyValues] = useState<Record<string, number>>({});
+  const { beforeImageUrl: beautyBeforeUrl, afterImageUrl: beautyAfterUrl } = useBeautyComparisonUrls(
+    currentMedia?.type === 'image' ? currentMedia.url : null,
+    beautyValues
+  );
   
   // Effects state
   const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
@@ -242,6 +257,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   const [selectedAIStyle, setSelectedAIStyle] = useState<string | null>(null);
   const [referenceVideos, setReferenceVideos] = useState<string[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<AIAnalysisResult | null>(null);
   
   // Comparison slider state
   const [isComparing, setIsComparing] = useState(false);
@@ -350,6 +366,31 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
     );
   };
 
+  const captureVideoFrames = useCallback(async (video: HTMLVideoElement, count: number): Promise<string[]> => {
+    const out: string[] = [];
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 360;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return out;
+    const dur = duration > 0 ? duration : video.duration;
+    if (!dur || dur <= 0) return out;
+    const seek = (t: number) => new Promise<void>((resolve) => {
+      video.onseeked = () => { video.onseeked = null; resolve(); };
+      video.currentTime = Math.max(0, Math.min(t, dur - 0.05));
+    });
+    for (let i = 0; i < count; i++) {
+      const pct = count === 1 ? 0 : i / (count - 1);
+      const t = pct * dur;
+      await seek(t);
+      ctx.drawImage(video, 0, 0, w, h);
+      out.push(canvas.toDataURL('image/jpeg', 0.6));
+    }
+    return out;
+  }, [duration]);
+
   const handleAIAnalyze = async () => {
     if (!currentMedia) {
       toast.error('Please upload a video first');
@@ -360,36 +401,55 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
     toast.info('AI is analyzing your video...', { description: 'Using Lovable AI for smart analysis.' });
     
     try {
-      // Generate a thumbnail from the video for AI analysis
-      let thumbnailUrl = null;
+      let thumbnailUrl: string | null = null;
+      let thumbnailUrls: string[] = [];
       if (currentMedia.type === 'video' && videoRef.current) {
         try {
-          const canvas = document.createElement('canvas');
-          canvas.width = videoRef.current.videoWidth || 640;
-          canvas.height = videoRef.current.videoHeight || 360;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-            thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+          const video = videoRef.current;
+          const dur = duration || video.duration || 0;
+          if (dur > 2) {
+            thumbnailUrls = await captureVideoFrames(video, 4);
+            if (thumbnailUrls.length === 0) {
+              const canvas = document.createElement('canvas');
+              canvas.width = video.videoWidth || 640;
+              canvas.height = video.videoHeight || 360;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+              }
+            }
+          } else {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 360;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
+            }
           }
         } catch (e) {
-          console.log('Could not capture thumbnail:', e);
+          console.log('Could not capture thumbnails:', e);
         }
       } else if (currentMedia.type === 'image') {
         thumbnailUrl = currentMedia.url;
       }
 
-      const response = await supabase.functions.invoke('analyze-video', {
-        body: {
-          thumbnailUrl,
-          duration,
-          stylePreference: selectedAIStyle,
-          videoMetadata: {
-            fileName: currentMedia.file?.name,
-            fileType: currentMedia.file?.type,
-            fileSize: currentMedia.file?.size,
-          }
+      const body: Record<string, unknown> = {
+        duration,
+        stylePreference: selectedAIStyle,
+        videoMetadata: {
+          fileName: currentMedia.file?.name,
+          fileType: currentMedia.file?.type,
+          fileSize: currentMedia.file?.size,
         }
+      };
+      if (thumbnailUrls.length > 0) body.thumbnailUrls = thumbnailUrls;
+      else if (thumbnailUrl) body.thumbnailUrl = thumbnailUrl;
+
+      const response = await supabase.functions.invoke('analyze-video', {
+        body
       });
 
       if (response.error) {
@@ -410,15 +470,34 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
       
       setAiHighlights(highlights);
       setAiSuggestions(analysisResult.suggestions || []);
+      setAiAnalysisResult({
+        recommendedStyles: analysisResult.recommendedStyles || [],
+        recommendedStyleId: analysisResult.recommendedStyleId ?? analysisResult.recommendedStyles?.[0] ?? null,
+        colorGradeRecommendation: analysisResult.colorGradeRecommendation ?? null,
+        engagementPrediction: analysisResult.engagementPrediction,
+        detectedStyle: analysisResult.detectedStyle,
+        tags: analysisResult.tags,
+        category: analysisResult.category,
+        qualityScore: analysisResult.qualityScore,
+        contentSafety: analysisResult.contentSafety,
+        suggestedHashtags: analysisResult.suggestedHashtags,
+        suggestedCaption: analysisResult.suggestedCaption ?? null,
+        pacing: analysisResult.pacing,
+        sceneBreaks: analysisResult.sceneBreaks,
+      });
+      // Auto-select first recommended style when it matches our AI styles
+      const recommendedId = analysisResult.recommendedStyleId ?? analysisResult.recommendedStyles?.[0];
+      if (recommendedId && aiStyles.some(s => s.id === recommendedId)) {
+        setSelectedAIStyle(recommendedId);
+      }
       
-      // If AI recommended styles, show them
       if (analysisResult.recommendedStyles?.length > 0) {
         toast.success('AI analysis complete!', { 
-          description: `Found ${highlights.length} highlights. Recommended style: ${analysisResult.recommendedStyles[0]}` 
+          description: `Found ${highlights.length} highlights. Recommended: ${analysisResult.recommendedStyles[0]}` 
         });
       } else {
         toast.success('AI analysis complete!', { 
-          description: `Found ${highlights.length} highlight moments. Engagement prediction: ${analysisResult.engagementPrediction}%` 
+          description: `Found ${highlights.length} highlight moments. Engagement: ${analysisResult.engagementPrediction ?? '—'}%` 
         });
       }
       
@@ -451,12 +530,15 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
 
   const handleApplyAIStyle = async (style: AIStyle, options: AIEditOptions) => {
     setIsProcessing(true);
-    toast.info(`Applying ${style.name} AI style...`);
-    
-    // Simulate AI processing
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
+    setSelectedAIStyle(style.id);
+    setFilterIntensity([options.intensity]);
+    toast.info(`Applying ${style.name}...`);
+    // Brief delay for visual feedback; filter preview updates immediately
+    await new Promise(resolve => setTimeout(resolve, 800));
     setIsProcessing(false);
+    toast.success(`${style.name} applied`, {
+      description: [options.enhanceColor && 'Color enhanced', options.autoTrim && 'Use "Apply AI Highlight Cuts" to trim'].filter(Boolean).join(' • ') || undefined,
+    });
   };
 
   const handleTrimChange = (clips: TrimClip[]) => {
@@ -472,13 +554,24 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
   };
 
   const handleApplyAIEdit = async () => {
+    const selected = aiHighlights.filter(h => h.selected);
+    if (selected.length === 0) return;
     setIsProcessing(true);
-    toast.info('Applying AI-powered edits...');
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
+    toast.info('Applying AI highlight cuts to timeline...');
+    // Build trim clips from selected highlights (sorted by start time)
+    const sorted = [...selected].sort((a, b) => a.startTime - b.startTime);
+    const clips: TrimClip[] = sorted.map((h, i) => ({
+      id: `ai-${h.id}`,
+      startTime: h.startTime,
+      endTime: h.endTime,
+      isActive: i === 0,
+      label: `Highlight ${i + 1}`,
+    }));
+    setTrimClips(clips);
     setIsProcessing(false);
-    toast.success('AI edits applied!', { description: 'Your video is now enhanced.' });
+    toast.success('Highlight cuts applied!', {
+      description: `Timeline now has ${clips.length} segment(s). Trim or export.`,
+    });
   };
 
   const handleExport = () => {
@@ -515,7 +608,16 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                 <span className="text-sm w-8">{filterIntensity[0]}%</span>
               </div>
             </div>
-            
+            {selectedAIStyle && (
+              <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2">
+                <span className="text-sm">Lightweight preview</span>
+                <Switch
+                  checked={filterOnlyMode}
+                  onCheckedChange={setFilterOnlyMode}
+                  title="Fewer overlays for better performance"
+                />
+              </div>
+            )}
             <Tabs defaultValue="basic" className="w-full">
               <TabsList className="grid grid-cols-4 w-full">
                 <TabsTrigger value="basic">Basic</TabsTrigger>
@@ -562,9 +664,10 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
         return (
           <FacetuneBeautyEditor
             isPremium={isPremium}
-            onValuesChange={(values) => {
-              setBeautyValues(values);
-            }}
+            initialValues={beautyValues}
+            onValuesChange={(values) => setBeautyValues(values)}
+            beforeImageUrl={beautyBeforeUrl}
+            afterImageUrl={beautyAfterUrl}
           />
         );
         
@@ -729,7 +832,13 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               <AIVoiceoverGenerator
                 onVoiceoverGenerated={(voiceover) => {
                   toast.success('Voiceover ready', {
-                    description: `${voiceover.voiceName} voice added to timeline`
+                    description: `${voiceover.voiceName} voice generated`
+                  });
+                }}
+                onAddToTimeline={(audio) => {
+                  setGeneratedAudios(prev => [...prev, audio]);
+                  toast.success('Voiceover added to timeline', {
+                    description: `${audio.prompt.slice(0, 30)}...`
                   });
                 }}
               />
@@ -752,6 +861,7 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
             <TabsContent value="subtitles">
               <AISubtitleGenerator
                 videoRef={videoRef}
+                videoFile={currentMedia?.file}
                 onSubtitlesGenerated={(subs) => {
                   toast.success('Subtitles ready', {
                     description: `${subs.length} segments generated`
@@ -896,46 +1006,71 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
       >
         {/* Upload zone when no media */}
         {!currentMedia && !importedMediaInfo ? (
-          <button
-            onClick={handleFileSelect}
-            className="absolute inset-0 flex flex-col items-center justify-center hover:bg-muted/10 transition-colors border-2 border-dashed border-muted-foreground/30 rounded-xl"
-          >
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Upload className="w-8 h-8 text-primary" />
-            </div>
-            <p className="text-foreground font-medium mb-1">Upload Media</p>
-            <p className="text-sm text-muted-foreground">
-              Drag & drop or click to select
-            </p>
-            <p className="text-xs text-muted-foreground mt-2">
-              Videos up to 100MB • Images up to 20MB
-            </p>
-            {isUploading && (
-              <div className="mt-4 flex items-center gap-2 text-primary">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Uploading...</span>
-              </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <StudioUploadZone
+              onFilesSelected={(files) => addMedia(files)}
+              isUploading={isUploading}
+              className="flex-1 w-full max-w-md mx-auto"
+            />
+            {hasDraft() && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={restoreDraft}
+                className="mt-3"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Restore draft
+              </Button>
             )}
-          </button>
+          </div>
         ) : currentMedia ? (
           <>
-            {/* Actual media display */}
-            {currentMedia.type === 'video' ? (
-              <video
-                ref={videoRef}
-                src={currentMedia.url}
-                className="absolute inset-0 w-full h-full object-contain"
-                onLoadedMetadata={handleVideoLoadedMetadata}
-                onTimeUpdate={handleVideoTimeUpdate}
-                onEnded={() => setIsPlaying(false)}
-                playsInline
-              />
+            {/* Actual media display - with blur overlay when blur tool active */}
+            {activeTool === 'blur' && blurSegments.length > 0 ? (
+              <BlurVideoOverlay
+                segments={blurSegments}
+                currentTime={currentTime}
+                isCreatorMode
+              >
+                {currentMedia.type === 'video' ? (
+                  <video
+                    ref={videoRef}
+                    src={currentMedia.url}
+                    className="absolute inset-0 w-full h-full object-contain"
+                    onLoadedMetadata={handleVideoLoadedMetadata}
+                    onTimeUpdate={handleVideoTimeUpdate}
+                    onEnded={() => setIsPlaying(false)}
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={currentMedia.url}
+                    alt="Preview"
+                    className="absolute inset-0 w-full h-full object-contain"
+                  />
+                )}
+              </BlurVideoOverlay>
             ) : (
-              <img
-                src={currentMedia.url}
-                alt="Preview"
-                className="absolute inset-0 w-full h-full object-contain"
-              />
+              <>
+                {currentMedia.type === 'video' ? (
+                  <video
+                    ref={videoRef}
+                    src={currentMedia.url}
+                    className="absolute inset-0 w-full h-full object-contain"
+                    onLoadedMetadata={handleVideoLoadedMetadata}
+                    onTimeUpdate={handleVideoTimeUpdate}
+                    onEnded={() => setIsPlaying(false)}
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={currentMedia.url}
+                    alt="Preview"
+                    className="absolute inset-0 w-full h-full object-contain"
+                  />
+                )}
+              </>
             )}
 
             {/* Upload overlay indicator */}
@@ -996,6 +1131,8 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               <VideoPreviewFilters
                 selectedStyleId={selectedAIStyle}
                 intensity={filterIntensity[0]}
+                showLabel={!!selectedAIStyle}
+                filterOnly={filterOnlyMode}
               />
             ) : (
               <div 
@@ -1005,6 +1142,8 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
                 <VideoPreviewFilters
                   selectedStyleId={selectedAIStyle}
                   intensity={filterIntensity[0]}
+                  showLabel={!!selectedAIStyle}
+                  filterOnly={filterOnlyMode}
                 />
               </div>
             )}
@@ -1041,48 +1180,16 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
       {/* Media thumbnails strip */}
       {mediaFiles.length > 0 && (
         <div className="px-4 mt-3">
-          <div className="flex gap-2 overflow-x-auto pb-2">
-            {mediaFiles.map((media) => (
-              <button
-                key={media.id}
-                onClick={() => selectMedia(media.id)}
-                className={cn(
-                  'relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 transition-all',
-                  currentMedia?.id === media.id 
-                    ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' 
-                    : 'opacity-70 hover:opacity-100'
-                )}
-              >
-                {media.type === 'video' ? (
-                  <video src={media.url} className="w-full h-full object-cover" muted />
-                ) : (
-                  <img src={media.url} alt="" className="w-full h-full object-cover" />
-                )}
-                {media.isUploading && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <RefreshCw className="w-4 h-4 text-white animate-spin" />
-                  </div>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeMedia(media.id);
-                  }}
-                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive flex items-center justify-center"
-                >
-                  <X className="w-3 h-3 text-white" />
-                </button>
-              </button>
-            ))}
-            
-            {/* Add more button */}
-            <button
-              onClick={handleFileSelect}
-              className="w-14 h-14 rounded-lg border-2 border-dashed border-muted-foreground/30 flex items-center justify-center flex-shrink-0 hover:border-primary/50 transition-colors"
-            >
-              <Plus className="w-5 h-5 text-muted-foreground" />
-            </button>
-          </div>
+          <StudioMediaStrip
+            mediaFiles={mediaFiles}
+            currentMediaId={currentMedia?.id ?? null}
+            onSelect={selectMedia}
+            onRemove={removeMedia}
+            onAddMore={handleFileSelect}
+            onCancelUpload={cancelUpload}
+            onRetry={retryUpload}
+            onMove={moveMedia}
+          />
         </div>
       )}
 
@@ -1097,6 +1204,15 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
             onPlayPause={togglePlayPause}
             onTrimChange={handleTrimChange}
             highlights={aiHighlights}
+            sceneBreaks={aiAnalysisResult?.sceneBreaks}
+            initialClips={trimClips.length > 0 ? trimClips : undefined}
+            videoRef={videoRef}
+            fps={30}
+            snapToFrames
+            showInOutPoints
+            loopInOutOrClip
+            rippleDelete
+            keyboardShortcuts
           />
         </div>
       )}
@@ -1142,7 +1258,17 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
           {/* AI Highlights */}
           {aiHighlights.length > 0 && (
             <div className="space-y-2">
-              <h4 className="font-medium text-sm">AI Detected Highlights</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-sm">AI Detected Highlights</h4>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setAiHighlights(prev => prev.map(h => ({ ...h, selected: true })))}>
+                    All
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setAiHighlights(prev => prev.map(h => ({ ...h, selected: false })))}>
+                    None
+                  </Button>
+                </div>
+              </div>
               {aiHighlights.map((h) => (
                 <button
                   key={h.id}
@@ -1189,6 +1315,84 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
               ))}
             </div>
           )}
+
+          {/* Content insights: tags, caption, hashtags, quality, safety */}
+          {aiAnalysisResult && (aiAnalysisResult.tags?.length || aiAnalysisResult.suggestedCaption || aiAnalysisResult.suggestedHashtags?.length || aiAnalysisResult.qualityScore != null || aiAnalysisResult.contentSafety) && (
+            <div className="space-y-3 rounded-xl border border-border/50 bg-muted/20 p-3">
+              <h4 className="font-medium text-sm flex items-center gap-2">
+                <Tag className="w-4 h-4" />
+                Content insights
+              </h4>
+              {aiAnalysisResult.qualityScore != null && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Quality score:</span>
+                  <span className={cn(
+                    'font-medium tabular-nums',
+                    aiAnalysisResult.qualityScore >= 80 ? 'text-green-600' : aiAnalysisResult.qualityScore >= 60 ? 'text-amber-600' : 'text-muted-foreground'
+                  )}>
+                    {aiAnalysisResult.qualityScore}%
+                  </span>
+                </div>
+              )}
+              {aiAnalysisResult.contentSafety && aiAnalysisResult.contentSafety !== 'safe' && (
+                <div className="flex items-center gap-2 text-xs">
+                  <Shield className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-amber-600 dark:text-amber-400">Content: {aiAnalysisResult.contentSafety}</span>
+                </div>
+              )}
+              {aiAnalysisResult.tags && aiAnalysisResult.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {aiAnalysisResult.tags.slice(0, 10).map((tag, i) => (
+                    <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {aiAnalysisResult.suggestedCaption && (
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Suggested caption</span>
+                  <p className="text-sm line-clamp-2">{aiAnalysisResult.suggestedCaption}</p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(aiAnalysisResult!.suggestedCaption!);
+                      toast.success('Caption copied');
+                    }}
+                  >
+                    <Copy className="w-3 h-3 mr-1" />
+                    Copy caption
+                  </Button>
+                </div>
+              )}
+              {aiAnalysisResult.suggestedHashtags && aiAnalysisResult.suggestedHashtags.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Hash className="w-3 h-3" />
+                    Hashtags
+                  </span>
+                  <p className="text-xs text-muted-foreground break-all">
+                    #{aiAnalysisResult.suggestedHashtags.join(' #')}
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const text = aiAnalysisResult!.suggestedHashtags!.map(h => '#' + h).join(' ');
+                      navigator.clipboard.writeText(text);
+                      toast.success('Hashtags copied');
+                    }}
+                  >
+                    <Copy className="w-3 h-3 mr-1" />
+                    Copy hashtags
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           
           {/* AI Video Editor with 20 styles */}
           <AIVideoEditor
@@ -1196,6 +1400,17 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
             selectedStyleId={selectedAIStyle}
             onStyleSelect={handleSelectAIStyle}
             onApplyAI={handleApplyAIStyle}
+            analysisResult={aiAnalysisResult}
+            onApplyRecommended={(style) => {
+              setSelectedAIStyle(style.id);
+              handleApplyAIStyle(style, {
+                intensity: 75,
+                musicSync: true,
+                autoTrim: true,
+                enhanceColor: true,
+                stabilize: false,
+              });
+            }}
           />
           
           {/* Apply AI Edits */}
@@ -1255,6 +1470,9 @@ const Studio = forwardRef<HTMLDivElement>((_, ref) => {
             mediaDescription={importedMediaInfo.description}
             mediaThumbnail={importedMediaInfo.thumbnailUrl}
             platform={importedMediaInfo.platform}
+            editedMediaUrl={
+              currentMedia?.url ?? importedMediaInfo.originalUrl ?? undefined
+            }
             onPublishComplete={() => navigate('/')}
             className="flex-1"
           />

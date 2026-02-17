@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface NotificationEmailRequest {
   userId: string;
-  type: 'engagement' | 'promotion' | 'system';
+  type: 'engagement' | 'promotion' | 'system' | 'earnings';
   title: string;
   body?: string;
   data?: Record<string, unknown>;
@@ -43,6 +43,7 @@ serve(async (req: Request) => {
       'engagement': 'engagement',
       'promotion': 'promotions',
       'system': 'system',
+      'earnings': 'earnings',
     };
     
     if (!categories.includes(typeToCategory[type])) {

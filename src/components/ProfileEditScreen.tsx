@@ -1,26 +1,111 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { SwipeDismissOverlay } from './SwipeDismissOverlay';
-import { X, Camera, Upload, Instagram, Twitter, Link2, Check, Loader2 } from 'lucide-react';
+import {
+  X,
+  Camera,
+  Instagram,
+  Twitter,
+  Link2,
+  Check,
+  Loader2,
+  Trash2,
+  Youtube,
+  Linkedin,
+} from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './ui/alert-dialog';
 import { NeuButton } from './NeuButton';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { useLocalization } from '@/contexts/LocalizationContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  uploadAvatar,
+  uploadCover,
+  updateProfile,
+  isUsernameAvailable,
+  logProfileUpdate,
+  type ProfileSocialLinks,
+  isValidUsername,
+} from '@/services/profile.service';
+
+const MAX_AVATAR_SIZE_MB = 2;
+const MAX_COVER_SIZE_MB = 4;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const USERNAME_DEBOUNCE_MS = 500;
 
 interface ProfileEditScreenProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface SocialLinks {
-  instagram?: string;
-  twitter?: string;
-  tiktok?: string;
-  website?: string;
+const SOCIAL_PLATFORMS: {
+  key: keyof ProfileSocialLinks;
+  icon: React.ReactNode;
+  placeholder: string;
+  colorClass: string;
+}[] = [
+  {
+    key: 'instagram',
+    icon: <Instagram className="w-5 h-5 text-white" />,
+    placeholder: 'username',
+    colorClass: 'from-purple-500 to-pink-500',
+  },
+  {
+    key: 'twitter',
+    icon: <Twitter className="w-5 h-5 text-white" />,
+    placeholder: 'username',
+    colorClass: 'bg-black',
+  },
+  {
+    key: 'tiktok',
+    icon: <span className="text-white font-bold text-sm">TT</span>,
+    placeholder: 'username',
+    colorClass: 'from-cyan-400 via-black to-pink-500',
+  },
+  {
+    key: 'youtube',
+    icon: <Youtube className="w-5 h-5 text-white" />,
+    placeholder: '@channel or channel ID',
+    colorClass: 'from-red-600 to-red-700',
+  },
+  {
+    key: 'linkedin',
+    icon: <Linkedin className="w-5 h-5 text-white" />,
+    placeholder: 'profile URL or username',
+    colorClass: 'from-blue-600 to-blue-700',
+  },
+  {
+    key: 'website',
+    icon: <Link2 className="w-5 h-5 text-foreground" />,
+    placeholder: 'https://yourwebsite.com',
+    colorClass: 'bg-secondary',
+  },
+];
+
+function normalizeSocialLink(
+  platform: keyof ProfileSocialLinks,
+  value: string
+): string {
+  const v = value.trim();
+  if (!v) return '';
+  if (platform === 'website') {
+    if (!/^https?:\/\//i.test(v)) return `https://${v}`;
+    return v;
+  }
+  return v.replace(/^@/, '');
 }
 
 export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
@@ -28,151 +113,389 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
   onClose,
 }) => {
   const { profile, user, refreshProfile } = useAuth();
+  const { t } = useLocalization();
   const [isLoading, setIsLoading] = useState(false);
-  const [displayName, setDisplayName] = useState(profile?.display_name || '');
-  const [username, setUsername] = useState(profile?.username || '');
-  const [bio, setBio] = useState(profile?.bio || '');
-  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
-  const [coverPhotoUrl, setCoverPhotoUrl] = useState((profile as any)?.cover_photo_url || '');
-  const [socialLinks, setSocialLinks] = useState<SocialLinks>(
-    (profile as any)?.social_links || {}
-  );
-  
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState('');
+  const [socialLinks, setSocialLinks] = useState<ProfileSocialLinks>({});
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [showContributorBadges, setShowContributorBadges] = useState(true);
+  const [showTimedInteractions, setShowTimedInteractions] = useState(true);
+
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [usernameCheckStatus, setUsernameCheckStatus] = useState<
+    'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+  >('idle');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const initialValuesRef = useRef<{
+    displayName: string;
+    username: string;
+    bio: string;
+    avatarUrl: string;
+    coverPhotoUrl: string;
+    socialLinks: ProfileSocialLinks;
+  } | null>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${username || user?.id || 'user'}`;
+
+  const syncFromProfile = useCallback(() => {
+    if (!profile) return;
+    const cover = (profile as { cover_photo_url?: string })?.cover_photo_url || '';
+    const links = (profile as { social_links?: ProfileSocialLinks })?.social_links || {};
+    setDisplayName(profile.display_name || '');
+    setUsername(profile.username || '');
+    setBio(profile.bio || '');
+    setAvatarUrl(profile.avatar_url || '');
+    setCoverPhotoUrl(cover);
+    setSocialLinks(links);
+    setPhoneNumber(profile.phone_number || '');
+    setShowContributorBadges(
+      (profile as { show_contributor_badges?: boolean })?.show_contributor_badges ?? true
+    );
+    setShowTimedInteractions(
+      (profile as { show_timed_interactions?: boolean })?.show_timed_interactions ?? true
+    );
+    setUsernameCheckStatus('idle');
+    setFieldErrors({});
+    initialValuesRef.current = {
+      displayName: profile.display_name || '',
+      username: profile.username || '',
+      bio: profile.bio || '',
+      avatarUrl: profile.avatar_url || '',
+      coverPhotoUrl: cover,
+      socialLinks: links,
+    };
+  }, [profile]);
+
+  useEffect(() => {
+    if (isOpen) syncFromProfile();
+  }, [isOpen, syncFromProfile]);
+
+  useEffect(() => {
+    if (!username.trim()) {
+      setUsernameCheckStatus('idle');
+      return;
+    }
+    if (username.length < 3) {
+      setUsernameCheckStatus('invalid');
+      return;
+    }
+    if (!isValidUsername(username)) {
+      setUsernameCheckStatus('invalid');
+      return;
+    }
+    setUsernameCheckStatus('checking');
+    usernameDebounceRef.current = setTimeout(async () => {
+      const result = await isUsernameAvailable(username, user?.id);
+      setUsernameCheckStatus(result.available ? 'available' : 'taken');
+    }, USERNAME_DEBOUNCE_MS);
+    return () => {
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
+    };
+  }, [username, user?.id]);
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    if (!displayName.trim()) {
+      errors.displayName = t('profileEdit.errors.displayNameRequired');
+    }
+    if (!username.trim()) {
+      errors.username = t('profileEdit.errors.usernameRequired');
+    } else if (!isValidUsername(username)) {
+      errors.username = t('profileEdit.errors.usernameInvalid');
+    } else if (usernameCheckStatus === 'taken') {
+      errors.username = t('profileEdit.errors.usernameTaken');
+    }
+    if (bio.length > 500) {
+      errors.bio = t('profileEdit.errors.bioTooLong');
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // For demo, create a preview URL
+    if (!file || !user) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error(t('profileEdit.errors.invalidImageType'));
+      return;
+    }
+    if (file.size > MAX_AVATAR_SIZE_MB * 1024 * 1024) {
+      toast.error(t('profileEdit.errors.avatarTooLarge', {
+        max: String(MAX_AVATAR_SIZE_MB),
+      }));
+      return;
+    }
     const previewUrl = URL.createObjectURL(file);
     setAvatarUrl(previewUrl);
-    toast.success('Avatar updated! (Preview only - storage not configured)');
+    setAvatarUploading(true);
+    const result = await uploadAvatar(user.id, file);
+    URL.revokeObjectURL(previewUrl);
+    setAvatarUploading(false);
+    if ('error' in result) {
+      toast.error(result.error);
+      setAvatarUrl(profile?.avatar_url || '');
+    } else {
+      setAvatarUrl(result.url);
+      toast.success(t('profileEdit.avatarUpdated'));
+    }
+    e.target.value = '';
   };
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // For demo, create a preview URL  
+    if (!file || !user) return;
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error(t('profileEdit.errors.invalidImageType'));
+      return;
+    }
+    if (file.size > MAX_COVER_SIZE_MB * 1024 * 1024) {
+      toast.error(t('profileEdit.errors.coverTooLarge', {
+        max: String(MAX_COVER_SIZE_MB),
+      }));
+      return;
+    }
     const previewUrl = URL.createObjectURL(file);
     setCoverPhotoUrl(previewUrl);
-    toast.success('Cover photo updated! (Preview only - storage not configured)');
+    setCoverUploading(true);
+    const result = await uploadCover(user.id, file);
+    URL.revokeObjectURL(previewUrl);
+    setCoverUploading(false);
+    if ('error' in result) {
+      toast.error(result.error);
+      setCoverPhotoUrl(
+        (profile as { cover_photo_url?: string })?.cover_photo_url || ''
+      );
+    } else {
+      setCoverPhotoUrl(result.url);
+      toast.success(t('profileEdit.coverUpdated'));
+    }
+    e.target.value = '';
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarUrl('');
+    toast.info(t('profileEdit.avatarRemoved'));
+  };
+
+  const handleRemoveCover = () => {
+    setCoverPhotoUrl('');
+    toast.info(t('profileEdit.coverRemoved'));
+  };
+
+  const updateSocialLink = (platform: keyof ProfileSocialLinks, value: string) => {
+    setSocialLinks((prev) => ({
+      ...prev,
+      [platform]: normalizeSocialLink(platform, value) || undefined,
+    }));
   };
 
   const handleSave = async () => {
     if (!user) return;
-    
+    if (!validateForm()) return;
+
     setIsLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          display_name: displayName,
-          username: username,
-          bio: bio,
-          avatar_url: avatarUrl,
-          cover_photo_url: coverPhotoUrl,
-          social_links: JSON.parse(JSON.stringify(socialLinks)),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', user.id);
+      const links: ProfileSocialLinks = {};
+      for (const [k, v] of Object.entries(socialLinks)) {
+        if (v && String(v).trim()) links[k as keyof ProfileSocialLinks] = String(v).trim();
+      }
 
-      if (error) throw error;
-
-      // Log the profile update activity
-      await supabase.from('account_activity_logs').insert({
-        user_id: user.id,
-        activity_type: 'profile_update',
-        status: 'success',
-        details: { updated_fields: ['display_name', 'username', 'bio', 'avatar', 'cover', 'social_links'] }
+      const result = await updateProfile(user.id, {
+        display_name: displayName.trim() || null,
+        username: username.trim().toLowerCase() || null,
+        bio: bio.trim() || null,
+        avatar_url: avatarUrl || null,
+        cover_photo_url: coverPhotoUrl || null,
+        social_links: Object.keys(links).length ? links : null,
+        show_contributor_badges: showContributorBadges,
+        show_timed_interactions: showTimedInteractions,
       });
 
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      const updatedFields = [
+        'display_name',
+        'username',
+        'bio',
+        'avatar',
+        'cover',
+        'social_links',
+      ];
+      await logProfileUpdate(user.id, updatedFields);
       await refreshProfile();
-      toast.success('Profile updated successfully!');
+      toast.success(t('profileEdit.saveSuccess'));
       onClose();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to update profile');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(msg || t('profileEdit.saveError'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const updateSocialLink = (platform: keyof SocialLinks, value: string) => {
-    setSocialLinks(prev => ({ ...prev, [platform]: value }));
+  const isDirty = (() => {
+    const init = initialValuesRef.current;
+    if (!init) return false;
+    const linksChanged =
+      JSON.stringify(socialLinks) !== JSON.stringify(init.socialLinks);
+    return (
+      displayName !== init.displayName ||
+      username !== init.username ||
+      bio !== init.bio ||
+      avatarUrl !== init.avatarUrl ||
+      coverPhotoUrl !== init.coverPhotoUrl ||
+      linksChanged
+    );
+  })();
+
+  const handleClose = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+    } else {
+      setFieldErrors({});
+      onClose();
+    }
   };
 
-  const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${username || 'user'}`;
+  const handleDiscardConfirm = () => {
+    setShowDiscardConfirm(false);
+    setFieldErrors({});
+    onClose();
+  };
+
+  const isUploading = avatarUploading || coverUploading;
 
   return (
-    <SwipeDismissOverlay isOpen={isOpen} onClose={onClose}>
+    <>
+    <SwipeDismissOverlay isOpen={isOpen} onClose={handleClose}>
       <div className="max-w-md mx-auto h-full flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border/50">
-          <NeuButton onClick={onClose} size="sm" disabled={isLoading}>
+        <div className="flex items-center justify-between p-4 border-b border-border/50 shrink-0">
+          <NeuButton
+            onClick={handleClose}
+            size="sm"
+            disabled={isLoading}
+            aria-label={t('common.close')}
+          >
             <X className="w-5 h-5" />
           </NeuButton>
-          <h1 className="font-display text-lg font-bold">Edit Profile</h1>
-          <Button 
-            onClick={handleSave} 
-            disabled={isLoading}
+          <h1 className="font-display text-lg font-bold">
+            {t('profile.editProfile')}
+          </h1>
+          <Button
+            onClick={handleSave}
+            disabled={isLoading || isUploading}
             size="sm"
             className="gap-2"
           >
             {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
             ) : (
-              <Check className="w-4 h-4" />
+              <Check className="w-4 h-4" aria-hidden />
             )}
-            Save
+            {t('common.save')}
           </Button>
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24">
           {/* Cover Photo */}
-          <div className="relative h-32 bg-gradient-to-r from-primary/20 to-secondary/20">
-            {coverPhotoUrl && (
-              <img 
-                src={coverPhotoUrl} 
-                alt="Cover" 
+          <div className="relative h-36 bg-gradient-to-r from-primary/20 to-secondary/20">
+            {coverPhotoUrl ? (
+              <img
+                src={coverPhotoUrl}
+                alt=""
                 className="absolute inset-0 w-full h-full object-cover"
               />
-            )}
-            <button 
-              onClick={() => coverInputRef.current?.click()}
-              className="absolute bottom-2 right-2 w-10 h-10 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center hover:bg-background transition-colors"
-            >
-              <Camera className="w-5 h-5 text-foreground" />
-            </button>
+            ) : null}
+            <div className="absolute inset-0 bg-black/20" aria-hidden />
+            <div className="absolute bottom-2 right-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                disabled={coverUploading}
+                className="w-10 h-10 rounded-full bg-background/90 backdrop-blur-sm flex items-center justify-center hover:bg-background transition-colors disabled:opacity-60"
+                aria-label={t('profileEdit.changeCover')}
+              >
+                {coverUploading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-foreground" />
+                ) : (
+                  <Camera className="w-5 h-5 text-foreground" />
+                )}
+              </button>
+              {coverPhotoUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemoveCover}
+                  disabled={coverUploading}
+                  className="w-10 h-10 rounded-full bg-destructive/90 text-destructive-foreground flex items-center justify-center hover:bg-destructive transition-colors disabled:opacity-60"
+                  aria-label={t('profileEdit.removeCover')}
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
             <input
               ref={coverInputRef}
               type="file"
-              accept="image/*"
+              accept={ALLOWED_IMAGE_TYPES.join(',')}
               className="hidden"
               onChange={handleCoverChange}
             />
           </div>
 
           {/* Avatar */}
-          <div className="px-4 -mt-12 mb-6">
-            <div className="relative w-24 h-24">
-              <div className="w-24 h-24 rounded-full ring-4 ring-background overflow-hidden shadow-xl bg-secondary">
-                <img 
+          <div className="px-4 -mt-14 mb-6">
+            <div className="relative w-28 h-28">
+              <div className="w-28 h-28 rounded-full ring-4 ring-background overflow-hidden shadow-xl bg-secondary">
+                <img
                   src={avatarUrl || defaultAvatar}
-                  alt="Avatar"
+                  alt=""
                   className="w-full h-full object-cover"
                 />
+                {avatarUploading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-white" />
+                  </div>
+                )}
               </div>
-              <button 
-                onClick={() => avatarInputRef.current?.click()}
-                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg"
-              >
-                <Camera className="w-4 h-4" />
-              </button>
+              <div className="absolute -bottom-1 -right-1 flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-60"
+                  aria-label={t('profileEdit.changeAvatar')}
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAvatar}
+                    disabled={avatarUploading}
+                    className="w-9 h-9 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-lg hover:bg-destructive/90 transition-colors disabled:opacity-60"
+                    aria-label={t('profileEdit.removeAvatar')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
               <input
                 ref={avatarInputRef}
                 type="file"
-                accept="image/*"
+                accept={ALLOWED_IMAGE_TYPES.join(',')}
                 className="hidden"
                 onChange={handleAvatarChange}
               />
@@ -184,102 +507,231 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
             {/* Basic Info */}
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="displayName">Display Name</Label>
+                <Label htmlFor="displayName">{t('profileEdit.displayName')}</Label>
                 <Input
                   id="displayName"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Your display name"
-                  className="neu-inset"
+                  placeholder={t('profileEdit.displayNamePlaceholder')}
+                  className={cn(
+                    'neu-inset',
+                    fieldErrors.displayName && 'border-destructive'
+                  )}
+                  maxLength={50}
+                  aria-invalid={!!fieldErrors.displayName}
+                  aria-describedby={
+                    fieldErrors.displayName ? 'displayName-error' : undefined
+                  }
                 />
+                {fieldErrors.displayName && (
+                  <p
+                    id="displayName-error"
+                    className="text-xs text-destructive"
+                    role="alert"
+                  >
+                    {fieldErrors.displayName}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">{t('profileEdit.username')}</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                    @
+                  </span>
                   <Input
                     id="username"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    placeholder="username"
-                    className="neu-inset pl-8"
+                    onChange={(e) =>
+                      setUsername(
+                        e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9_]/g, '')
+                      )
+                    }
+                    placeholder={t('profileEdit.usernamePlaceholder')}
+                    className={cn(
+                      'neu-inset pl-8',
+                      fieldErrors.username && 'border-destructive'
+                    )}
+                    maxLength={30}
+                    aria-invalid={!!fieldErrors.username}
+                    aria-describedby={
+                      fieldErrors.username ? 'username-error' : undefined
+                    }
                   />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {usernameCheckStatus === 'checking' && (
+                      <Loader2
+                        className="w-4 h-4 animate-spin text-muted-foreground"
+                        aria-hidden
+                      />
+                    )}
+                    {usernameCheckStatus === 'available' && (
+                      <Check
+                        className="w-4 h-4 text-green-600"
+                        aria-label={t('profileEdit.usernameAvailable')}
+                      />
+                    )}
+                    {usernameCheckStatus === 'taken' && (
+                      <span
+                        className="text-xs text-destructive"
+                        aria-label={t('profileEdit.usernameTaken')}
+                      >
+                        ✕
+                      </span>
+                    )}
+                  </span>
                 </div>
+                {fieldErrors.username && (
+                  <p
+                    id="username-error"
+                    className="text-xs text-destructive"
+                    role="alert"
+                  >
+                    {fieldErrors.username}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {t('profileEdit.usernameHint')}
+                </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
+                <Label htmlFor="bio">{t('profileEdit.bio')}</Label>
                 <Textarea
                   id="bio"
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="Tell us about yourself..."
-                  className="neu-inset resize-none"
-                  rows={3}
-                  maxLength={160}
+                  placeholder={t('profileEdit.bioPlaceholder')}
+                  className={cn(
+                    'neu-inset resize-none',
+                    fieldErrors.bio && 'border-destructive'
+                  )}
+                  rows={4}
+                  maxLength={500}
+                  aria-invalid={!!fieldErrors.bio}
                 />
-                <p className="text-xs text-muted-foreground text-right">{bio.length}/160</p>
+                <p className="text-xs text-muted-foreground text-right">
+                  {bio.length}/500
+                </p>
+                {fieldErrors.bio && (
+                  <p className="text-xs text-destructive" role="alert">
+                    {fieldErrors.bio}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">{t('profileEdit.phone')}</Label>
+                <Input
+                  id="phone"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder={t('profileEdit.phonePlaceholder')}
+                  className="neu-inset"
+                  type="tel"
+                  disabled
+                  aria-describedby="phone-hint"
+                />
+                <p id="phone-hint" className="text-xs text-muted-foreground">
+                  {t('profileEdit.phoneHint')}
+                </p>
               </div>
             </div>
 
             {/* Social Links */}
             <div className="space-y-4">
-              <Label className="text-base font-semibold">Social Links</Label>
-              
+              <Label className="text-base font-semibold">
+                {t('profileEdit.socialLinks')}
+              </Label>
               <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <Instagram className="w-5 h-5 text-white" />
+                {SOCIAL_PLATFORMS.map(({ key, icon, placeholder, colorClass }) => (
+                  <div key={key} className="flex items-center gap-3">
+                    <div
+                      className={cn(
+                        'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
+                        colorClass.startsWith('from')
+                          ? `bg-gradient-to-br ${colorClass}`
+                          : colorClass
+                      )}
+                    >
+                      {icon}
+                    </div>
+                    <Input
+                      value={socialLinks[key] || ''}
+                      onChange={(e) =>
+                        updateSocialLink(key, e.target.value)
+                      }
+                      placeholder={placeholder}
+                      className="flex-1 neu-inset"
+                    />
                   </div>
-                  <Input
-                    value={socialLinks.instagram || ''}
-                    onChange={(e) => updateSocialLink('instagram', e.target.value)}
-                    placeholder="instagram username"
-                    className="flex-1 neu-inset"
-                  />
-                </div>
+                ))}
+              </div>
+            </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-black flex items-center justify-center">
-                    <Twitter className="w-5 h-5 text-white" />
-                  </div>
-                  <Input
-                    value={socialLinks.twitter || ''}
-                    onChange={(e) => updateSocialLink('twitter', e.target.value)}
-                    placeholder="twitter/x username"
-                    className="flex-1 neu-inset"
+            {/* Profile Preferences */}
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">
+                {t('profileEdit.preferences')}
+              </Label>
+              <div className="space-y-3 rounded-xl border border-border/50 p-4 bg-muted/30">
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                  <span className="text-sm">
+                    {t('profileEdit.showContributorBadges')}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={showContributorBadges}
+                    onChange={(e) =>
+                      setShowContributorBadges(e.target.checked)
+                    }
+                    className="rounded border-border"
                   />
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 via-black to-pink-500 flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">TT</span>
-                  </div>
-                  <Input
-                    value={socialLinks.tiktok || ''}
-                    onChange={(e) => updateSocialLink('tiktok', e.target.value)}
-                    placeholder="tiktok username"
-                    className="flex-1 neu-inset"
+                </label>
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                  <span className="text-sm">
+                    {t('profileEdit.showTimedInteractions')}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={showTimedInteractions}
+                    onChange={(e) =>
+                      setShowTimedInteractions(e.target.checked)
+                    }
+                    className="rounded border-border"
                   />
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                    <Link2 className="w-5 h-5 text-foreground" />
-                  </div>
-                  <Input
-                    value={socialLinks.website || ''}
-                    onChange={(e) => updateSocialLink('website', e.target.value)}
-                    placeholder="https://yourwebsite.com"
-                    className="flex-1 neu-inset"
-                  />
-                </div>
+                </label>
               </div>
             </div>
           </div>
         </div>
       </div>
     </SwipeDismissOverlay>
+
+    <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t('profileEditConfirm.discardTitle')}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t('profileEditConfirm.discardDescription')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDiscardConfirm}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {t('profileEditConfirm.discard')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };

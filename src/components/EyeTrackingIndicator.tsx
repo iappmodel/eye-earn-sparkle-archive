@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import type { VisionStatus } from '@/hooks/useEyeTracking';
 
 export type EyeIndicatorPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-right';
 
@@ -7,6 +8,10 @@ interface EyeTrackingIndicatorProps {
   isTracking: boolean;
   isFaceDetected: boolean;
   attentionScore: number;
+  /** Current focus streak in seconds; shown as badge when >= 3 */
+  attentionStreakSec?: number;
+  /** Vision pipeline status: shows subtle mode badge when fallback or loading */
+  visionStatus?: VisionStatus;
   position?: EyeIndicatorPosition;
   className?: string;
 }
@@ -23,6 +28,8 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
   isTracking,
   isFaceDetected,
   attentionScore,
+  attentionStreakSec = 0,
+  visionStatus,
   position = 'top-center',
   className,
 }) => {
@@ -137,15 +144,34 @@ export const EyeTrackingIndicator: React.FC<EyeTrackingIndicatorProps> = ({
   const showIris = visibility === 'full' || visibility === 'iris-only';
   const isHidden = visibility === 'hidden';
 
+  const showStreakBadge = attentionStreakSec >= 3 && isAttentive;
+
   return (
     <div 
       className={cn(
-        'absolute z-50 flex items-center justify-center transition-all duration-500',
+        'absolute z-50 flex flex-col items-center justify-center transition-all duration-500',
         positionClasses[position],
         isHidden ? 'opacity-0 scale-75 pointer-events-none' : 'opacity-100 scale-100',
         className
       )}
     >
+      {/* Focus streak badge */}
+      {showStreakBadge && (
+        <div className="mb-1 px-2 py-0.5 rounded-full bg-green-500/20 border border-green-500/40 text-[10px] font-medium text-green-600 dark:text-green-400 tabular-nums">
+          {Math.floor(attentionStreakSec)}s focus
+        </div>
+      )}
+      {/* Vision mode badge - Basic when fallback, Loading when starting */}
+      {visionStatus === 'fallback' && (
+        <div className="mb-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[9px] font-medium text-amber-700 dark:text-amber-400" title="Basic mode – upgrading to high accuracy when ready">
+          Basic
+        </div>
+      )}
+      {visionStatus === 'loading' && (
+        <div className="mb-1 px-2 py-0.5 rounded-full bg-muted/60 border border-border/40 text-[9px] font-medium text-muted-foreground animate-pulse" title="Starting high-accuracy mode...">
+          …
+        </div>
+      )}
       {/* Eye container - minimal circular design matching reference */}
       <div className={cn(
         'relative w-12 h-12 flex items-center justify-center rounded-full transition-all duration-300',

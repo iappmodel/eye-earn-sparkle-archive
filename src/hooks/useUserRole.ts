@@ -10,6 +10,8 @@ interface UseUserRoleReturn {
   isCreator: boolean;
   isModerator: boolean;
   isAdmin: boolean;
+  /** True if user can access the admin dashboard (admin or moderator) */
+  canAccessAdmin: boolean;
   hasRole: (role: AppRole) => boolean;
   refreshRole: () => Promise<void>;
 }
@@ -53,6 +55,7 @@ export const useUserRole = (): UseUserRoleReturn => {
     isCreator: role === 'creator' || role === 'admin',
     isModerator: role === 'moderator' || role === 'admin',
     isAdmin: role === 'admin',
+    canAccessAdmin: role === 'admin' || role === 'moderator',
     hasRole: (checkRole: AppRole) => {
       if (role === 'admin') return true;
       if (role === 'moderator' && (checkRole === 'moderator' || checkRole === 'creator' || checkRole === 'user')) return true;

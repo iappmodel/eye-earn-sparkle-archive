@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { MapPin, Check, Loader2, AlertCircle, Navigation2, Flame } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { MapPin, Check, Loader2, AlertCircle, Navigation2, Flame, ExternalLink, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ConfettiCelebration } from './ConfettiCelebration';
 import { notificationSoundService } from '@/services/notificationSound.service';
+import { useCheckInStatus } from '@/hooks/useCheckInStatus';
+
+const haptic = (pattern?: number | number[]) => {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    navigator.vibrate(pattern ?? [10]);
+  }
+};
 
 interface CheckInButtonProps {
   promotion: {
@@ -16,17 +24,22 @@ interface CheckInButtonProps {
     longitude: number;
     reward_amount: number;
     reward_type: 'vicoin' | 'icoin' | 'both';
+    address?: string | null;
   };
   className?: string;
   onSuccess?: () => void;
+  /** Show "Open in Maps" link. Default true. */
+  showOpenInMaps?: boolean;
 }
 
 export const CheckInButton: React.FC<CheckInButtonProps> = ({
   promotion,
   className,
   onSuccess,
+  showOpenInMaps = true,
 }) => {
   const { user } = useAuth();
+  const checkInStatusState = useCheckInStatus(promotion.id, { enabled: !!user?.id });
   const [isLoading, setIsLoading] = useState(false);
   const [checkInStatus, setCheckInStatus] = useState<'idle' | 'locating' | 'verifying' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -34,9 +47,32 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
   const [distance, setDistance] = useState<number | null>(null);
   const [streakInfo, setStreakInfo] = useState<{ current: number; bonus: number; bonusAmount: number } | null>(null);
 
+  const onCheckInSuccess = useCallback(() => {
+    checkInStatusState.refetch();
+    onSuccess?.();
+  }, [checkInStatusState.refetch, onSuccess]);
+
+  const handleOpenInMaps = useCallback(() => {
+    const { latitude, longitude } = promotion;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    haptic([5]);
+  }, [promotion]);
+
   const handleCheckIn = async () => {
     if (!user) {
       toast.error('Please sign in to check in');
+      haptic([50, 30, 50]);
+      return;
+    }
+
+    if (!checkInStatusState.canCheckIn && checkInStatus !== 'success') {
+      toast.error('You can check in again later', {
+        description: checkInStatusState.nextAvailableAt
+          ? `Next check-in available ${format(checkInStatusState.nextAvailableAt, 'MMM d, h:mm a')}`
+          : undefined,
+      });
+      haptic([30, 20, 30]);
       return;
     }
 
@@ -45,7 +81,6 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
     setErrorMessage('');
 
     try {
-      // Get user's current location
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
@@ -59,13 +94,11 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
 
       setCheckInStatus('verifying');
 
-      // Get session for auth
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('No active session');
       }
 
-      // Call edge function to verify check-in
       const { data, error } = await supabase.functions.invoke('verify-checkin', {
         body: {
           promotionId: promotion.id,
@@ -87,8 +120,6 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
       if (data.success) {
         setCheckInStatus('success');
         setShowConfetti(true);
-        
-        // Store streak info for display
         if (data.streak) {
           setStreakInfo({
             current: data.streak.current,
@@ -96,42 +127,38 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
             bonusAmount: data.streak.bonusAmount,
           });
         }
-
-        // Play reward sound
         notificationSoundService.playReward();
-
-        const bonusText = data.streak?.bonusAmount > 0 
-          ? ` (+${data.streak.bonusAmount} streak bonus!)` 
+        haptic([20, 50, 20]);
+        const bonusText = data.streak?.bonusAmount > 0
+          ? ` (+${data.streak.bonusAmount} streak bonus!)`
           : '';
-        
         toast.success('Check-in successful!', {
           description: `You earned ${data.reward?.total || promotion.reward_amount} ${promotion.reward_type}${bonusText}`,
         });
-        onSuccess?.();
-
-        // Hide confetti after 3 seconds
+        onCheckInSuccess();
         setTimeout(() => setShowConfetti(false), 3000);
       } else {
         setCheckInStatus('error');
-        setErrorMessage(data.message || 'Check-in failed');
-        toast.error('Check-in failed', { description: data.message });
+        const msg = data.message || 'Check-in failed';
+        setErrorMessage(msg);
+        toast.error('Check-in failed', { description: msg });
+        haptic([50, 30, 50]);
+        if (data.nextCheckInAvailableAt) {
+          checkInStatusState.refetch();
+        }
       }
-
-    } catch (error: any) {
-      console.error('Check-in error:', error);
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      console.error('Check-in error:', err);
+      let msg = 'Check-in failed';
+      if (err.code === 1) msg = 'Location permission denied. Please enable GPS.';
+      else if (err.code === 2) msg = 'Unable to get location. Please try again.';
+      else if (err.code === 3) msg = 'Location request timed out. Please try again.';
+      else if (err.message) msg = err.message;
+      setErrorMessage(msg);
       setCheckInStatus('error');
-      
-      if (error.code === 1) {
-        setErrorMessage('Location permission denied. Please enable GPS.');
-      } else if (error.code === 2) {
-        setErrorMessage('Unable to get location. Please try again.');
-      } else if (error.code === 3) {
-        setErrorMessage('Location request timed out. Please try again.');
-      } else {
-        setErrorMessage(error.message || 'Check-in failed');
-      }
-      
-      toast.error('Check-in failed', { description: errorMessage || 'Please try again' });
+      toast.error('Check-in failed', { description: msg });
+      haptic([50, 30, 50]);
     } finally {
       setIsLoading(false);
     }
@@ -183,36 +210,68 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
     }
   };
 
+  const isCooldown = !checkInStatusState.canCheckIn && checkInStatus !== 'success';
+  const disabled = isLoading || checkInStatus === 'success' || isCooldown;
+
   return (
-    <>
+    <div className="space-y-1.5">
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {checkInStatus === 'locating' && 'Getting your location.'}
+        {checkInStatus === 'verifying' && 'Verifying check-in.'}
+        {checkInStatus === 'success' && 'Check-in successful.'}
+        {checkInStatus === 'error' && (errorMessage || 'Check-in failed.')}
+      </div>
+
       <Button
         onClick={handleCheckIn}
-        disabled={isLoading || checkInStatus === 'success'}
+        disabled={disabled}
         className={cn(
           'flex items-center gap-2 transition-all',
           checkInStatus === 'success' && 'bg-green-500 hover:bg-green-500',
           checkInStatus === 'error' && 'bg-destructive hover:bg-destructive/90',
+          isCooldown && 'opacity-80',
           className
         )}
+        aria-busy={isLoading}
+        aria-disabled={disabled}
       >
         {getButtonContent()}
       </Button>
 
+      {/* Cooldown: next check-in available */}
+      {isCooldown && checkInStatusState.nextAvailableAt && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="w-3 h-3" />
+          Next check-in {format(checkInStatusState.nextAvailableAt, 'MMM d, h:mm a')}
+        </p>
+      )}
+
       {/* Distance indicator */}
-      {distance !== null && checkInStatus !== 'success' && (
-        <p className="text-xs text-muted-foreground mt-1">
-          You are {distance}m away (need to be within 100m)
+      {distance !== null && checkInStatus !== 'success' && !isCooldown && (
+        <p className="text-xs text-muted-foreground">
+          You are {distance}m away (within 100m to check in)
         </p>
       )}
 
       {/* Error message */}
       {errorMessage && checkInStatus === 'error' && (
-        <p className="text-xs text-destructive mt-1">{errorMessage}</p>
+        <p className="text-xs text-destructive">{errorMessage}</p>
       )}
 
-      {/* Confetti celebration */}
+      {/* Open in Maps */}
+      {showOpenInMaps && (checkInStatus === 'success' || checkInStatus === 'idle' || isCooldown) && (
+        <button
+          type="button"
+          onClick={handleOpenInMaps}
+          className="text-xs text-primary hover:underline flex items-center gap-1"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Open in Maps
+        </button>
+      )}
+
       {showConfetti && <ConfettiCelebration isActive={showConfetti} type="coins" />}
-    </>
+    </div>
   );
 };
 

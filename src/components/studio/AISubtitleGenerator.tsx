@@ -1,9 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Subtitles, Loader2, Download, Copy, Check, Upload } from 'lucide-react';
-import { toast } from 'sonner';
+import { Subtitles, Loader2, Download, Copy, Check, Upload, Film, Settings2 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { toast } from 'sonner';
+import { generateSubtitles, AIMediaError } from '@/services/aiMedia.service';
 
 interface SubtitleWord {
   text: string;
@@ -21,7 +25,7 @@ interface Subtitle {
 }
 
 interface AISubtitleGeneratorProps {
-  videoRef?: React.RefObject<HTMLVideoElement>;
+  videoRef?: React.RefObject<HTMLVideoElement | null>;
   onSubtitlesGenerated?: (subtitles: Subtitle[]) => void;
 }
 
@@ -56,134 +60,112 @@ const formatVTTTime = (seconds: number): string => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
 };
 
-export const AISubtitleGenerator: React.FC<AISubtitleGeneratorProps> = ({
+function wordsToSubtitles(words: SubtitleWord[]): Subtitle[] {
+  const result: Subtitle[] = [];
+  if (words.length === 0) return result;
+
+  let current: Subtitle = {
+    id: '1',
+    startTime: words[0].start,
+    endTime: words[0].end,
+    text: words[0].text,
+    speaker: words[0].speaker,
+  };
+  let wordCount = 1;
+
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    const timeDiff = w.start - current.endTime;
+    const speakerChanged = w.speaker !== current.speaker;
+    if (speakerChanged || timeDiff > 1.5 || wordCount >= 8) {
+      result.push(current);
+      current = {
+        id: String(result.length + 1),
+        startTime: w.start,
+        endTime: w.end,
+        text: w.text,
+        speaker: w.speaker,
+      };
+      wordCount = 1;
+    } else {
+      current.text += ' ' + w.text;
+      current.endTime = w.end;
+      wordCount++;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+interface AISubtitleGeneratorPropsExtended extends AISubtitleGeneratorProps {
+  /** Optional: current video file from Studio for "Use current video" flow */
+  videoFile?: File | null;
+}
+
+export const AISubtitleGenerator: React.FC<AISubtitleGeneratorPropsExtended> = ({
   videoRef,
-  onSubtitlesGenerated
+  onSubtitlesGenerated,
+  videoFile,
 }) => {
   const [language, setLanguage] = useState('auto');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [copied, setCopied] = useState(false);
+  const [styleFontSize, setStyleFontSize] = useState([24]);
+  const [stylePosition, setStylePosition] = useState<'bottom' | 'middle' | 'top'>('bottom');
+  const [styleOpen, setStyleOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const extractAudioFromVideo = async (videoElement: HTMLVideoElement): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const audioContext = new AudioContext();
-      
-      // For now, we'll use the video file directly if available
-      // In a real implementation, you'd extract audio using Web Audio API or FFmpeg
-      toast.info('Preparing audio for transcription...');
-      
-      // Fallback: request user to upload audio file
-      reject(new Error('Please upload an audio file directly'));
-    });
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    await transcribeAudio(file);
-  };
-
-  const transcribeAudio = async (audioFile: File) => {
-    setIsTranscribing(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('audio', audioFile);
-      formData.append('language', language);
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-subtitles`,
-        {
-          method: 'POST',
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: formData,
+  const transcribeFile = useCallback(
+    async (file: File) => {
+      setIsTranscribing(true);
+      try {
+        const result = await generateSubtitles(file, language);
+        const generated = wordsToSubtitles(result.words);
+        if (generated.length === 0 && result.text) {
+          generated.push({
+            id: '1',
+            startTime: 0,
+            endTime: 10,
+            text: result.text,
+          });
         }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Transcription failed');
+        setSubtitles(generated);
+        onSubtitlesGenerated?.(generated);
+        toast.success(`Generated ${generated.length} subtitle segments`);
+      } catch (err) {
+        const msg = err instanceof AIMediaError ? err.message : 'Transcription failed';
+        const desc =
+          err instanceof AIMediaError && err.code === 'CONFIG_MISSING'
+            ? 'ElevenLabs API key not configured'
+            : err instanceof AIMediaError && err.code === 'RATE_LIMIT'
+              ? 'Too many requests. Try again later.'
+              : err instanceof AIMediaError && err.code === 'CREDITS_EXHAUSTED'
+                ? 'API credits exhausted.'
+                : undefined;
+        toast.error(msg, { description: desc });
+      } finally {
+        setIsTranscribing(false);
+        fileInputRef.current && (fileInputRef.current.value = '');
       }
+    },
+    [language, onSubtitlesGenerated]
+  );
 
-      // Convert words to subtitle segments (group every ~5-8 words or by speaker)
-      const words: SubtitleWord[] = data.words || [];
-      const generatedSubtitles: Subtitle[] = [];
-      
-      if (words.length > 0) {
-        let currentSubtitle: Subtitle = {
-          id: '1',
-          startTime: words[0].start,
-          endTime: words[0].end,
-          text: words[0].text,
-          speaker: words[0].speaker,
-        };
-        
-        let wordCount = 1;
-        
-        for (let i = 1; i < words.length; i++) {
-          const word = words[i];
-          const timeDiff = word.start - currentSubtitle.endTime;
-          const speakerChanged = word.speaker !== currentSubtitle.speaker;
-          
-          // Start new subtitle if: speaker changed, long pause, or too many words
-          if (speakerChanged || timeDiff > 1.5 || wordCount >= 8) {
-            generatedSubtitles.push(currentSubtitle);
-            currentSubtitle = {
-              id: String(generatedSubtitles.length + 1),
-              startTime: word.start,
-              endTime: word.end,
-              text: word.text,
-              speaker: word.speaker,
-            };
-            wordCount = 1;
-          } else {
-            currentSubtitle.text += ' ' + word.text;
-            currentSubtitle.endTime = word.end;
-            wordCount++;
-          }
-        }
-        
-        // Add last subtitle
-        generatedSubtitles.push(currentSubtitle);
-      } else if (data.text) {
-        // Fallback if no word-level timestamps
-        generatedSubtitles.push({
-          id: '1',
-          startTime: 0,
-          endTime: 10,
-          text: data.text,
-        });
-      }
-
-      setSubtitles(generatedSubtitles);
-      onSubtitlesGenerated?.(generatedSubtitles);
-      toast.success(`Generated ${generatedSubtitles.length} subtitle segments`);
-    } catch (error) {
-      console.error('Transcription error:', error);
-      toast.error(error instanceof Error ? error.message : 'Transcription failed');
-    } finally {
-      setIsTranscribing(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
+  const handleFileUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      await transcribeFile(file);
+    },
+    [transcribeFile]
+  );
 
   const exportSRT = () => {
     if (subtitles.length === 0) return;
-
-    const srtContent = subtitles.map((sub, index) => {
-      return `${index + 1}\n${formatTime(sub.startTime)} --> ${formatTime(sub.endTime)}\n${sub.text}\n`;
-    }).join('\n');
-
+    const srtContent = subtitles
+      .map((sub, i) => `${i + 1}\n${formatTime(sub.startTime)} --> ${formatTime(sub.endTime)}\n${sub.text}\n`)
+      .join('\n');
     const blob = new Blob([srtContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -196,12 +178,10 @@ export const AISubtitleGenerator: React.FC<AISubtitleGeneratorProps> = ({
 
   const exportVTT = () => {
     if (subtitles.length === 0) return;
-
     let vttContent = 'WEBVTT\n\n';
-    vttContent += subtitles.map((sub, index) => {
-      return `${index + 1}\n${formatVTTTime(sub.startTime)} --> ${formatVTTTime(sub.endTime)}\n${sub.text}\n`;
-    }).join('\n');
-
+    vttContent += subtitles
+      .map((sub, i) => `${i + 1}\n${formatVTTTime(sub.startTime)} --> ${formatVTTTime(sub.endTime)}\n${sub.text}\n`)
+      .join('\n');
     const blob = new Blob([vttContent], { type: 'text/vtt' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -213,7 +193,7 @@ export const AISubtitleGenerator: React.FC<AISubtitleGeneratorProps> = ({
   };
 
   const copyToClipboard = () => {
-    const text = subtitles.map(s => s.text).join('\n');
+    const text = subtitles.map((s) => s.text).join('\n');
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -229,13 +209,13 @@ export const AISubtitleGenerator: React.FC<AISubtitleGeneratorProps> = ({
 
       <div className="space-y-3">
         <div>
-          <label className="text-sm text-muted-foreground mb-1 block">Language</label>
+          <Label className="text-sm text-muted-foreground mb-1 block">Language</Label>
           <Select value={language} onValueChange={setLanguage}>
             <SelectTrigger className="bg-background/50 border-border/50">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {LANGUAGES.map(lang => (
+              {LANGUAGES.map((lang) => (
                 <SelectItem key={lang.code} value={lang.code}>
                   {lang.name}
                 </SelectItem>
@@ -252,33 +232,81 @@ export const AISubtitleGenerator: React.FC<AISubtitleGeneratorProps> = ({
           className="hidden"
         />
 
-        <Button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isTranscribing}
-          className="w-full"
-        >
-          {isTranscribing ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Transcribing...
-            </>
-          ) : (
-            <>
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Audio/Video
-            </>
+        <div className="flex flex-col gap-2">
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isTranscribing}
+            className="w-full"
+          >
+            {isTranscribing ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Transcribing...
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Audio/Video
+              </>
+            )}
+          </Button>
+          {videoFile && (videoFile.type.startsWith('video/') || videoFile.type.startsWith('audio/')) && (
+            <Button
+              variant="secondary"
+              onClick={() => transcribeFile(videoFile)}
+              disabled={isTranscribing}
+              className="w-full"
+              title="Transcribe current video/audio in Studio"
+            >
+              <Film className="w-4 h-4 mr-2" />
+              Use current video
+            </Button>
           )}
-        </Button>
+        </div>
 
         <p className="text-xs text-muted-foreground text-center">
-          Upload audio or video file to generate subtitles with speaker detection
+          Upload audio/video or extract from current video. Speaker detection supported.
         </p>
       </div>
 
       {subtitles.length > 0 && (
         <div className="space-y-3">
+          <Collapsible open={styleOpen} onOpenChange={setStyleOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between text-xs">
+                <span className="flex items-center gap-2">
+                  <Settings2 className="w-3.5 h-3.5" /> Subtitle style
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-3 pt-2">
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <Label>Font size</Label>
+                  <span>{styleFontSize[0]}px</span>
+                </div>
+                <Slider value={styleFontSize} onValueChange={setStyleFontSize} min={14} max={48} step={2} />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Position</Label>
+                <div className="flex gap-2">
+                  {(['bottom', 'middle', 'top'] as const).map((pos) => (
+                    <Button
+                      key={pos}
+                      variant={stylePosition === pos ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setStylePosition(pos)}
+                    >
+                      {pos.charAt(0).toUpperCase() + pos.slice(1)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-medium">{subtitles.length} Segments</h4>
+            <h4 className="text-sm font-medium">{subtitles.length} segments</h4>
             <div className="flex gap-1">
               <Button size="sm" variant="ghost" onClick={copyToClipboard}>
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -294,19 +322,26 @@ export const AISubtitleGenerator: React.FC<AISubtitleGeneratorProps> = ({
             </div>
           </div>
 
-          <ScrollArea className="h-[200px] rounded-lg border border-border/30 bg-background/30">
-            <div className="p-2 space-y-2">
+          <ScrollArea
+            className="h-[200px] rounded-lg border border-border/30 bg-background/30"
+            style={{ '--subtitle-font-size': `${styleFontSize[0]}px` } as React.CSSProperties}
+          >
+            <div
+              className="p-2 space-y-2"
+              data-subtitle-position={stylePosition}
+            >
               {subtitles.map((subtitle) => (
                 <div
                   key={subtitle.id}
                   className="p-2 rounded bg-muted/30 text-sm"
+                  style={{ fontSize: styleFontSize[0] }}
                 >
                   <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                    <span>{formatVTTTime(subtitle.startTime)} → {formatVTTTime(subtitle.endTime)}</span>
+                    <span>
+                      {formatVTTTime(subtitle.startTime)} → {formatVTTTime(subtitle.endTime)}
+                    </span>
                     {subtitle.speaker && (
-                      <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                        {subtitle.speaker}
-                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary">{subtitle.speaker}</span>
                     )}
                   </div>
                   <p className="text-foreground">{subtitle.text}</p>

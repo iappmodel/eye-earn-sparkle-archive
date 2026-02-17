@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { subDays } from 'date-fns';
 
 interface TimeSlot {
   hour: number;
@@ -20,76 +21,100 @@ interface DayPerformance {
   isOptimal: boolean;
 }
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+/** Below this we show "Not enough data" or error only; no Math.random() or synthetic engagement. */
+const MIN_INTERACTIONS_FOR_DATA = 10;
+
 export const BestPostingTimes: React.FC = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [dayPerformance, setDayPerformance] = useState<DayPerformance[]>([]);
   const [optimalTimes, setOptimalTimes] = useState<string[]>([]);
+  const [hasEnoughData, setHasEnoughData] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     loadTimingData();
-  }, [user]);
+  }, [user?.id]);
 
   const loadTimingData = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
-      // Generate engagement data based on typical social media patterns
-      // In production, this would analyze actual content_interactions data
-      const hours = Array.from({ length: 24 }, (_, i) => {
-        const hour = i;
-        let engagement = 0;
-        
-        // Morning peak (7-9 AM)
-        if (hour >= 7 && hour <= 9) engagement = 60 + Math.random() * 20;
-        // Lunch peak (12-2 PM)
-        else if (hour >= 12 && hour <= 14) engagement = 70 + Math.random() * 15;
-        // Evening peak (6-9 PM)
-        else if (hour >= 18 && hour <= 21) engagement = 80 + Math.random() * 20;
-        // Night (10 PM - 12 AM)
-        else if (hour >= 22 || hour === 0) engagement = 40 + Math.random() * 15;
-        // Early morning (1-6 AM)
-        else if (hour >= 1 && hour <= 6) engagement = 10 + Math.random() * 15;
-        // Other times
-        else engagement = 30 + Math.random() * 20;
+      const startDate = subDays(new Date(), 30);
 
-        const label = hour === 0 ? '12AM' : hour < 12 ? `${hour}AM` : hour === 12 ? '12PM' : `${hour - 12}PM`;
-        
-        return {
-          hour,
-          label,
-          engagement: Math.round(engagement),
-          isOptimal: engagement >= 70,
-        };
-      });
+      // RLS-safe: only interactions on this creator's content
+      const { data: interactions, error } = user
+        ? await supabase
+            .from('content_interactions')
+            .select('created_at, liked, shared')
+            .eq('content_owner_id', user.id)
+            .gte('created_at', startDate.toISOString())
+        : { data: null, error: null };
 
-      // Find optimal times
-      const optimal = hours
-        .filter(h => h.isOptimal)
-        .sort((a, b) => b.engagement - a.engagement)
-        .slice(0, 3)
-        .map(h => h.label);
+      if (error) throw error;
 
-      // Day of week performance
-      const days = [
-        { day: 'Sunday', shortDay: 'Sun', engagement: 65 },
-        { day: 'Monday', shortDay: 'Mon', engagement: 72 },
-        { day: 'Tuesday', shortDay: 'Tue', engagement: 78 },
-        { day: 'Wednesday', shortDay: 'Wed', engagement: 82 },
-        { day: 'Thursday', shortDay: 'Thu', engagement: 80 },
-        { day: 'Friday', shortDay: 'Fri', engagement: 75 },
-        { day: 'Saturday', shortDay: 'Sat', engagement: 70 },
-      ].map(d => ({
-        ...d,
-        engagement: d.engagement + Math.round((Math.random() - 0.5) * 10),
-        isOptimal: d.engagement >= 75,
-      }));
+      const list = interactions ?? [];
+      const enough = list.length >= MIN_INTERACTIONS_FOR_DATA;
 
-      setTimeSlots(hours);
-      setDayPerformance(days);
-      setOptimalTimes(optimal);
+      if (enough) {
+        setHasEnoughData(true);
+        const engagementScore = (i: { liked?: boolean | null; shared?: boolean | null }) =>
+          (i.liked ? 2 : 0) + (i.shared ? 3 : 0) + 1;
+
+        const byHour = Array.from({ length: 24 }, () => 0);
+        const byDay = Array.from({ length: 7 }, () => 0);
+
+        list.forEach((i) => {
+          const d = new Date(i.created_at);
+          const hour = d.getHours();
+          const day = d.getDay();
+          byHour[hour] += engagementScore(i);
+          byDay[day] += engagementScore(i);
+        });
+
+        const maxH = Math.max(1, ...byHour);
+        const maxD = Math.max(1, ...byDay);
+        const hours: TimeSlot[] = byHour.map((engagement, hour) => {
+          const pct = Math.round((engagement / maxH) * 100);
+          const label = hour === 0 ? '12AM' : hour < 12 ? `${hour}AM` : hour === 12 ? '12PM' : `${hour - 12}PM`;
+          return { hour, label, engagement: pct, isOptimal: pct >= 70 };
+        });
+        const days: DayPerformance[] = byDay.map((engagement, i) => {
+          const pct = Math.round((engagement / maxD) * 100);
+          return {
+            day: DAY_NAMES[i],
+            shortDay: DAY_SHORT[i],
+            engagement: pct,
+            isOptimal: pct >= 70,
+          };
+        });
+
+        const optimal = hours
+          .filter((h) => h.isOptimal)
+          .sort((a, b) => b.engagement - a.engagement)
+          .slice(0, 3)
+          .map((h) => h.label);
+
+        setTimeSlots(hours);
+        setDayPerformance(days);
+        setOptimalTimes(optimal.length ? optimal : ['6PM', '7PM', '12PM']);
+      } else {
+        setHasEnoughData(false);
+        setTimeSlots([]);
+        setDayPerformance([]);
+        setOptimalTimes([]);
+      }
     } catch (error) {
       console.error('Error loading timing data:', error);
+      setLoadError(true);
+      setHasEnoughData(false);
+      setTimeSlots([]);
+      setDayPerformance([]);
+      setOptimalTimes([]);
     } finally {
       setLoading(false);
     }
@@ -104,7 +129,39 @@ export const BestPostingTimes: React.FC = () => {
     );
   }
 
-  const maxEngagement = Math.max(...timeSlots.map(t => t.engagement));
+  if (loadError) {
+    return (
+      <Card className="neu-card border-dashed border-2 border-destructive/30">
+        <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+            <Clock className="w-7 h-7 text-destructive" />
+          </div>
+          <h3 className="font-semibold text-foreground mb-1">Couldn&apos;t load data</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Something went wrong loading your posting times. Try again later.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!hasEnoughData) {
+    return (
+      <Card className="neu-card border-dashed border-2 border-muted">
+        <CardContent className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mb-4">
+            <Clock className="w-7 h-7 text-muted-foreground" />
+          </div>
+          <h3 className="font-semibold text-foreground mb-1">Not enough data</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            Post more content and get at least {MIN_INTERACTIONS_FOR_DATA} interactions in the last 30 days to see your best posting times.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const maxEngagement = timeSlots.length ? Math.max(...timeSlots.map((t) => t.engagement)) : 0;
 
   return (
     <div className="space-y-4">
@@ -218,14 +275,24 @@ export const BestPostingTimes: React.FC = () => {
               </div>
             ))}
           </div>
-          <div className="mt-3 p-3 rounded-lg bg-vicoin/10 border border-vicoin/20">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-vicoin" />
-              <p className="text-sm text-foreground">
-                <span className="font-semibold">Wednesday & Thursday</span> have the highest engagement rates
-              </p>
+          {dayPerformance.length > 0 && (
+            <div className="mt-3 p-3 rounded-lg bg-vicoin/10 border border-vicoin/20">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-vicoin" />
+                <p className="text-sm text-foreground">
+                  <span className="font-semibold">
+                    {dayPerformance
+                      .slice()
+                      .sort((a, b) => b.engagement - a.engagement)
+                      .slice(0, 2)
+                      .map((d) => d.day)
+                      .join(' & ')}
+                  </span>{' '}
+                  {dayPerformance.some((d) => d.isOptimal) ? 'have the highest engagement' : '— keep posting to see your best days'}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

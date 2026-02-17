@@ -9,10 +9,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
 import { Card3D } from '@/components/ui/Card3D';
 import { TwoFactorAuth } from './TwoFactorAuth';
+import { BiometricSettings } from './BiometricSettings';
 import { ActiveSessionsManager } from './ActiveSessionsManager';
 import { ContentReportFlow } from './ContentReportFlow';
 import { BlockMuteManager } from './BlockMuteManager';
+import { useMyReports } from '@/hooks/useMyReports';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { formatDistanceToNow } from 'date-fns';
 
 interface SettingItemProps {
   icon: React.ReactNode;
@@ -84,6 +88,9 @@ export const SecurityPrivacySettings: React.FC = () => {
   const [showSessions, setShowSessions] = useState(false);
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
   const [showReportDemo, setShowReportDemo] = useState(false);
+  const [showMyReports, setShowMyReports] = useState(false);
+  const { contentFlags, userReports, loading: myReportsLoading, refresh: refreshMyReports } = useMyReports();
+  const myReportsCount = contentFlags.length + userReports.length;
 
   useEffect(() => {
     if (user) {
@@ -208,6 +215,8 @@ export const SecurityPrivacySettings: React.FC = () => {
               onClick={() => setShowSessions(true)}
               badge={sessionCount > 0 ? `${sessionCount} device${sessionCount > 1 ? 's' : ''}` : undefined}
             />
+
+            <BiometricSettings email={user?.email ?? undefined} className="mt-2" />
           </div>
         </Card3D>
 
@@ -243,7 +252,62 @@ export const SecurityPrivacySettings: React.FC = () => {
               description="Report inappropriate content"
               onClick={() => setShowReportDemo(true)}
             />
+
+            <SettingItem
+              icon={<Flag className="w-5 h-5" />}
+              title="My reports"
+              description="View status of your content and user reports"
+              onClick={() => setShowMyReports(true)}
+              badge={myReportsCount > 0 ? `${myReportsCount}` : undefined}
+            />
           </div>
+
+          {showMyReports && (
+            <div className="mt-4 p-4 rounded-xl border border-border/50 bg-muted/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Your reports</h4>
+                <button
+                  type="button"
+                  onClick={() => setShowMyReports(false)}
+                  className="text-sm text-muted-foreground"
+                >
+                  Close
+                </button>
+              </div>
+              {myReportsLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground py-4">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+                </div>
+              ) : contentFlags.length === 0 && userReports.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">You haven’t submitted any reports yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {contentFlags.map((f) => (
+                    <div key={f.id} className="flex items-center justify-between gap-2 py-2 border-b border-border/30 last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">Content: {f.content_type} · {f.reason}</p>
+                        <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(f.created_at), { addSuffix: true })}</p>
+                      </div>
+                      <Badge variant={f.status === 'pending' ? 'secondary' : 'outline'} className="shrink-0">
+                        {f.status}
+                      </Badge>
+                    </div>
+                  ))}
+                  {userReports.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between gap-2 py-2 border-b border-border/30 last:border-0">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">User report · {r.reason}</p>
+                        <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}</p>
+                      </div>
+                      <Badge variant={r.status === 'pending' ? 'secondary' : 'outline'} className="shrink-0">
+                        {r.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </Card3D>
 
         {/* Security Tips */}

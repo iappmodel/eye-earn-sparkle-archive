@@ -64,6 +64,25 @@ This project is built with:
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
 
+### Rewards (promo completion) – Supabase Edge Function
+
+Promo completion rewards are handled by `rewardsService.issueReward()` and the **issue-reward** Supabase Edge Function. To deploy the function (required for rewards to work in production):
+
+1. Install the [Supabase CLI](https://supabase.com/docs/guides/cli) and link your project (`supabase link`).
+2. Deploy the function:
+
+```sh
+npm run deploy:issue-reward
+```
+
+Or deploy directly:
+
+```sh
+supabase functions deploy issue-reward
+```
+
+The function validates the user JWT, checks daily limits and duplicate claims, then credits the user’s balance and records the reward.
+
 ## Can I connect a custom domain to my Lovable project?
 
 Yes, you can!

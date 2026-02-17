@@ -153,6 +153,8 @@ export const getGroupSummary = (notifications: Notification[]): string => {
       return `${count} new engagement notifications`;
     case 'promotion':
       return `${count} new reward opportunities`;
+    case 'earnings':
+      return `${count} new earnings notifications`;
     case 'system':
       return `${count} system updates`;
     default:

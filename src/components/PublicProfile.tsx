@@ -24,7 +24,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFollow } from '@/hooks/useFollow';
 import { getFollowerIds, getFollowingIds } from '@/services/follow.service';
-import { getProfileByUserId, type ProfileRow, type ProfileSocialLinks } from '@/services/profile.service';
+import { getProfileByUserId, type PublicProfileRow, type ProfileSocialLinks } from '@/services/profile.service';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -73,13 +73,13 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   onClose,
   onMessage,
 }) => {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const { user, profile: authProfile } = useAuth();
+  const [profile, setProfile] = useState<PublicProfileRow | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
   const [listMode, setListMode] = useState<'followers' | 'following' | null>(null);
-  const [listUsers, setListUsers] = useState<ProfileRow[]>([]);
+  const [listUsers, setListUsers] = useState<PublicProfileRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [showReportFlow, setShowReportFlow] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
@@ -131,7 +131,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
         return;
       }
       const profiles = await Promise.all(ids.map(id => getProfileByUserId(id)));
-      setListUsers(profiles.filter((p): p is ProfileRow => p != null));
+      setListUsers(profiles.filter((p): p is PublicProfileRow => p != null));
     } catch {
       toast.error('Failed to load list');
     } finally {
@@ -227,7 +227,10 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   const avatarUrl = profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
   const coverUrl = profile?.cover_photo_url || null;
   const isVerified = profile?.is_verified || false;
-  const kycStatus = (profile?.kyc_status as 'pending' | 'submitted' | 'verified' | 'rejected') || 'pending';
+  // KYC only visible on own profile (from auth); not exposed in public_profiles for others
+  const kycStatus = (isOwnProfile && authProfile?.kyc_status
+    ? authProfile.kyc_status
+    : 'pending') as 'pending' | 'submitted' | 'verified' | 'rejected';
   const role = userRole?.role || 'user';
   const socialLinks = (profile?.social_links || {}) as ProfileSocialLinks;
   const hasSocialLinks = Object.values(socialLinks).some(Boolean);
@@ -309,7 +312,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
                 <p className="text-muted-foreground mb-2">@{username}</p>
                 <div className="flex items-center justify-center gap-2 flex-wrap">
                   <RoleBadge role={role} />
-                  {kycStatus === 'verified' && <KycStatusBadge status="verified" />}
+                  {isOwnProfile && kycStatus === 'verified' && <KycStatusBadge status="verified" />}
                 </div>
               </div>
 

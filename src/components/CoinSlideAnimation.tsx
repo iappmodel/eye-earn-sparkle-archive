@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 interface CoinSlideAnimationProps {
   type: 'vicoin' | 'icoin';
@@ -14,24 +15,27 @@ export const CoinSlideAnimation: React.FC<CoinSlideAnimationProps> = ({
   isAnimating,
   onComplete,
 }) => {
+  const prefersReducedMotion = useReducedMotion();
+
   React.useEffect(() => {
     if (isAnimating) {
+      const duration = prefersReducedMotion ? 400 : 1400;
       const timer = setTimeout(() => {
         onComplete?.();
-      }, 1400);
+      }, duration);
       return () => clearTimeout(timer);
     }
-  }, [isAnimating, onComplete]);
+  }, [isAnimating, onComplete, prefersReducedMotion]);
 
   if (!isAnimating) return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[60]">
-      {/* Coin that slides from center-right toward bottom wallet */}
+    <div className="fixed inset-0 pointer-events-none z-[60]" aria-hidden="true">
+      {/* Coin: static badge when prefers-reduced-motion, slide animation otherwise */}
       <div
         className={cn(
           'absolute w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-xl',
-          'animate-slide-to-wallet',
+          !prefersReducedMotion && 'animate-slide-to-wallet',
           type === 'vicoin'
             ? 'bg-gradient-to-br from-primary to-primary/70'
             : 'bg-gradient-to-br from-icoin to-yellow-600'
@@ -46,10 +50,14 @@ export const CoinSlideAnimation: React.FC<CoinSlideAnimationProps> = ({
         )}
       </div>
 
-      {/* Sparkle trail effect */}
-      <div className="absolute top-1/2 right-6 w-1.5 h-1.5 bg-primary/60 rounded-full animate-sparkle-1" />
-      <div className="absolute top-1/2 right-12 w-1 h-1 bg-primary/40 rounded-full animate-sparkle-2" />
-      <div className="absolute top-1/2 right-20 w-1 h-1 bg-primary/25 rounded-full animate-sparkle-3" />
+      {/* Sparkle trail - hidden when prefers-reduced-motion */}
+      {!prefersReducedMotion && (
+        <>
+          <div className="absolute top-1/2 right-6 w-1.5 h-1.5 bg-primary/60 rounded-full animate-sparkle-1" />
+          <div className="absolute top-1/2 right-12 w-1 h-1 bg-primary/40 rounded-full animate-sparkle-2" />
+          <div className="absolute top-1/2 right-20 w-1 h-1 bg-primary/25 rounded-full animate-sparkle-3" />
+        </>
+      )}
     </div>
   );
 };

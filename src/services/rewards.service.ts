@@ -97,12 +97,13 @@ export interface IssueRewardResponse {
   code?: string;
 }
 
+/** Options for issueReward. Amount and currency are never sent — server computes them (promo from DB + session). */
 export interface IssueRewardOptions {
-  amount?: number;
   attentionScore?: number;
-  coinType?: CoinType;
   watchDuration?: number;
   totalDuration?: number;
+  /** Required for promo_view: attention session id from validate-attention. Single-use: each session id can be redeemed only once. */
+  attentionSessionId?: string;
 }
 
 // Transfer/convert coins between Vicoin and Icoin
@@ -161,16 +162,13 @@ class RewardsService {
           logger.log('[Rewards] Issuing reward:', { rewardType, contentId, options });
         }
         
+        const isPromoView = rewardType === 'promo_view';
+        const body = isPromoView && options?.attentionSessionId
+          ? { rewardType: 'promo_view' as const, attentionSessionId: options.attentionSessionId, mediaId: contentId }
+          : { rewardType, contentId };
+
         const { data, error } = await supabase.functions.invoke('issue-reward', {
-          body: {
-            rewardType,
-            contentId,
-            amount: options?.amount,
-            attentionScore: options?.attentionScore,
-            coinType: options?.coinType,
-            watchDuration: options?.watchDuration,
-            totalDuration: options?.totalDuration,
-          },
+          body,
         });
 
         // Handle edge function errors - parse the response body when available
@@ -196,10 +194,11 @@ class RewardsService {
         if (data && !data.success) {
           logger.log('[Rewards] Issue failed:', data);
           const code = data.code || '';
-          if (code === 'reward_already_claimed' || (data.error && (
+          if (code === 'reward_already_claimed' || code === 'invalid_session' || (data.error && (
             data.error.includes('already claimed') ||
             data.error.includes('Daily limit') ||
-            data.error.includes('promo view limit')
+            data.error.includes('promo view limit') ||
+            data.error.includes('attention session')
           ))) {
             return { success: false, error: data.error || 'Reward not issued', code };
           }
@@ -221,9 +220,10 @@ class RewardsService {
           const result = await attempt(i);
           if (result.success) return result;
           // Don't retry on user/business logic failures
-          if (result.code === 'reward_already_claimed' || 
+          if (result.code === 'reward_already_claimed' || result.code === 'invalid_session' ||
               result.error?.includes('already claimed') ||
-              result.error?.includes('limit')) {
+              result.error?.includes('limit') ||
+              result.error?.includes('attention session')) {
             return result;
           }
           lastResult = result;
@@ -614,19 +614,21 @@ class RewardsService {
     }
   }
 
-  // Record a view for earning rewards
+  // Record a view for earning rewards. For promo_view, attentionSessionId from validate-attention is required; redemption is single-use per session id.
   async recordView(
     _userId: string,
     contentId: string,
     watchDuration: number,
     attentionScore?: number,
-    totalDuration?: number
+    totalDuration?: number,
+    attentionSessionId?: string
   ): Promise<{ earned: boolean; amount?: number; coinType?: CoinType }> {
     try {
       const result = await this.issueReward('promo_view', contentId, {
         attentionScore,
         watchDuration,
         totalDuration,
+        attentionSessionId,
       });
       return {
         earned: result.success,

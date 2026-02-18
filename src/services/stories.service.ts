@@ -64,7 +64,7 @@ async function attachProfilesToStoryRows(
   if (rows.length === 0) return [];
   const userIds = [...new Set(rows.map((r) => r.user_id))];
   const { data: profiles } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('user_id, username, avatar_url')
     .in('user_id', userIds);
   const byUser = new Map(

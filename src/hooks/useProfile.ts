@@ -3,7 +3,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getProfileByUserId, getProfileByUsername, type ProfileRow } from '@/services/profile.service';
+import { getProfileByUserId, getProfileByUsername, type PublicProfileRow } from '@/services/profile.service';
 
 export interface UseProfileOptions {
   /** Load by user ID (takes precedence over username) */
@@ -15,7 +15,7 @@ export interface UseProfileOptions {
 }
 
 export interface UseProfileResult {
-  profile: ProfileRow | null;
+  profile: PublicProfileRow | null;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -26,7 +26,7 @@ export function useProfile(options: UseProfileOptions = {}): UseProfileResult {
   const { user, profile: authProfile } = useAuth();
   const { userId: targetUserId, username: targetUsername, enabled = true } = options;
 
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [profile, setProfile] = useState<PublicProfileRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,7 +84,7 @@ export function useProfile(options: UseProfileOptions = {}): UseProfileResult {
   useEffect(() => {
     if (!enabled || !targetUserId || !isOwnProfile) return;
     if (authProfile && authProfile.user_id === targetUserId) {
-      setProfile(authProfile as unknown as ProfileRow);
+      setProfile(authProfile as unknown as PublicProfileRow);
     }
   }, [enabled, targetUserId, isOwnProfile, authProfile]);
 

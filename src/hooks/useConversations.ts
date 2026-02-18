@@ -115,7 +115,7 @@ export function useConversations(userId: string | undefined, isActive: boolean) 
       let profilesMap: Record<string, { username: string | null; display_name: string | null; avatar_url: string | null }> = {};
       if (otherUserIds.length > 0) {
         const { data: profiles } = await supabase
-          .from('profiles')
+          .from('public_profiles')
           .select('user_id, username, display_name, avatar_url')
           .in('user_id', otherUserIds);
 

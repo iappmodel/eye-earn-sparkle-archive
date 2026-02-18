@@ -85,6 +85,8 @@ interface UseVisionEngineOptions {
   blinkConfig?: BlinkDetectionConfig;
   /** Vision backend: face_mesh (legacy) or face_landmarker (tasks-vision). Default face_mesh. */
   visionBackend?: VisionBackend;
+  /** Run EAR/gaze/blink computation in a Web Worker to keep main thread free for video (default true). */
+  useWorker?: boolean;
   onBlink?: () => void;
   onBlinkPattern?: (count: number) => void;
   onLeftWink?: () => void;
@@ -316,6 +318,9 @@ const CALIBRATION_BLINK_OVERRIDES: Partial<BlinkDetectionConfig> = {
   minClosedFramesForBlink: 1,
 };
 
+/** Throttle state updates from worker so we don't setState every frame (smooth video). */
+const VISION_STATE_UPDATE_THROTTLE_MS = 100;
+
 export function useVisionEngine(options: UseVisionEngineOptions) {
   const {
     enabled = false,
@@ -330,6 +335,7 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     gazeSmoothing = 0,
     driverPriority = false,
     visionBackend = 'face_mesh',
+    useWorker = true,
     blinkConfig: blinkConfigOpt,
     onBlink,
     onBlinkPattern,
@@ -399,6 +405,11 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
   const lastRightWinkRef = useRef(0);
   const gazeEmaRef = useRef<{ x: number; y: number } | null>(null);
 
+  const workerRef = useRef<Worker | null>(null);
+  const setStateRef = useRef(setState);
+  setStateRef.current = setState;
+  const lastWorkerStateTs = useRef(0);
+
   useEffect(() => {
     onBlinkRef.current = onBlink;
   }, [onBlink]);
@@ -439,15 +450,92 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     blinkConfigRef.current = blinkConfigResolved;
   }, [blinkConfigResolved]);
 
+  // Create vision sample worker so gaze/EAR/blink run off main thread (keeps video smooth).
+  useEffect(() => {
+    if (!enabled || !useWorker) return;
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL('../workers/visionSample.worker.ts', import.meta.url), { type: 'module' });
+    } catch {
+      return;
+    }
+    workerRef.current = worker;
+    const onMessage = (e: MessageEvent) => {
+      const out = e.data as {
+        hasFace: true;
+        faceBox: VisionFaceBox;
+        ear: number;
+        leftEAR: number;
+        rightEAR: number;
+        eyeOpenness: number;
+        gazePosition: { x: number; y: number } | null;
+        headYaw: number;
+        headPitch: number;
+        baselineReady: boolean;
+        blinked: boolean;
+        leftWink: boolean;
+        rightWink: boolean;
+      };
+      if (!out || !out.hasFace) return;
+
+      if (out.blinked) {
+        const cfg = blinkConfigRef.current;
+        const now = Date.now();
+        if (now - lastBlinkTimeRef.current > cfg.blinkCooldownMs) {
+          lastBlinkTimeRef.current = now;
+          blinkPatternRef.current.count += 1;
+          blinkPatternRef.current.timestamp = now;
+          onBlinkRef.current?.();
+          setStateRef.current((prev) => ({
+            ...prev,
+            blinkCount: prev.blinkCount + 1,
+            lastBlinkTime: now,
+          }));
+          if (patternTimeoutRef.current) clearTimeout(patternTimeoutRef.current);
+          patternTimeoutRef.current = setTimeout(() => {
+            if (blinkPatternRef.current.count > 0) {
+              onBlinkPatternRef.current?.(blinkPatternRef.current.count);
+              blinkPatternRef.current = { count: 0, timestamp: 0 };
+            }
+          }, patternTimeoutMsRef.current);
+        }
+      }
+      if (out.leftWink) onLeftWinkRef.current?.();
+      if (out.rightWink) onRightWinkRef.current?.();
+
+      const now = Date.now();
+      if (now - lastWorkerStateTs.current < VISION_STATE_UPDATE_THROTTLE_MS) return;
+      lastWorkerStateTs.current = now;
+      setStateRef.current((prev) => ({
+        ...prev,
+        hasFace: true,
+        landmarks: null, // not passed back from worker to keep messages small
+        faceBox: out.faceBox,
+        eyeEAR: out.ear,
+        leftEAR: out.leftEAR,
+        rightEAR: out.rightEAR,
+        eyeOpenness: out.eyeOpenness,
+        gazePosition: out.gazePosition,
+        baselineReady: out.baselineReady,
+        headYaw: out.headYaw,
+        headPitch: out.headPitch,
+      }));
+    };
+    worker.addEventListener('message', onMessage);
+    return () => {
+      worker.removeEventListener('message', onMessage);
+      worker.terminate();
+      workerRef.current = null;
+    };
+  }, [enabled, useWorker]);
+
   const handleResults = useCallback((results: any) => {
     if (!enabledRef.current) return;
 
     const landmarks = results?.multiFaceLandmarks?.[0] as NormalizedLandmark[] | undefined;
     if (!landmarks || landmarks.length < 468) {
-      // Track consecutive no-face frames and reset baseline after prolonged absence
       noFaceFramesRef.current += 1;
       if (noFaceFramesRef.current > 15) {
-        // ~1.2s of no face → reset blink state so stale baseline doesn't persist
         baselineEarRef.current = null;
         baselineEarSamples.current = [];
         wasClosedRef.current = false;
@@ -458,6 +546,7 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
         leftClosedAtRef.current = 0;
         rightClosedAtRef.current = 0;
         gazeEmaRef.current = null;
+        workerRef.current?.postMessage({ type: 'reset' });
       }
       setState((prev) => ({
         ...prev,
@@ -477,6 +566,38 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     }
 
     noFaceFramesRef.current = 0;
+
+    // Offload EAR/gaze/blink to worker when available; main thread only receives compact samples.
+    const w = workerRef.current;
+    if (w) {
+      const cfg = blinkConfigRef.current;
+      const opts = optionsRef.current;
+      try {
+        w.postMessage({
+          landmarks: landmarks.map((l) => ({ x: l.x, y: l.y })),
+          timestamp: Date.now(),
+          config: {
+            minEarForBaseline: cfg.minEarForBaseline,
+            closeRatio: cfg.closeRatio,
+            maxCloseEAR: cfg.maxCloseEAR,
+            reopenRatio: cfg.reopenRatio,
+            minBlinkDurationMs: cfg.minBlinkDurationMs,
+            maxBlinkDurationMs: cfg.maxBlinkDurationMs,
+            blinkCooldownMs: cfg.blinkCooldownMs,
+            minClosedFramesForBlink: cfg.minClosedFramesForBlink ?? 1,
+            baselineSampleCount: cfg.baselineSampleCount,
+            calibrationMode: cfg.calibrationMode,
+            mirrorX: opts.mirrorX,
+            invertY: opts.invertY,
+            gazeScale: opts.gazeScale,
+            gazeSmoothing: opts.gazeSmoothing,
+          },
+        });
+      } catch (err) {
+        logger.warn('[VisionEngine] Worker postMessage error:', err);
+      }
+      return;
+    }
 
     try {
     // Face bounds from landmarks

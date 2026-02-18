@@ -30,7 +30,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 function isRetryableTipError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   if (/failed to fetch|network request failed|networkerror|load failed/i.test(msg)) return true;
-  if (/500|502|503|504|429|internal server error|service unavailable/i.test(msg)) return true;
+  if (/500|502|503|504|internal server error|service unavailable/i.test(msg)) return true;
   if ((err as Error)?.name === 'TypeError' && /fetch/i.test(msg)) return true;
   return false;
 }
@@ -47,6 +47,9 @@ function getTipErrorMessage(raw: string | undefined, currentBalance?: number): s
     return 'Creator not found. Please refresh and try again.';
   }
   if (lower.includes('cannot tip yourself')) return "You can't tip yourself.";
+  if (lower.includes('daily tip limit') || lower.includes('daily amount limit')) return raw;
+  if (lower.includes('too many tips recently')) return 'Too many tips in a short time. Please wait a few minutes and try again.';
+  if (lower.includes('duplicate request')) return 'Duplicate request. Please wait a moment and try again.';
   if (lower.includes('invalid') || lower.includes('unauthorized')) return 'Session may have expired. Please refresh and try again.';
   if (lower.includes('network') || lower.includes('fetch') || lower.includes('connection')) {
     return 'Connection issue. Please check your internet and try again.';
@@ -81,10 +84,13 @@ async function sendTipOnce(params: {
   creatorId: string;
   amount: number;
   coinType: CoinType;
+  idempotencyKey?: string;
 }): Promise<TipResult> {
-  const { contentId, creatorId, amount, coinType } = params;
+  const { contentId, creatorId, amount, coinType, idempotencyKey } = params;
+  const body: Record<string, unknown> = { contentId, creatorId, amount, coinType };
+  if (idempotencyKey) body.idempotencyKey = idempotencyKey;
   const { data, error } = await supabase.functions.invoke('tip-creator', {
-    body: { contentId, creatorId, amount, coinType },
+    body,
   });
 
   if (error) {
@@ -137,10 +143,11 @@ export async function sendTip(params: {
   }
 
   let lastResult: TipResult = { success: false, error: 'Something went wrong. Please try again.' };
+  const idempotencyKey = crypto.randomUUID();
 
   for (let attempt = 0; attempt <= MAX_TIP_RETRIES; attempt++) {
     try {
-      const result = await sendTipOnce({ contentId, creatorId, amount, coinType });
+      const result = await sendTipOnce({ contentId, creatorId, amount, coinType, idempotencyKey });
       if (result.success) return result;
 
       lastResult = result;

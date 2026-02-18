@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { rewardsService } from '@/services/rewards.service';
 import { toast } from 'sonner';
 import { Neu3DButton, VideoTheme } from '@/components/ui/Neu3DButton';
@@ -73,7 +74,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   onSwipeLeft,
   onRewardEarned,
 }) => {
-  const { refreshProfile } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const haptics = useHapticFeedback();
   const [rewardFilter, setRewardFilter] = useState<PromoFeedRewardFilter>('all');
   const promoFeed = usePromoFeed({ rewardFilter });
@@ -94,11 +95,13 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   const [videoLoading, setVideoLoading] = useState(true);
   const [videoError, setVideoError] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [attentionSessionId, setAttentionSessionId] = useState<string | null>(null);
 
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const claimModalRef = useRef<HTMLDivElement | null>(null);
   const touchStartY = useRef(0);
   const touchEndY = useRef(0);
   const lastTapRef = useRef(0);
@@ -120,6 +123,43 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
 
   const currentItem = localItems[currentIndex];
   const currentTheme = currentItem?.theme ?? 'gold';
+
+  const handleWatchComplete = useCallback(async () => {
+    if (!currentItem || currentItem.type !== 'promo' || currentItem.claimed || !user) return;
+    const duration = currentItem.duration ?? 0;
+    if (duration <= 0) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('validate-attention', {
+        body: {
+          userId: user.id,
+          contentId: currentItem.id,
+          attentionScore: 70,
+          watchDuration: duration,
+          totalDuration: duration,
+          framesDetected: 50,
+          totalFrames: 100,
+        },
+      });
+      if (error || !data?.validated || !data.attentionSessionId) {
+        if (!data?.validated) {
+          const isWatchIncomplete =
+            data?.reason === 'watch_incomplete' || data?.reasonCodes?.includes('watch_incomplete');
+          toast.info(
+            isWatchIncomplete
+              ? (data?.message ?? 'Full watch required. No credit for partial views.')
+              : 'Keep watching with attention to earn rewards'
+          );
+        }
+        return;
+      }
+      setAttentionSessionId(data.attentionSessionId);
+      setShowReward(true);
+      navigator.vibrate?.([100, 50, 100]);
+    } catch {
+      toast.error('Could not validate watch');
+    }
+  }, [currentItem, user]);
+
   const isPromo = currentItem?.type === 'promo';
   const hasVideo = !!(currentItem?.videoUrl && currentItem.videoUrl.length > 0);
 
@@ -202,8 +242,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
       const onEnded = () => {
         setProgress(100);
         setIsWatching(false);
-        setShowReward(true);
-        navigator.vibrate?.([100, 50, 100]);
+        handleWatchComplete();
       };
       video.addEventListener('timeupdate', onTimeUpdate);
       video.addEventListener('ended', onEnded);
@@ -221,24 +260,52 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
         if (newProgress >= 100) {
           if (progressInterval.current) clearInterval(progressInterval.current);
           setIsWatching(false);
-          setShowReward(true);
-          navigator.vibrate?.([100, 50, 100]);
+          handleWatchComplete();
         }
       }, 50);
       return () => {
         if (progressInterval.current) clearInterval(progressInterval.current);
       };
     }
-  }, [isWatching, currentItem, isPromo, hasVideo]);
+  }, [isWatching, currentItem, isPromo, hasVideo, handleWatchComplete]);
 
   useEffect(() => {
     setProgress(0);
     setShowReward(false);
+    setAttentionSessionId(null);
     setIsPaused(false);
     setVideoLoading(true);
     setVideoError(false);
     setPlaybackRate(1);
   }, [currentIndex]);
+
+  // Focus trap for claim reward modal
+  useEffect(() => {
+    if (!showReward || !claimModalRef.current) return;
+    const el = claimModalRef.current;
+    const focusable = el.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    first?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    el.addEventListener('keydown', onKeyDown);
+    return () => el.removeEventListener('keydown', onKeyDown);
+  }, [showReward]);
 
   // Sync video element play/pause, mute, and playback rate
   useEffect(() => {
@@ -256,14 +323,14 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   const claimReward = useCallback(async () => {
     if (!currentItem || !isPromo || currentItem.claimed || isClaimingReward || !currentItem.reward)
       return;
+    if (!attentionSessionId) {
+      toast.error('Session expired', { description: 'Please watch the video again to claim.' });
+      return;
+    }
     setIsClaimingReward(true);
     try {
-      const duration = currentItem.duration ?? 0;
       const result = await rewardsService.issueReward('promo_view', currentItem.id, {
-        attentionScore: 85,
-        coinType: currentItem.reward.type,
-        watchDuration: duration,
-        totalDuration: duration,
+        attentionSessionId,
       });
       if (result.success && result.amount) {
         setLocalItems((prev) =>
@@ -289,6 +356,10 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
           toast.info('Daily limit reached', { description: 'Come back tomorrow for more rewards!' });
         } else if (result.error.includes('Watch more')) {
           toast.warning('Keep watching', { description: result.error });
+        } else if (result.code === 'invalid_session' || result.error?.includes('session')) {
+          setShowReward(false);
+          setAttentionSessionId(null);
+          toast.error('Session expired', { description: 'Please watch the video again to claim.' });
         } else {
           toast.error('Could not claim', { description: result.error });
         }
@@ -299,7 +370,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
     } finally {
       setIsClaimingReward(false);
     }
-  }, [currentItem, currentIndex, isClaimingReward, isPromo, onRewardEarned, refreshProfile, haptics]);
+  }, [currentItem, currentIndex, isClaimingReward, isPromo, attentionSessionId, onRewardEarned, refreshProfile, haptics]);
 
   const handleRefresh = useCallback(async () => {
     await refresh();
@@ -604,9 +675,16 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
         </div>
       </div>
 
-      {/* Claim reward modal */}
+      {/* Claim reward modal - focus trapped for keyboard/screen reader */}
       {showReward && isPromo && !currentItem.claimed && currentItem.reward && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-md">
+        <div
+          ref={claimModalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="claim-reward-title"
+          aria-describedby="claim-reward-amount"
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-md"
+        >
           <div className="glass-neon rounded-3xl p-8 mx-6 text-center animate-scale-in">
             <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 bg-gradient-to-br from-primary/30 to-accent/20">
               <Coins
@@ -616,10 +694,11 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
                 )}
               />
             </div>
-            <GlassText theme={currentTheme} variant="gradient" size="xl" as="h3" className="mb-2">
+            <GlassText id="claim-reward-title" theme={currentTheme} variant="gradient" size="xl" as="h3" className="mb-2">
               Reward Earned!
             </GlassText>
             <GlassText
+              id="claim-reward-amount"
               theme={currentItem.reward.type === 'icoin' ? 'gold' : currentTheme}
               variant="neon"
               className="text-5xl mb-2 block"
@@ -656,6 +735,31 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
             </GlassText>
           </div>
         </div>
+      )}
+
+      {/* Always-available accessible button to show controls when hidden */}
+      {!showControls && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowControls(true);
+            resetControlsTimeout();
+          }}
+          className={cn(
+            'absolute left-4 bottom-24 z-20',
+            'w-10 h-10 rounded-full',
+            'flex items-center justify-center',
+            'bg-white/20 backdrop-blur-sm text-white',
+            'border border-white/40',
+            'hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-transparent',
+            'transition-colors'
+          )}
+          aria-label="Show video controls"
+          title="Show controls"
+        >
+          <Eye className="w-5 h-5" aria-hidden />
+        </button>
       )}
 
       {/* Overlay controls (play/pause, mute, seek, rate, fullscreen, skip) */}

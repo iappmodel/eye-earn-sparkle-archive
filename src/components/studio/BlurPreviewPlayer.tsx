@@ -64,12 +64,16 @@ export const BlurPreviewPlayer: React.FC<BlurPreviewPlayerProps> = ({
     }
   }, [currentTime, segments, unlockedSegments, isPreviewMode, isPlaying, isMuted]);
 
+  const lastTimeUpdateTs = useRef(0);
+  const VIDEO_PROGRESS_THROTTLE_MS = 250;
   const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      const time = videoRef.current.currentTime;
-      setCurrentTime(time);
-      onTimeUpdate?.(time);
-    }
+    if (!videoRef.current) return;
+    const now = Date.now();
+    if (now - lastTimeUpdateTs.current < VIDEO_PROGRESS_THROTTLE_MS) return;
+    lastTimeUpdateTs.current = now;
+    const time = videoRef.current.currentTime;
+    setCurrentTime(time);
+    onTimeUpdate?.(time);
   };
 
   const handleLoadedMetadata = () => {

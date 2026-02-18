@@ -6,12 +6,13 @@ import {
   type RewardType,
 } from '@/services/rewards.service';
 
+/** Options for claiming; amount/currency are server-computed and never sent. */
 export interface ClaimRewardOptions {
   attentionScore?: number;
-  coinType?: CoinType;
   watchDuration?: number;
   totalDuration?: number;
-  amount?: number;
+  /** Required for promo_view: from validate-attention. */
+  attentionSessionId?: string;
 }
 
 export interface UseRewardClaimingReturn {
@@ -49,11 +50,10 @@ export function useRewardClaiming(
       setLastError(null);
       try {
         const result = await rewardsService.issueReward(rewardType, contentId, {
-          amount: options?.amount,
           attentionScore: options?.attentionScore,
-          coinType: options?.coinType,
           watchDuration: options?.watchDuration,
           totalDuration: options?.totalDuration,
+          attentionSessionId: options?.attentionSessionId,
         });
 
         if (result.success && result.amount) {

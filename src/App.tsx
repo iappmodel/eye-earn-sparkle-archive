@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +13,7 @@ import { DragContextProvider } from "@/components/DraggableButton";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AdminRoute from "@/components/AdminRoute";
 import { SplashScreen } from "@/components/SplashScreen";
+import { RouteFallback } from "@/components/RouteFallback";
 import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { SwipeBackIndicator } from "@/components/SwipeBackIndicator";
 import { BreadcrumbNavigation } from "@/components/BreadcrumbNavigation";
@@ -22,20 +23,26 @@ import { getAndClearRedirectPath } from "@/services/auth.service";
 import { rewardsService } from "@/services/rewards.service";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import Admin from "./pages/Admin";
 import Install from "./pages/Install";
-import Create from "./pages/Create";
-import Studio from "./pages/Studio";
 import MyPage from "./pages/MyPage";
 import NotFound from "./pages/NotFound";
 import ProfileByUsername from "./pages/ProfileByUsername";
-import Content from "./pages/Content";
 import SocialConnect from "./pages/SocialConnect";
-import { PromotionDetails } from "./components/PromotionDetails";
+
+// Code-split heavy features (studio, create/live, admin, AI tooling lives in Studio/Create)
+// Also code-split detail/content routes to avoid loading them until navigated to.
+const Content = lazy(() => import("./pages/Content"));
+const PromotionDetails = lazy(() => import("./components/PromotionDetails").then((m) => ({ default: m.PromotionDetails })));
 import DevRuntimeErrorOverlay from "@/components/DevRuntimeErrorOverlay";
 import { VideoMuteProvider } from "@/contexts/VideoMuteContext";
 import { GestureTutorialProvider } from "@/contexts/GestureTutorialContext";
+import { VisionStreamProvider } from "@/contexts/VisionStreamContext";
 import { VisionProvider } from "@/contexts/VisionContext";
+
+// Code-split heavy features (studio, create/live, admin)
+const Studio = lazy(() => import("./pages/Studio"));
+const Create = lazy(() => import("./pages/Create"));
+const Admin = lazy(() => import("./pages/Admin"));
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; message?: string }> {
   constructor(props: { children: React.ReactNode }) {
@@ -127,7 +134,8 @@ const AppContent = () => {
       <SwipeBackIndicator isActive={isSwipingBack} progress={swipeProgress} />
       <BreadcrumbNavigation />
       <OfflineBanner />
-      <Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route
           path="/"
@@ -207,6 +215,7 @@ const AppContent = () => {
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </Suspense>
     </>
   );
 };
@@ -228,9 +237,11 @@ const App = () => (
                     <OfflineProvider>
                       <VideoMuteProvider>
                         <GestureTutorialProvider>
-                          <VisionProvider>
-                            <AppContent />
-                          </VisionProvider>
+                          <VisionStreamProvider>
+                            <VisionProvider>
+                              <AppContent />
+                            </VisionProvider>
+                          </VisionStreamProvider>
                         </GestureTutorialProvider>
                       </VideoMuteProvider>
                     </OfflineProvider>

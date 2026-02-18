@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 // Haversine formula to calculate distance between two points (km)
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -36,8 +32,12 @@ const NearbyPromotionsSchema = z.object({
 });
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -51,7 +51,7 @@ serve(async (req) => {
     } catch {
       return new Response(
         JSON.stringify({ error: 'Invalid JSON body' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -60,7 +60,7 @@ serve(async (req) => {
       console.warn('[GetNearbyPromos] Validation failed:', parseResult.error.flatten());
       return new Response(
         JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -159,14 +159,14 @@ serve(async (req) => {
         sortBy,
         hasMore: offset + paginated.length < sorted.length,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
     console.error('[GetNearbyPromos] Error:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
       JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   }
 });

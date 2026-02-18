@@ -120,7 +120,7 @@ export function PromotionDetails({ promotionId: propId, onClose, isModal = false
       // Load profiles for reviews
       const userIds = [...new Set((data || []).map(r => r.user_id))];
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('public_profiles')
         .select('user_id, username, avatar_url')
         .in('user_id', userIds);
 

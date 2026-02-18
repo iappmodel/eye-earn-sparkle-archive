@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 interface Coin {
   id: number;
@@ -19,33 +20,34 @@ export const CoinFlyAnimation: React.FC<CoinFlyAnimationProps> = ({
   amount,
   onComplete,
 }) => {
+  const prefersReducedMotion = useReducedMotion();
   const [coins, setCoins] = useState<Coin[]>([]);
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
-    // Generate coins based on amount (max 8 coins for performance)
-    const coinCount = Math.min(Math.ceil(amount / 50), 8);
+    // Generate coins based on amount (max 8 coins for performance) - skip when reduced motion
+    const coinCount = prefersReducedMotion ? 0 : Math.min(Math.ceil(amount / 50), 8);
     const newCoins: Coin[] = [];
     
     for (let i = 0; i < coinCount; i++) {
       newCoins.push({
         id: i,
-        x: (Math.random() - 0.5) * 60, // Random horizontal spread
-        delay: i * 80, // Staggered delay
-        duration: 600 + Math.random() * 200, // Slightly varied duration
+        x: (Math.random() - 0.5) * 60,
+        delay: i * 80,
+        duration: 600 + Math.random() * 200,
       });
     }
     
     setCoins(newCoins);
 
-    // Hide and cleanup after animation
+    const duration = prefersReducedMotion ? 600 : 1200;
     const timeout = setTimeout(() => {
       setIsVisible(false);
       onComplete?.();
-    }, 1200);
+    }, duration);
 
     return () => clearTimeout(timeout);
-  }, [amount, onComplete]);
+  }, [amount, onComplete, prefersReducedMotion]);
 
   if (!isVisible) return null;
 
@@ -55,8 +57,8 @@ export const CoinFlyAnimation: React.FC<CoinFlyAnimationProps> = ({
     : 'shadow-[0_0_10px_hsl(var(--primary)/0.6)]';
 
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-visible z-50">
-      {coins.map((coin) => (
+    <div className="absolute inset-0 pointer-events-none overflow-visible z-50" aria-hidden="true">
+      {!prefersReducedMotion && coins.map((coin) => (
         <div
           key={coin.id}
           className={cn(
@@ -75,13 +77,13 @@ export const CoinFlyAnimation: React.FC<CoinFlyAnimationProps> = ({
         </div>
       ))}
       
-      {/* Amount burst text */}
+      {/* Amount: static when reduced motion, burst animation otherwise */}
       <div 
         className={cn(
           'absolute left-1/2 bottom-8 -translate-x-1/2',
           'font-display font-bold text-lg',
           coinType === 'icoin' ? 'text-icoin' : 'text-primary',
-          'animate-[amountBurst_0.8s_ease-out_forwards]'
+          !prefersReducedMotion && 'animate-[amountBurst_0.8s_ease-out_forwards]'
         )}
         style={{
           textShadow: coinType === 'icoin' 

@@ -2,15 +2,16 @@
 // Updates kyc_submissions; DB trigger syncs profiles.kyc_status.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeadersAdmin } from "../_shared/cors.ts";
+import { logAdminAction } from "../_shared/adminAudit.ts";
 
 serve(async (req) => {
+  const cors = getCorsHeadersAdmin(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, "Content-Type": "application/json" };
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -22,7 +23,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -35,7 +36,7 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -46,7 +47,7 @@ serve(async (req) => {
     if (!roleData) {
       return new Response(
         JSON.stringify({ error: "Forbidden: admin role required" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 403, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -62,19 +63,19 @@ serve(async (req) => {
     if (!submissionId || typeof submissionId !== "string") {
       return new Response(
         JSON.stringify({ error: "submission_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
     if (action !== "approve" && action !== "reject") {
       return new Response(
         JSON.stringify({ error: "action must be 'approve' or 'reject'" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
     if (action === "reject" && !body.rejection_reason?.trim()) {
       return new Response(
         JSON.stringify({ error: "rejection_reason is required when rejecting" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -99,25 +100,32 @@ serve(async (req) => {
     if (error) {
       return new Response(
         JSON.stringify({ error: error.message }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
     if (!row) {
       return new Response(
         JSON.stringify({ error: "Submission not found or not in reviewable state" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 404, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
+    await logAdminAction(supabase, user.id, action === "approve" ? "kyc_approve" : "kyc_reject", "kyc_submission", submissionId, {
+      submission_id: submissionId,
+      user_id: row.user_id,
+      status: row.status,
+      ...(action === "reject" && { rejection_reason: (body.rejection_reason || "").trim() }),
+    });
+
     return new Response(
       JSON.stringify({ success: true, submission: row }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...headers, "Content-Type": "application/json" } }
     );
   } catch (e) {
     console.error("kyc-review error:", e);
     return new Response(
       JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...headers, "Content-Type": "application/json" } }
     );
   }
 });

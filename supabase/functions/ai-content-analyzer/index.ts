@@ -1,9 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 /** Response shape for ai.service.analyzeContent and feed/upload flows */
 interface ContentAnalysisResult {
@@ -18,8 +14,12 @@ interface ContentAnalysisResult {
 }
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -27,7 +27,7 @@ serve(async (req) => {
     if (!LOVABLE_API_KEY) {
       return new Response(
         JSON.stringify({ error: 'LOVABLE_API_KEY is not configured', tags: [], category: 'general', quality_score: 0, content_safety: 'safe', suggested_hashtags: [], suggested_caption: null }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -108,14 +108,14 @@ Respond with only valid JSON, no markdown.`;
           error: 'Rate limit exceeded',
           tags: [], category: 'general', quality_score: 0, content_safety: 'safe',
           suggested_hashtags: [], suggested_caption: null
-        }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }), { status: 429, headers: { ...headers, 'Content-Type': 'application/json' } });
       }
       if (response.status === 402) {
         return new Response(JSON.stringify({
           error: 'AI credits depleted',
           tags: [], category: 'general', quality_score: 0, content_safety: 'safe',
           suggested_hashtags: [], suggested_caption: null
-        }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }), { status: 402, headers: { ...headers, 'Content-Type': 'application/json' } });
       }
       throw new Error(`AI gateway error: ${response.status}`);
     }
@@ -156,7 +156,7 @@ Respond with only valid JSON, no markdown.`;
     };
 
     return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...headers, 'Content-Type': 'application/json' },
     });
   } catch (error) {
     console.error('[ai-content-analyzer] Error:', error);
@@ -166,7 +166,7 @@ Respond with only valid JSON, no markdown.`;
         tags: [], category: 'general', quality_score: 0, content_safety: 'safe',
         suggested_hashtags: [], suggested_caption: null
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   }
 });

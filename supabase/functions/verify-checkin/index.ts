@@ -1,11 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeadersStrict } from "../_shared/cors.ts";
+import { checkRewardRateLimit } from "../_shared/rateLimit.ts";
+import { getIdempotencyKey, getCachedResponse, setCachedResponse } from "../_shared/idempotency.ts";
 
 // Haversine formula to calculate distance between two coordinates in meters
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -55,9 +53,12 @@ const VerifyCheckinSchema = z.object({
 });
 
 serve(async (req) => {
-  // Handle CORS preflight
+  const cors = getCorsHeadersStrict(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -71,7 +72,7 @@ serve(async (req) => {
       console.error('[verify-checkin] No authorization header');
       return new Response(
         JSON.stringify({ error: 'Unauthorized', success: false }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -83,7 +84,30 @@ serve(async (req) => {
       console.error('[verify-checkin] Auth error:', authError);
       return new Response(
         JSON.stringify({ error: 'Invalid token', success: false }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const idempotencyKey = getIdempotencyKey(req);
+    if (idempotencyKey) {
+      const cached = await getCachedResponse(supabase, idempotencyKey, user.id, 'verify_checkin');
+      if (cached) {
+        return new Response(JSON.stringify(cached.body), {
+          status: cached.status,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    const rateLimit = await checkRewardRateLimit(supabase, user.id, req);
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: 'Too many requests',
+          code: 'rate_limit_exceeded',
+          retryAfterSeconds: rateLimit.retryAfterSeconds,
+        }),
+        { status: 429, headers: { ...headers, 'Content-Type': 'application/json', 'Retry-After': String(rateLimit.retryAfterSeconds) } }
       );
     }
 
@@ -93,7 +117,7 @@ serve(async (req) => {
       console.warn('[verify-checkin] Validation failed:', parseResult.error.flatten());
       return new Response(
         JSON.stringify({ error: 'Invalid input', details: parseResult.error.flatten().fieldErrors, success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -124,7 +148,7 @@ serve(async (req) => {
     if (!standalone && !effectivePromotionId) {
       return new Response(
         JSON.stringify({ error: 'promotionId required when not standalone', success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -154,7 +178,7 @@ serve(async (req) => {
           lastCheckin: existingCheckin.checked_in_at,
           nextCheckInAvailableAt: nextAvailable.toISOString(),
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -230,7 +254,7 @@ serve(async (req) => {
       console.error('[verify-checkin] Insert error:', insertError);
       return new Response(
         JSON.stringify({ error: 'Failed to record check-in', success: false }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -286,39 +310,41 @@ serve(async (req) => {
     // Next check-in available at this location (24h from now)
     const nextCheckInAvailableAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
+    const successBody = {
+      success: isWithinRange,
+      verified: isWithinRange,
+      status,
+      distance: Math.round(distance),
+      maxDistance: maxDistanceMeters,
+      streak: {
+        current: newStreakDays,
+        longest: newLongestStreak,
+        bonus: streakBonus,
+        bonusAmount,
+      },
+      reward: {
+        base: effectiveRewardAmount,
+        bonus: bonusAmount,
+        total: totalReward,
+        type: effectiveRewardType,
+      },
+      message: isWithinRange 
+        ? `Check-in successful! You earned ${totalReward} ${effectiveRewardType}${bonusAmount > 0 ? ` (+${bonusAmount} streak bonus!)` : ''}!` 
+        : `Too far from location. You are ${Math.round(distance)}m away (max ${maxDistanceMeters}m)`,
+      checkin,
+      nextCheckInAvailableAt,
+    };
+    if (idempotencyKey) await setCachedResponse(supabase, idempotencyKey, user.id, 'verify_checkin', 200, successBody);
     return new Response(
-      JSON.stringify({
-        success: isWithinRange,
-        verified: isWithinRange,
-        status,
-        distance: Math.round(distance),
-        maxDistance: maxDistanceMeters,
-        streak: {
-          current: newStreakDays,
-          longest: newLongestStreak,
-          bonus: streakBonus,
-          bonusAmount,
-        },
-        reward: {
-          base: effectiveRewardAmount,
-          bonus: bonusAmount,
-          total: totalReward,
-          type: effectiveRewardType,
-        },
-        message: isWithinRange 
-          ? `Check-in successful! You earned ${totalReward} ${effectiveRewardType}${bonusAmount > 0 ? ` (+${bonusAmount} streak bonus!)` : ''}!` 
-          : `Too far from location. You are ${Math.round(distance)}m away (max ${maxDistanceMeters}m)`,
-        checkin,
-        nextCheckInAvailableAt,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify(successBody),
+      { headers: { ...headers, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('[verify-checkin] Error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error', success: false }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   }
 });

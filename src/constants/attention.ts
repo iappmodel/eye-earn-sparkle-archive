@@ -3,7 +3,9 @@
  * Used by useEyeTracking, useAttentionVerification, and UI components.
  */
 
-/** Score weights: face (35%), eyes open (30%), gaze forward (30%), head pose (5%). */
+import type { AttentionConfig } from '@/lib/attentionScoring';
+
+/** Score weights: face (35%), eyes open (30%), gaze forward (30%), head pose (5%). Legacy. */
 export const ATTENTION_WEIGHTS = {
   face: 0.35,
   eyesOpen: 0.30,
@@ -11,7 +13,57 @@ export const ATTENTION_WEIGHTS = {
   headPose: 0.05,
 } as const;
 
+/** Preset id for scoring engine config and pass thresholds. */
 export type AttentionPresetId = 'strict' | 'normal' | 'relaxed';
+
+/** Scoring engine configs: time-weighted ledger, continuous EAR, elliptical gaze, neutral warmup. */
+export const ATTENTION_CONFIGS: Record<AttentionPresetId, AttentionConfig> = {
+  strict: {
+    faceWeight: 0.20,
+    eyesWeight: 0.25,
+    gazeWeight: 0.40,
+    poseWeight: 0.15,
+    earClosed: 0.14,
+    earOpen: 0.28,
+    gazeEllipseX: 0.24,
+    gazeEllipseY: 0.30,
+    neutralWarmupMs: 2000,
+    attentiveThresholdVision: 0.66,
+    attentiveThresholdFallback: 0.78,
+    maxYaw: 12,
+    maxPitch: 10,
+  },
+  normal: {
+    faceWeight: 0.20,
+    eyesWeight: 0.25,
+    gazeWeight: 0.40,
+    poseWeight: 0.15,
+    earClosed: 0.12,
+    earOpen: 0.26,
+    gazeEllipseX: 0.30,
+    gazeEllipseY: 0.36,
+    neutralWarmupMs: 2500,
+    attentiveThresholdVision: 0.62,
+    attentiveThresholdFallback: 0.74,
+    maxYaw: 20,
+    maxPitch: 15,
+  },
+  relaxed: {
+    faceWeight: 0.20,
+    eyesWeight: 0.25,
+    gazeWeight: 0.38,
+    poseWeight: 0.17,
+    earClosed: 0.10,
+    earOpen: 0.24,
+    gazeEllipseX: 0.36,
+    gazeEllipseY: 0.42,
+    neutralWarmupMs: 3000,
+    attentiveThresholdVision: 0.58,
+    attentiveThresholdFallback: 0.70,
+    maxYaw: 28,
+    maxPitch: 22,
+  },
+};
 
 export interface AttentionPreset {
   id: AttentionPresetId;
@@ -98,6 +150,11 @@ export const ATTENTION_PRESET_STORAGE_KEY = 'visuai-attention-preset';
 export function getAttentionPreset(id: AttentionPresetId | null | undefined): AttentionPreset {
   if (id && id in ATTENTION_PRESETS) return ATTENTION_PRESETS[id];
   return ATTENTION_PRESETS[DEFAULT_ATTENTION_PRESET];
+}
+
+export function getAttentionConfig(id: AttentionPresetId | null | undefined): AttentionConfig {
+  if (id && id in ATTENTION_CONFIGS) return ATTENTION_CONFIGS[id];
+  return ATTENTION_CONFIGS[DEFAULT_ATTENTION_PRESET];
 }
 
 export function loadAttentionPresetFromStorage(): AttentionPresetId {

@@ -143,51 +143,39 @@ function getFrameDiff(current: Uint8ClampedArray, prev: Uint8ClampedArray | null
 }
 
 /**
- * Analyze a frame for face presence using multi-zone skin, eye-region, and liveness.
- * Returns a gradient score (0–1) to make gaming harder than binary present/absent.
- * @param config - Optional partial config override for tuning from real-user feedback.
+ * Pure analysis: same logic as analyzeSkinToneFrame but takes/returns prev data instead of a ref.
+ * Used by the eye-tracking Web Worker so inference runs off the main thread.
  */
-export function analyzeSkinToneFrame(
-  imageData: ImageData,
-  prevFrameRef: { data: Uint8ClampedArray | null },
+export function analyzeSkinToneFramePure(
+  data: Uint8ClampedArray,
+  imgW: number,
+  imgH: number,
+  prevData: Uint8ClampedArray | null,
   configOverride?: Partial<SkinToneFallbackConfig>
-): SkinToneFallbackResult {
+): { result: SkinToneFallbackResult; nextPrevData: Uint8ClampedArray } {
   const c = { ...DEFAULT_CONFIG, ...configOverride };
-  const { data, width: imgW, height: imgH } = imageData;
 
-  // Center ROI (face expected in center)
   const cx = Math.floor((imgW - W) / 2);
   const cy = Math.floor((imgH - H) / 2);
-
-  // Multi-zone: top (forehead), middle (eyes/nose), bottom (mouth/chin)
   const zoneH = Math.floor(H / 3);
   const top = getSkinRatio(data, imgW, cx, cy, W, zoneH);
   const mid = getSkinRatio(data, imgW, cx, cy + zoneH, W, zoneH);
   const bottom = getSkinRatio(data, imgW, cx, cy + zoneH * 2, W, zoneH);
-
-  // Left/center/right (face should have skin across)
   const zoneW = Math.floor(W / 3);
   const left = getSkinRatio(data, imgW, cx, cy, zoneW, H);
   const center = getSkinRatio(data, imgW, cx + zoneW, cy, zoneW, H);
   const right = getSkinRatio(data, imgW, cx + zoneW * 2, cy, zoneW, H);
-
-  // Eye region: upper-middle strip – real faces have darker (eyes/eyebrows)
   const eyeY = cy + Math.floor(zoneH * 0.5);
   const eyeH = Math.floor(zoneH * 0.8);
   const eyeLum = getMeanLuminance(data, imgW, cx, eyeY, W, eyeH);
   const cheekLum = getMeanLuminance(data, imgW, cx, cy + zoneH * 1.5, W, zoneH);
   const hasEyeRegion = eyeLum < cheekLum - c.eyeRegionDarknessMin;
-
-  // Face-like: need skin in at least N vertical zones (rejects hand filling one zone)
   const zonesWithSkin = [top, mid, bottom].filter((r) => r > c.zoneSkinMin).length;
   const horizontalSpread =
     [left, center, right].filter((r) => r > c.horizontalZoneMin).length >= c.horizontalZonesMin;
+  const motion = getFrameDiff(data, prevData);
+  const centerSkin = getSkinRatio(data, imgW, cx, cy, W, H);
 
-  // Liveness: frame-to-frame change (rejects static photo)
-  const motion = getFrameDiff(data, prevFrameRef.data);
-  prevFrameRef.data = new Uint8ClampedArray(data);
-
-  // Gradient score components (each 0–1)
   const zoneScore = Math.min(1, zonesWithSkin / c.verticalZonesMin);
   const spreadScore = horizontalSpread ? 1 : 0.5;
   const eyeScore = hasEyeRegion ? 1 : c.eyeScoreNoEyes;
@@ -195,17 +183,13 @@ export function analyzeSkinToneFrame(
     motion > c.motionLiveThreshold
       ? 1
       : Math.max(c.motionScoreMin, motion / c.motionLiveThreshold);
-  const centerSkin = getSkinRatio(data, imgW, cx, cy, W, H);
   const skinScore = Math.min(1, centerSkin / c.skinScoreMaxAt);
-
-  // Weighted combination – requires multiple signals
   const rawScore =
     zoneScore * c.weightZone +
     spreadScore * c.weightSpread +
     eyeScore * c.weightEye +
     motionScore * c.weightMotion +
     skinScore * c.weightSkin;
-
   const facePresent =
     zonesWithSkin >= c.verticalZonesMin &&
     horizontalSpread &&
@@ -215,11 +199,36 @@ export function analyzeSkinToneFrame(
   if (zonesWithSkin < c.verticalZonesMin) flags.push('NO_FACE');
   else if (!horizontalSpread) flags.push('LOOK_AWAY');
   else if (!hasEyeRegion) flags.push('BAD_POSE');
-  else if (motion < c.motionPhotoRejectThreshold) flags.push('NO_FACE'); // likely photo
+  else if (motion < c.motionPhotoRejectThreshold) flags.push('NO_FACE');
 
   return {
-    rawScore: Math.max(0, Math.min(1, rawScore)),
-    facePresent,
-    lastFlags: flags.length > 0 ? flags : [],
+    result: {
+      rawScore: Math.max(0, Math.min(1, rawScore)),
+      facePresent,
+      lastFlags: flags.length > 0 ? flags : [],
+    },
+    nextPrevData: new Uint8ClampedArray(data),
   };
+}
+
+/**
+ * Analyze a frame for face presence using multi-zone skin, eye-region, and liveness.
+ * Returns a gradient score (0–1) to make gaming harder than binary present/absent.
+ * @param config - Optional partial config override for tuning from real-user feedback.
+ */
+export function analyzeSkinToneFrame(
+  imageData: ImageData,
+  prevFrameRef: { data: Uint8ClampedArray | null },
+  configOverride?: Partial<SkinToneFallbackConfig>
+): SkinToneFallbackResult {
+  const { data, width: imgW, height: imgH } = imageData;
+  const { result, nextPrevData } = analyzeSkinToneFramePure(
+    data,
+    imgW,
+    imgH,
+    prevFrameRef.data,
+    configOverride
+  );
+  prevFrameRef.data = nextPrevData;
+  return result;
 }

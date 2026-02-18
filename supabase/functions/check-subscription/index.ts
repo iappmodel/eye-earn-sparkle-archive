@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeadersStrict } from "../_shared/cors.ts";
 
 // Product ID to tier mapping (tier name and reward multiplier)
 const PRODUCT_TIERS: Record<string, { tier: string; tier_name: string; reward_multiplier: number }> = {
@@ -19,8 +15,12 @@ const logStep = (step: string, details?: unknown) => {
 };
 
 serve(async (req) => {
+  const cors = getCorsHeadersStrict(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, "Content-Type": "application/json" };
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   const supabaseClient = createClient(
@@ -49,7 +49,7 @@ serve(async (req) => {
 
     if (!authHeader) {
       return new Response(JSON.stringify(freePayload()), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         status: 200,
       });
     }
@@ -60,7 +60,7 @@ serve(async (req) => {
     if (userError || !userData.user?.email) {
       logStep("Auth failed, returning free tier");
       return new Response(JSON.stringify(freePayload()), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         status: 200,
       });
     }
@@ -74,7 +74,7 @@ serve(async (req) => {
     if (customers.data.length === 0) {
       logStep("No customer found");
       return new Response(JSON.stringify(freePayload()), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         status: 200,
       });
     }
@@ -165,13 +165,13 @@ serve(async (req) => {
         cancel_at_period_end: cancelAtPeriodEnd,
         current_period_start: currentPeriodStart,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      { headers: { ...headers, "Content-Type": "application/json" }, status: 200 }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
     return new Response(JSON.stringify({ error: message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...headers, "Content-Type": "application/json" },
       status: 500,
     });
   }

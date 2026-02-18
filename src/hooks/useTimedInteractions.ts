@@ -117,7 +117,7 @@ export const useTimedInteractions = (contentId?: string) => {
         async (payload) => {
           // Fetch user info for the new interaction
           const { data: profileData } = await supabase
-            .from('profiles')
+            .from('public_profiles')
             .select('username, avatar_url')
             .eq('user_id', payload.new.user_id)
             .single();

@@ -1,12 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getCorsHeadersStrict } from "../_shared/cors.ts";
 // Optional: use Stripe when STRIPE_SECRET_KEY and STRIPE_PAYOUT_ENABLED are set
 // import Stripe from "https://esm.sh/stripe@18.5.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 // Payout configuration
 const MIN_PAYOUT_AMOUNTS = {
@@ -42,8 +38,12 @@ function computeFee(amount: number): { fee: number; netAmount: number } {
 }
 
 serve(async (req) => {
+  const cors = getCorsHeadersStrict(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, "Content-Type": "application/json" };
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -55,7 +55,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -68,7 +68,7 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 401, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -84,7 +84,7 @@ serve(async (req) => {
     } catch {
       return new Response(
         JSON.stringify({ error: "Invalid JSON body" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -100,14 +100,14 @@ serve(async (req) => {
     if (!amount || amount <= 0 || !Number.isInteger(amount)) {
       return new Response(
         JSON.stringify({ error: "Invalid amount" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
     if (!["vicoin", "icoin"].includes(coinType)) {
       return new Response(
         JSON.stringify({ error: "Invalid coin type" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -115,7 +115,7 @@ serve(async (req) => {
     if (!PAYOUT_METHODS.includes(methodTyped)) {
       return new Response(
         JSON.stringify({ error: "Invalid payout method" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -127,7 +127,7 @@ serve(async (req) => {
           error: `Minimum payout is ${minAmount} ${coinType}s`,
           minimum: minAmount,
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
     if (amount > maxAmount) {
@@ -136,7 +136,7 @@ serve(async (req) => {
           error: `Maximum payout is ${maxAmount} ${coinType}s`,
           maximum: maxAmount,
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
       );
     }
 
@@ -152,7 +152,7 @@ serve(async (req) => {
       if (pmError || !pm) {
         return new Response(
           JSON.stringify({ error: "Invalid or unauthorized payment method" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
         );
       }
       resolvedPaymentMethodId = pm.id;
@@ -173,19 +173,19 @@ serve(async (req) => {
       if (msg.includes("KYC_REQUIRED")) {
         return new Response(
           JSON.stringify({ error: "KYC verification required before payout" }),
-          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 403, headers: { ...headers, "Content-Type": "application/json" } }
         );
       }
       if (msg.includes("INSUFFICIENT_BALANCE")) {
         return new Response(
           JSON.stringify({ error: "Insufficient balance" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 400, headers: { ...headers, "Content-Type": "application/json" } }
         );
       }
       if (msg.includes("PROFILE_NOT_FOUND")) {
         return new Response(
           JSON.stringify({ error: "User profile not found" }),
-          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 404, headers: { ...headers, "Content-Type": "application/json" } }
         );
       }
       throw new Error("Failed to process payout");
@@ -258,14 +258,14 @@ serve(async (req) => {
         estimated_arrival: ESTIMATED_ARRIVAL[methodTyped],
         new_balance: data?.new_balance,
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...headers, "Content-Type": "application/json" } }
     );
   } catch (error: unknown) {
     console.error("[RequestPayout] Error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";
     return new Response(
       JSON.stringify({ error: message, success: false }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...headers, "Content-Type": "application/json" } }
     );
   }
 });

@@ -1,6 +1,6 @@
 /**
  * VisionContext – single camera provider for eye-tracking and remote control.
- * Owns camera lifecycle and useVisionEngine; consumers request camera and receive visionState.
+ * When VisionStreamContext is present, delegates to it (single getUserMedia). Otherwise owns camera.
  */
 import React, {
   createContext,
@@ -12,6 +12,7 @@ import React, {
   useMemo,
 } from 'react';
 import { useVisionEngine } from '@/hooks/useVisionEngine';
+import { useVisionStream } from '@/contexts/VisionStreamContext';
 import { loadRemoteControlSettings } from '@/hooks/useBlinkRemoteControl';
 import { logger } from '@/lib/logger';
 import { analyzeSkinToneFrame } from '@/lib/skinToneFallback';
@@ -61,12 +62,21 @@ interface VisionProviderProps {
 }
 
 export function VisionProvider({ children }: VisionProviderProps) {
+  const visionStream = useVisionStream();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestCountRef = useRef(0);
   const [isActive, setIsActive] = useState(false);
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
   const [settings, setSettings] = useState(loadRemoteControlSettings);
+  const [streamSample, setStreamSample] = useState<{
+    hasFace: boolean;
+    eyeEAR?: number;
+    eyeOpenness?: number;
+    gazePosition?: { x: number; y: number };
+    headYaw?: number;
+    headPitch?: number;
+  } | null>(null);
 
   const loadSettings = useCallback(() => {
     setSettings(loadRemoteControlSettings());
@@ -94,6 +104,29 @@ export function VisionProvider({ children }: VisionProviderProps) {
     window.addEventListener('remoteControlSettingsChanged', handler);
     return () => window.removeEventListener('remoteControlSettingsChanged', handler);
   }, [loadSettings]);
+
+  // When VisionStreamContext is available, subscribe to it and sync state
+  useEffect(() => {
+    if (!visionStream) return;
+    const unsub = visionStream.subscribe((s) => {
+      setStreamSample({
+        hasFace: s.hasFace,
+        eyeEAR: s.eyeEAR,
+        eyeOpenness: s.eyeOpenness,
+        gazePosition: s.gazePosition,
+        headYaw: s.headYaw,
+        headPitch: s.headPitch,
+      });
+    });
+    return unsub;
+  }, [visionStream]);
+
+  useEffect(() => {
+    if (visionStream?.isActive) {
+      setIsActive(true);
+      setNeedsUserGesture(visionStream.needsUserGesture ?? false);
+    }
+  }, [visionStream?.isActive, visionStream?.needsUserGesture]);
 
   const startCameraInternal = useCallback(async () => {
     if (streamRef.current) return;
@@ -151,39 +184,51 @@ export function VisionProvider({ children }: VisionProviderProps) {
       videoRef.current = null;
     }
     setIsActive(false);
+    setStreamSample(null);
     logger.log('[VisionContext] Camera stopped');
   }, []);
 
   const requestCamera = useCallback(() => {
+    if (visionStream) {
+      return visionStream.requestOwner('eye');
+    }
     requestCountRef.current += 1;
     if (requestCountRef.current === 1) {
       void startCameraInternal();
     }
-
     return () => {
       requestCountRef.current = Math.max(0, requestCountRef.current - 1);
       if (requestCountRef.current === 0) {
         stopCameraInternal();
       }
     };
-  }, [startCameraInternal, stopCameraInternal]);
+  }, [visionStream, startCameraInternal, stopCameraInternal]);
 
   const startCamera = useCallback(async () => {
+    if (visionStream) {
+      requestCountRef.current = Math.max(1, requestCountRef.current + 1);
+      await visionStream.startFromUserGesture();
+      return;
+    }
     requestCountRef.current = Math.max(1, requestCountRef.current + 1);
     await startCameraInternal();
-  }, [startCameraInternal]);
+  }, [visionStream, startCameraInternal]);
 
   const stopCamera = useCallback(() => {
+    if (visionStream) {
+      requestCountRef.current = 0;
+      return;
+    }
     requestCountRef.current = 0;
     stopCameraInternal();
-  }, [stopCameraInternal]);
+  }, [visionStream, stopCameraInternal]);
 
   const clearNeedsUserGesture = useCallback(() => {
     setNeedsUserGesture(false);
   }, []);
 
   const vision = useVisionEngine({
-    enabled: isActive && !!videoRef.current,
+    enabled: !visionStream && isActive && !!videoRef.current,
     videoRef,
     patternTimeout: settings.blinkPatternTimeout ?? 600,
     mirrorX: settings.mirrorX ?? true,
@@ -291,6 +336,24 @@ export function VisionProvider({ children }: VisionProviderProps) {
   }, [isActive, vision.hasFace]);
 
   const mergedVision: VisionState = useMemo(() => {
+    if (visionStream && streamSample) {
+      return {
+        isRunning: true,
+        hasFace: streamSample.hasFace,
+        landmarks: null,
+        faceBox: null,
+        eyeEAR: streamSample.eyeEAR ?? 0,
+        leftEAR: streamSample.eyeEAR ?? 0,
+        rightEAR: streamSample.eyeEAR ?? 0,
+        eyeOpenness: streamSample.eyeOpenness ?? 1,
+        gazePosition: streamSample.gazePosition ?? null,
+        blinkCount: 0,
+        lastBlinkTime: null,
+        baselineReady: true,
+        headYaw: streamSample.headYaw ?? 0,
+        headPitch: streamSample.headPitch ?? 0,
+      };
+    }
     if (fallbackState) {
       return {
         ...vision,
@@ -302,10 +365,14 @@ export function VisionProvider({ children }: VisionProviderProps) {
       };
     }
     return vision;
-  }, [vision, fallbackState]);
+  }, [visionStream, streamSample, vision, fallbackState]);
 
   useEffect(() => {
     const handler = () => {
+      if (visionStream) {
+        void visionStream.startFromUserGesture();
+        return;
+      }
       if (requestCountRef.current > 0) {
         void startCameraInternal();
       }
@@ -317,7 +384,7 @@ export function VisionProvider({ children }: VisionProviderProps) {
       window.removeEventListener('cameraUserStart', handler);
       window.removeEventListener('remoteControlUserStart', handler);
     };
-  }, [startCameraInternal]);
+  }, [visionStream, startCameraInternal]);
 
   const value = useMemo<VisionContextValue>(
     () => ({

@@ -37,7 +37,7 @@ export async function fetchLiveStreams(): Promise<LiveStreamWithHost[]> {
 
   const hostIds = [...new Set(streams.map((s) => s.host_id))];
   const { data: profiles } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('user_id, username, avatar_url')
     .in('user_id', hostIds);
 
@@ -74,7 +74,7 @@ export async function fetchStreamById(
   if (!stream) return null;
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('username, avatar_url')
     .eq('user_id', stream.host_id)
     .maybeSingle();
@@ -157,7 +157,7 @@ export async function fetchStreamComments(
 
   const userIds = [...new Set(comments.map((c) => c.user_id))];
   const { data: profiles } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('user_id, username, avatar_url')
     .in('user_id', userIds);
 

@@ -16,7 +16,12 @@ if (!rootEl) {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    rootEl.innerHTML = `<div style='padding:1rem;font-family:system-ui;max-width:360px;'><p><strong>Something went wrong</strong></p><p style='font-size:0.9em;color:#666;'>${msg}</p><button onclick='location.reload()' style='margin-top:0.5rem;padding:0.5rem 1rem;'>Reload</button></div>`;
+    const escaped = String(msg)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+    rootEl.innerHTML = `<div style='padding:1rem;font-family:system-ui;max-width:360px;'><p><strong>Something went wrong</strong></p><p style='font-size:0.9em;color:#666;'>${escaped}</p><button onclick='location.reload()' style='margin-top:0.5rem;padding:0.5rem 1rem;'>Reload</button></div>`;
     console.error("[App] Mount error:", err);
   }
 }

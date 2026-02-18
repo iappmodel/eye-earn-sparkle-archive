@@ -32,6 +32,7 @@ import KYCReviewPanel from './KYCReviewPanel';
 import AdminOverview from './AdminOverview';
 import ContentOverview from './ContentOverview';
 import FeatureFlagsPanel from './FeatureFlagsPanel';
+import WalletReconciliationPanel from './WalletReconciliationPanel';
 
 const ADMIN_TAB_STORAGE_KEY = 'admin_dashboard_tab';
 
@@ -383,6 +384,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             </TabsTrigger>
             {isAdmin && (
               <>
+                <TabsTrigger value="wallet" className="flex items-center gap-2 data-[state=active]:bg-background">
+                  <Coins className="w-4 h-4" />
+                  <span className="hidden sm:inline">Wallet</span>
+                </TabsTrigger>
                 <TabsTrigger value="flags" className="flex items-center gap-2 data-[state=active]:bg-background">
                   <Settings className="w-4 h-4" />
                   <span className="hidden sm:inline">Flags</span>
@@ -424,6 +429,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           <TabsContent value="analytics" className="mt-4">
             <AnalyticsPanel />
           </TabsContent>
+
+          {isAdmin && (
+            <TabsContent value="wallet" className="mt-4">
+              <WalletReconciliationPanel />
+            </TabsContent>
+          )}
 
           {isAdmin && (
             <TabsContent value="flags" className="mt-4">

@@ -55,7 +55,7 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ className, compact = f
       // Fetch profiles for these users
       const userIds = levels.map(l => l.user_id);
       const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
+        .from('public_profiles')
         .select('user_id, username, display_name, avatar_url')
         .in('user_id', userIds);
 

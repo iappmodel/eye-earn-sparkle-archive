@@ -1,29 +1,27 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-// Product ID to tier mapping (must match create-checkout and check-subscription)
-const PRODUCT_TIERS: Record<string, { tier: string; tier_name: string; reward_multiplier: number }> = {
-  "prod_TgTDyU5HXIH8hh": { tier: "pro", tier_name: "Pro", reward_multiplier: 2 },
-  "prod_TgTDRhBdlgafaX": { tier: "creator", tier_name: "Creator", reward_multiplier: 3 },
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
+import { getTierFromProduct, PRODUCT_TIERS } from "./tier.ts";
 
 const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
-function getTierFromProduct(productId: string) {
-  const t = PRODUCT_TIERS[productId];
-  return t ?? { tier: "pro", tier_name: "Pro", reward_multiplier: 2 };
-}
-
 serve(async (req) => {
+  const cors = getCorsHeaders(req);
+  const corsHeaders = cors.ok ? cors.headers : { "Content-Type": "application/json" };
+  if (!cors.ok) return cors.response;
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: cors.headers });
+  }
+
   const signature = req.headers.get("Stripe-Signature");
   const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? Deno.env.get("STRIPE_WEBHOOK_SIGNING_SECRET");
   if (!signature || !webhookSecret) {
     logStep("Missing signature or webhook secret");
-    return new Response("Bad configuration", { status: 500 });
+    return new Response("Bad configuration", { status: 500, headers: corsHeaders });
   }
 
   const body = await req.text();
@@ -35,7 +33,7 @@ serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logStep("Webhook signature verification failed", { error: msg });
-    return new Response(`Webhook Error: ${msg}`, { status: 400 });
+    return new Response(`Webhook Error: ${msg}`, { status: 400, headers: corsHeaders });
   }
 
   logStep("Event received", { id: event.id, type: event.type });
@@ -53,11 +51,11 @@ serve(async (req) => {
     // user_id is set on subscription via subscription_data.metadata in create-checkout
     if (!userId) {
       logStep("No user_id for subscription, skipping upsert", { subscriptionId: sub.id });
-      return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const isDeleted = event.type === "customer.subscription.deleted" || sub.status === "canceled" || sub.status === "unpaid";
-    const isActive = !isDeleted && (sub.status === "active" || sub.status === "trialing");
+    let isActive = !isDeleted && (sub.status === "active" || sub.status === "trialing");
 
     let tier = "free";
     let tierName = "Free";
@@ -69,6 +67,7 @@ serve(async (req) => {
     let cancelAtPeriodEnd = false;
     let stripeCustomerId: string | null = null;
 
+    const knownProductIds = Object.keys(PRODUCT_TIERS);
     if (isActive && sub.items?.data?.length) {
       const item = sub.items.data[0];
       const pid = (item.price?.product as string) ?? "";
@@ -82,6 +81,11 @@ serve(async (req) => {
       currentPeriodStart = sub.current_period_start ? new Date(sub.current_period_start * 1000).toISOString() : null;
       cancelAtPeriodEnd = !!sub.cancel_at_period_end;
       stripeCustomerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+      // Unknown product id → reject paid benefit: do not mark as subscribed
+      if (!knownProductIds.includes(pid)) {
+        logStep("Unknown product id: rejecting active subscription (free only)", { productId: pid });
+        isActive = false;
+      }
     }
 
     const row = {
@@ -105,10 +109,10 @@ serve(async (req) => {
 
     if (error) {
       logStep("Upsert subscription_status failed", { error: error.message });
-      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     logStep("Subscription status synced", { userId, tier, isActive });
   }
 
-  return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify({ received: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });

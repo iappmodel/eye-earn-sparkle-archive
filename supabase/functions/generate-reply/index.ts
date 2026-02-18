@@ -1,13 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
+  const cors = getCorsHeaders(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -22,7 +22,7 @@ serve(async (req) => {
     if (!message) {
       return new Response(
         JSON.stringify({ error: 'Message is required', success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -76,7 +76,7 @@ Return ONLY a valid JSON array with exactly 3 string replies. No markdown, no ex
             success: false,
             errorCode: 'RATE_LIMIT',
           }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 429, headers: { ...headers, 'Content-Type': 'application/json' } }
         );
       }
       if (response.status === 402) {
@@ -86,7 +86,7 @@ Return ONLY a valid JSON array with exactly 3 string replies. No markdown, no ex
             success: false,
             errorCode: 'CREDITS_EXHAUSTED',
           }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 402, headers: { ...headers, 'Content-Type': 'application/json' } }
         );
       }
       throw new Error(`AI gateway error: ${response.status}`);
@@ -114,7 +114,7 @@ Return ONLY a valid JSON array with exactly 3 string replies. No markdown, no ex
         success: true,
         suggestions: suggestions.slice(0, 3),
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
     console.error('[GenerateReply] Error:', error);
@@ -126,7 +126,7 @@ Return ONLY a valid JSON array with exactly 3 string replies. No markdown, no ex
         : 'UNKNOWN';
     return new Response(
       JSON.stringify({ error: errMsg, success: false, errorCode }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   }
 });

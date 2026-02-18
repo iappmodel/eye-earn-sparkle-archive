@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { getCorsHeadersStrict } from "../_shared/cors.ts";
 
 const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -22,8 +18,12 @@ function generateReferralCode(): string {
 }
 
 serve(async (req) => {
+  const cors = getCorsHeadersStrict(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, "Content-Type": "application/json" };
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   const supabaseClient = createClient(
@@ -65,7 +65,7 @@ serve(async (req) => {
           uses_count: existingCode.uses_count,
           total_earnings: existingCode.total_earnings,
         }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...headers, "Content-Type": "application/json" },
           status: 200,
         });
       }
@@ -102,7 +102,7 @@ serve(async (req) => {
         uses_count: 0,
         total_earnings: 0,
       }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         status: 200,
       });
     }
@@ -122,7 +122,7 @@ serve(async (req) => {
           success: false, 
           message: "You have already used a referral code" 
         }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...headers, "Content-Type": "application/json" },
           status: 200,
         });
       }
@@ -140,7 +140,7 @@ serve(async (req) => {
           success: false, 
           message: "Invalid or expired referral code" 
         }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...headers, "Content-Type": "application/json" },
           status: 200,
         });
       }
@@ -151,7 +151,7 @@ serve(async (req) => {
           success: false, 
           message: "You cannot use your own referral code" 
         }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...headers, "Content-Type": "application/json" },
           status: 200,
         });
       }
@@ -194,7 +194,7 @@ serve(async (req) => {
         success: true, 
         message: "Referral code applied! You and your referrer will earn bonus rewards." 
       }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         status: 200,
       });
     }
@@ -215,7 +215,7 @@ serve(async (req) => {
         total_referrals: referrals?.length || 0,
         total_earnings: totalEarnings,
       }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         status: 200,
       });
     }
@@ -225,7 +225,7 @@ serve(async (req) => {
     const message = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message });
     return new Response(JSON.stringify({ error: message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...headers, "Content-Type": "application/json" },
       status: 500,
     });
   }

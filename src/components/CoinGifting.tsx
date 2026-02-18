@@ -72,8 +72,8 @@ export const CoinGifting: React.FC<CoinGiftingProps> = ({ vicoins, icoins, onGif
       // Load profile info for each gift
       const giftsWithProfiles = await Promise.all((data || []).map(async (gift) => {
         const [senderData, recipientData] = await Promise.all([
-          supabase.from('profiles').select('username, display_name, avatar_url').eq('user_id', gift.sender_id).single(),
-          supabase.from('profiles').select('username, display_name, avatar_url').eq('user_id', gift.recipient_id).single(),
+          supabase.from('public_profiles').select('username, display_name, avatar_url').eq('user_id', gift.sender_id).single(),
+          supabase.from('public_profiles').select('username, display_name, avatar_url').eq('user_id', gift.recipient_id).single(),
         ]);
         return {
           ...gift,
@@ -95,7 +95,7 @@ export const CoinGifting: React.FC<CoinGiftingProps> = ({ vicoins, icoins, onGif
 
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('public_profiles')
         .select('user_id, username, display_name, avatar_url')
         .neq('user_id', user?.id)
         .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%`)

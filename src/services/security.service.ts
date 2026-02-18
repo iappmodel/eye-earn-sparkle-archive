@@ -219,10 +219,22 @@ class SecurityService {
       });
     }
 
-    // 3. Watch duration validation
-    if (watchDuration < requiredDuration * 0.7) {
+    // 3. Watch duration validation — all-or-nothing per docs/REWARD_WATCH_POLICY.md
+    // Full watch required; 0.99 tolerance for timing drift only. No partial credit.
+    const FULL_WATCH_RATIO = 0.99;
+    if (watchDuration < requiredDuration * FULL_WATCH_RATIO) {
       flags.push('insufficient_watch_time');
-      score -= 20;
+      await this.logAbuse(userId, 'reward_manipulation', 'medium', {
+        watchDuration,
+        requiredDuration,
+        watchRatio: watchDuration / requiredDuration,
+      });
+      return {
+        valid: false,
+        score: 0,
+        flags,
+        shouldBlock: true,
+      };
     }
 
     // 4. Impossible timing check

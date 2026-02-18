@@ -9,21 +9,18 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getCorsHeadersAdmin } from "../_shared/cors.ts";
+import { logAdminAction } from "../_shared/adminAudit.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(body: unknown, status: number, headers: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...headers, "Content-Type": "application/json" },
   });
 }
 
-function errorResponse(message: string, status: number) {
-  return jsonResponse({ error: message }, status);
+function errorResponse(message: string, status: number, headers: Record<string, string>) {
+  return jsonResponse({ error: message }, status, headers);
 }
 
 async function checkAdminOrModerator(supabase: ReturnType<typeof createClient>, userId: string): Promise<boolean> {
@@ -34,8 +31,12 @@ async function checkAdminOrModerator(supabase: ReturnType<typeof createClient>, 
 }
 
 serve(async (req) => {
+  const cors = getCorsHeadersAdmin(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, "Content-Type": "application/json" };
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -44,14 +45,14 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return errorResponse("Unauthorized", 401);
+    if (!authHeader) return errorResponse("Unauthorized", 401, headers);
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) return errorResponse("Unauthorized", 401);
+    if (authError || !user) return errorResponse("Unauthorized", 401, headers);
 
     const isAllowed = await checkAdminOrModerator(supabase, user.id);
-    if (!isAllowed) return errorResponse("Forbidden: admin or moderator role required", 403);
+    if (!isAllowed) return errorResponse("Forbidden: admin or moderator role required", 403, headers);
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const action = body.action as string;
@@ -90,7 +91,7 @@ serve(async (req) => {
 
       const { data: profiles, error: profilesError, count } = await query;
 
-      if (profilesError) return errorResponse(profilesError.message, 400);
+      if (profilesError) return errorResponse(profilesError.message, 400, headers);
 
       const userIds = (profiles || []).map((p) => p.user_id);
       const [rolesRes, bansRes] = await Promise.all([
@@ -139,18 +140,28 @@ serve(async (req) => {
         return { ...u, ...auth };
       }).filter(Boolean);
 
+      await logAdminAction(supabase, user.id, "admin_users_list", "list", `page_${page}`, {
+        page,
+        per_page: perPage,
+        total: count ?? 0,
+        search: search || undefined,
+        role: role || undefined,
+        kyc_status: kycStatus || undefined,
+        banned: typeof banned === "boolean" ? banned : undefined,
+      });
+
       return jsonResponse({
         users: items,
         total: count ?? items.length,
         page,
         per_page: perPage,
         total_pages: Math.ceil((count ?? 0) / perPage),
-      });
+      }, 200, headers);
     }
 
     if (action === "detail") {
       const userId = body.user_id as string;
-      if (!userId) return errorResponse("user_id is required", 400);
+      if (!userId) return errorResponse("user_id is required", 400, headers);
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -158,7 +169,7 @@ serve(async (req) => {
         .eq("user_id", userId)
         .single();
 
-      if (profileError || !profile) return errorResponse("User not found", 404);
+      if (profileError || !profile) return errorResponse("User not found", 404, headers);
 
       const [{ data: roleData }, { data: banData }, { data: authData }] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
@@ -179,6 +190,8 @@ serve(async (req) => {
         .select("*", { count: "exact", head: true })
         .eq("user_id", userId);
 
+      await logAdminAction(supabase, user.id, "admin_users_detail", "user", userId, {});
+
       return jsonResponse({
         profile,
         role,
@@ -188,18 +201,18 @@ serve(async (req) => {
         created_at_auth: authUser?.created_at ?? null,
         content_count: contentCount ?? 0,
         transaction_count: txCount ?? 0,
-      });
+      }, 200, headers);
     }
 
     if (action === "bulk") {
       const isAdmin = !!(await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" })).data;
-      if (!isAdmin) return errorResponse("Only admins can perform bulk actions", 403);
+      if (!isAdmin) return errorResponse("Only admins can perform bulk actions", 403, headers);
 
       const userIds = body.user_ids as string[] | undefined;
       const bulkAction = body.bulk_action as string;
 
-      if (!Array.isArray(userIds) || userIds.length === 0) return errorResponse("user_ids array is required", 400);
-      if (!["ban", "unban", "update_role"].includes(bulkAction)) return errorResponse("Invalid bulk_action", 400);
+      if (!Array.isArray(userIds) || userIds.length === 0) return errorResponse("user_ids array is required", 400, headers);
+      if (!["ban", "unban", "update_role"].includes(bulkAction)) return errorResponse("Invalid bulk_action", 400, headers);
 
       const results: { user_id: string; success: boolean; error?: string }[] = [];
 
@@ -223,7 +236,7 @@ serve(async (req) => {
       } else if (bulkAction === "update_role") {
         const newRole = body.new_role as string;
         if (!["user", "creator", "moderator", "admin"].includes(newRole)) {
-          return errorResponse("Invalid new_role", 400);
+          return errorResponse("Invalid new_role", 400, headers);
         }
         for (const uid of userIds) {
           const { error } = await supabase.from("user_roles").update({ role: newRole }).eq("user_id", uid);
@@ -232,17 +245,25 @@ serve(async (req) => {
       }
 
       const successCount = results.filter((r) => r.success).length;
+      await logAdminAction(supabase, user.id, bulkAction === "ban" ? "ban_user" : bulkAction === "unban" ? "unban_user" : "update_role", "bulk", bulkAction, {
+        user_ids: userIds,
+        user_count: userIds.length,
+        success_count: successCount,
+        ...(bulkAction === "ban" && { reason: (body.reason as string) || undefined, is_permanent: body.is_permanent, expires_at: body.expires_at }),
+        ...(bulkAction === "update_role" && { new_role: body.new_role }),
+      });
+
       return jsonResponse({
         success: true,
         results,
         success_count: successCount,
         total: userIds.length,
-      });
+      }, 200, headers);
     }
 
-    return errorResponse("Invalid action. Use list, detail, or bulk.", 400);
+    return errorResponse("Invalid action. Use list, detail, or bulk.", 400, headers);
   } catch (e) {
     console.error("admin-users error:", e);
-    return errorResponse("Internal server error", 500);
+    return errorResponse("Internal server error", 500, headers);
   }
 });

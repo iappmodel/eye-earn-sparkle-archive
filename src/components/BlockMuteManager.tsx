@@ -74,7 +74,7 @@ export const BlockMuteManager: React.FC<BlockMuteManagerProps> = ({
       if (data && data.length > 0) {
         const blockedUserIds = data.map(b => b.blocked_user_id);
         const { data: profiles } = await supabase
-          .from('profiles')
+          .from('public_profiles')
           .select('user_id, display_name, username, avatar_url')
           .in('user_id', blockedUserIds);
 

@@ -1,49 +1,15 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { subscriptionService, SubscriptionStatus } from '@/services/subscription.service';
 import { AUTH_REDIRECT_BASE, AUTH_PATHS, saveRedirectPathBeforeOAuth } from '@/services/auth.service';
-import { rewardsService } from '@/services/rewards.service';
+import { useAuthSessionSync } from '@/hooks/useAuthSessionSync';
+import { useProfileLoader } from '@/hooks/useProfileLoader';
+import { useSubscriptionLoader } from '@/hooks/useSubscriptionLoader';
+import { useDailyLoginReward } from '@/hooks/useDailyLoginReward';
+import type { Profile, ProfileSocialLinks } from '@/types/auth';
 
-export interface ProfileSocialLinks {
-  instagram?: string;
-  twitter?: string;
-  tiktok?: string;
-  website?: string;
-  youtube?: string;
-  linkedin?: string;
-}
-
-/**
- * Profile row from public.profiles. Fetched by user_id (auth user id).
- * For tip/follow: feed creator id is the creator's auth user_id; use user.id (not profile.id)
- * when comparing current user to creator (e.g. self-tip check).
- */
-export interface Profile {
-  id: string;
-  user_id: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-  cover_photo_url?: string | null;
-  bio: string | null;
-  phone_number: string | null;
-  phone_verified: boolean;
-  calibration_data?: Record<string, unknown> | null;
-  vicoin_balance: number;
-  icoin_balance: number;
-  total_views: number;
-  total_likes: number;
-  followers_count: number;
-  following_count: number;
-  is_verified: boolean;
-  kyc_status: string;
-  social_links?: ProfileSocialLinks | null;
-  show_contributor_badges?: boolean | null;
-  show_timed_interactions?: boolean | null;
-  created_at: string;
-  updated_at: string;
-}
+export type { Profile, ProfileSocialLinks };
 
 interface AuthContextType {
   user: User | null;
@@ -93,121 +59,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [isRecoverySession, setIsRecoverySession] = useState(false);
 
-  const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    if (error) {
-      console.error('Error fetching profile:', error);
-      return null;
-    }
-    return data as Profile | null;
-  };
-
-  const refreshProfile = async () => {
-    if (user) {
-      const profileData = await fetchProfile(user.id);
-      setProfile(profileData);
-    }
-  };
-
-  const refreshSubscription = async () => {
-    if (user) {
-      try {
-        const subStatus = await subscriptionService.checkSubscription();
-        setSubscription(subStatus);
-      } catch (error) {
-        console.error('Error fetching subscription:', error);
-      }
-    }
-  };
+  useAuthSessionSync(setSession, setUser, setIsRecoverySession, setLoading);
+  useProfileLoader(user, setProfile);
+  useSubscriptionLoader(user, setSubscription);
+  useDailyLoginReward(session, profile);
 
   const clearRecoverySession = useCallback(() => {
     setIsRecoverySession(false);
   }, []);
 
-  const syncProfileFromGoogle = useCallback(async (uid: string, metadata: Record<string, unknown> | undefined) => {
-    if (!metadata) return;
-    const fullName = (metadata.full_name as string) || (metadata.name as string);
-    const avatar = (metadata.avatar_url as string) || (metadata.picture as string);
-    if (!fullName && !avatar) return;
-    const { data: existing } = await supabase
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    const { data, error } = await supabase
       .from('profiles')
-      .select('display_name, avatar_url')
-      .eq('user_id', uid)
+      .select('*')
+      .eq('user_id', user.id)
       .maybeSingle();
-    if (!existing) return;
-    const updates: { display_name?: string; avatar_url?: string } = {};
-    if (fullName && !existing.display_name) updates.display_name = fullName;
-    if (avatar && !existing.avatar_url) updates.avatar_url = avatar;
-    if (Object.keys(updates).length === 0) return;
-    await supabase.from('profiles').update(updates).eq('user_id', uid);
-  }, []);
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return;
+    }
+    setProfile(data as Profile | null);
+  }, [user]);
 
-  useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setIsRecoverySession(true);
-        }
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          const isGoogle = session.user.app_metadata?.provider === 'google';
-          const doFetch = () => {
-            fetchProfile(session!.user.id).then(setProfile);
-            subscriptionService.checkSubscription().then(setSubscription).catch(console.error);
-            // Platform rewards user with VICOIN for logging in (once per day)
-            const today = new Date().toISOString().split('T')[0];
-            rewardsService.issueReward('login', `login:${today}`, {}).catch(() => {});
-          };
-          if (event === 'SIGNED_IN' && isGoogle && session.user.user_metadata) {
-            syncProfileFromGoogle(session.user.id, session.user.user_metadata)
-              .then(() => doFetch())
-              .catch((e) => {
-                console.error(e);
-                doFetch();
-              });
-          } else {
-            setTimeout(doFetch, 0);
-          }
-        } else {
-          setProfile(null);
-          setSubscription(null);
-          setIsRecoverySession(false);
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      setSession(initialSession);
-      setUser(initialSession?.user ?? null);
-
-      if (initialSession?.user) {
-        Promise.all([
-          fetchProfile(initialSession.user.id),
-          subscriptionService.checkSubscription().catch(() => null),
-        ]).then(([profileData, subStatus]) => {
-          setProfile(profileData);
-          if (subStatus) setSubscription(subStatus);
-          setLoading(false);
-          // Platform rewards user with VICOIN for being logged in (once per day)
-          const today = new Date().toISOString().split('T')[0];
-          rewardsService.issueReward('login', `login:${today}`, {}).catch(() => {});
-        });
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => authSub.unsubscribe();
-  }, [syncProfileFromGoogle]);
+  const refreshSubscription = useCallback(async () => {
+    if (!user) return;
+    try {
+      const subStatus = await subscriptionService.checkSubscription();
+      setSubscription(subStatus);
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    }
+  }, [user]);
 
   const signUp = async (email: string, password: string, username: string) => {
     const redirectUrl = `${AUTH_REDIRECT_BASE}${AUTH_PATHS.home}`;

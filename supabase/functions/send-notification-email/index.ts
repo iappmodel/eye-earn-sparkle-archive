@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 interface NotificationEmailRequest {
   userId: string;
@@ -15,9 +11,12 @@ interface NotificationEmailRequest {
 }
 
 serve(async (req: Request) => {
-  // Handle CORS preflight
+  const cors = getCorsHeaders(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -50,7 +49,7 @@ serve(async (req: Request) => {
       console.log('Category disabled for user, skipping notification');
       return new Response(JSON.stringify({ skipped: true, reason: 'category_disabled' }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        headers: { 'Content-Type': 'application/json', ...headers },
       });
     }
 
@@ -144,7 +143,7 @@ serve(async (req: Request) => {
 
     return new Response(JSON.stringify({ success: true, notification }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      headers: { 'Content-Type': 'application/json', ...headers },
     });
 
   } catch (error: unknown) {
@@ -152,7 +151,7 @@ serve(async (req: Request) => {
     console.error('Error in send-notification-email:', errorMessage);
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      headers: { 'Content-Type': 'application/json', ...headers },
     });
   }
 });

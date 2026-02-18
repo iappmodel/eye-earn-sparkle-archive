@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    
+
+    <!-- Strict CSP: no inline scripts, no unsafe-eval. Reduces XSS impact (tokens are also in memory only). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" />
+
     <!-- App Title & Description -->
     <title>iView - Watch & Earn Rewards</title>
     <meta name="description" content="Watch videos, earn rewards. Your attention is valuable with iView." />
@@ -49,49 +52,12 @@
         <div id="boot-error" style="margin-top:14px;text-align:left;display:none;">
           <div style="font-size:12px;opacity:0.75;margin-bottom:8px;">Errors:</div>
           <pre id="boot-error-pre" style="white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.06);padding:12px;border-radius:12px;line-height:1.35;"></pre>
-          <button style="margin-top:14px;background:#8B5CF6;color:white;border:0;border-radius:12px;padding:12px 14px;font-weight:600" onclick="location.reload()">Reload</button>
+          <button id="boot-reload-btn" type="button" style="margin-top:14px;background:#8B5CF6;color:white;border:0;border-radius:12px;padding:12px 14px;font-weight:600">Reload</button>
         </div>
       </div>
     </div>
     <div id="root"></div>
-    <script>
-      // Boot diagnostics for mobile/tunnel debugging.
-      // If the app fails before React mounts, we replace the black splash with the error.
-      (function () {
-        var errors = [];
-        window.__iviewBootErrors = errors;
-        window.addEventListener('error', function (e) {
-          try {
-            errors.push((e && e.message) || (e && e.error && e.error.message) || String(e));
-          } catch (_) {}
-        });
-        window.addEventListener('unhandledrejection', function (e) {
-          try {
-            var r = e && e.reason;
-            errors.push('Unhandled promise: ' + ((r && r.message) || String(r)));
-          } catch (_) {}
-        });
-        window.__iviewMarkMounted = function () {
-          window.__iviewAppMounted = true;
-        };
-
-        setTimeout(function () {
-          if (window.__iviewAppMounted) return;
-          var splash = document.getElementById('splash');
-          if (!splash) return;
-          // Show errors in the pre-rendered boot panel (keeps HTML parsing simple).
-          splash.style.overflow = 'auto';
-          var panel = document.getElementById('boot-error');
-          var pre = document.getElementById('boot-error-pre');
-          if (panel && pre) {
-            panel.style.display = 'block';
-            pre.textContent = errors.length
-              ? errors.slice(-8).join('\\n\\n')
-              : 'No errors captured yet (module load may be blocked).';
-          }
-        }, 3000);
-      })();
-    </script>
+    <script src="/boot-diagnostics.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

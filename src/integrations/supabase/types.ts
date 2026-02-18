@@ -1601,6 +1601,28 @@ export type Database = {
         }
         Relationships: []
       }
+      public_profiles: {
+        Row: {
+          id: string
+          user_id: string
+          username: string | null
+          display_name: string | null
+          avatar_url: string | null
+          cover_photo_url: string | null
+          bio: string | null
+          social_links: Json | null
+          followers_count: number | null
+          following_count: number | null
+          total_views: number | null
+          total_likes: number | null
+          is_verified: boolean | null
+          show_timed_interactions: boolean | null
+          show_contributor_badges: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Relationships: []
+      }
       promotion_checkins: {
         Row: {
           business_name: string
@@ -2252,6 +2274,36 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_ledger: {
+        Row: {
+          id: string
+          user_id: string
+          type: string
+          amount: number
+          currency: string
+          ref_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          type: string
+          amount: number
+          currency: string
+          ref_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          type?: string
+          amount?: number
+          currency?: string
+          ref_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       user_achievements: {
         Row: {
           achievement_id: string | null
@@ -2682,6 +2734,16 @@ export type Database = {
           p_description: string
           p_reference_id: string
           p_user_id: string
+        }
+        Returns: Json
+      }
+      ledger_append: {
+        Args: {
+          p_user_id: string
+          p_type: string
+          p_amount: number
+          p_currency: string
+          p_ref_id: string
         }
         Returns: Json
       }

@@ -113,7 +113,7 @@ export function useComments(options: UseCommentsOptions | string | null) {
       const topLevel = rows.filter((r) => !r.parent_id);
       const userIds = [...new Set(rows.map((r) => r.user_id))];
       const { data: profiles } = await supabase
-        .from('profiles')
+        .from('public_profiles')
         .select('user_id, username, avatar_url, display_name')
         .in('user_id', userIds);
 

@@ -412,8 +412,9 @@ const Index = () => {
   // Handle promo completion - use rewards service for secure backend validation
   const handleMediaComplete = useCallback(async (
     attentionValidated: boolean = true,
-    attentionScore?: number,
-    watchDuration?: number
+    _attentionScore?: number,
+    _watchDuration?: number,
+    attentionSessionId?: string
   ) => {
     if (!currentMedia?.reward || !profile) return;
 
@@ -422,14 +423,15 @@ const Index = () => {
       return;
     }
 
+    if (!attentionSessionId) {
+      console.warn('[Index] No attention session id - reward requires validate-attention first');
+      return;
+    }
+
     setIsClaimingReward(true);
     try {
-      const totalDuration = currentMedia.duration ?? 0;
       const result = await rewardsService.issueReward('promo_view', currentMedia.id, {
-        attentionScore: attentionScore ?? 85,
-        coinType: currentMedia.reward.type,
-        watchDuration,
-        totalDuration: totalDuration > 0 ? totalDuration : undefined,
+        attentionSessionId,
       });
 
       if (result.success && result.amount) {
@@ -457,6 +459,8 @@ const Index = () => {
           toast.warning('Keep watching', {
             description: result.error,
           });
+        } else if (result.code === 'invalid_session' || result.error?.includes('session')) {
+          toast.error('Session expired', { description: 'Please watch the video again to claim.' });
         } else {
           console.error('[Index] Reward error:', result.error);
           toast.error('Could not claim reward', { description: result.error });

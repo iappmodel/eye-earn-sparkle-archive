@@ -141,7 +141,7 @@ export async function loadGroupMembers(
 
   const userIds = participants.map((p) => p.user_id);
   const { data: profiles } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('user_id, username, display_name, avatar_url')
     .in('user_id', userIds);
 

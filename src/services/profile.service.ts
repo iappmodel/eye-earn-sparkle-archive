@@ -16,7 +16,8 @@ export interface ProfileSocialLinks {
   linkedin?: string;
 }
 
-export interface ProfileRow {
+/** Public columns only (from public_profiles view). Use for other users' profiles. */
+export interface PublicProfileRow {
   id: string;
   user_id: string;
   username: string | null;
@@ -24,23 +25,26 @@ export interface ProfileRow {
   avatar_url: string | null;
   cover_photo_url: string | null;
   bio: string | null;
+  social_links: ProfileSocialLinks | null;
+  followers_count: number | null;
+  following_count: number | null;
+  total_views: number | null;
+  total_likes: number | null;
+  is_verified: boolean | null;
+  show_contributor_badges: boolean | null;
+  show_timed_interactions: boolean | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProfileRow extends PublicProfileRow {
   phone_number: string | null;
   phone_verified: boolean | null;
   calibration_data?: Record<string, unknown> | null;
   vicoin_balance: number | null;
   icoin_balance: number | null;
-  total_views: number | null;
-  total_likes: number | null;
-  followers_count: number | null;
-  following_count: number | null;
-  is_verified: boolean | null;
   kyc_status: string | null;
-  social_links: ProfileSocialLinks | null;
-  show_contributor_badges: boolean | null;
-  show_timed_interactions: boolean | null;
   referred_by: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface ProfileUpdateInput {
@@ -62,11 +66,11 @@ export function isValidUsername(username: string): boolean {
 }
 
 /**
- * Get profile by user_id.
+ * Get public profile by user_id (safe for any user; no balances/kyc/phone).
  */
-export async function getProfileByUserId(userId: string): Promise<ProfileRow | null> {
+export async function getProfileByUserId(userId: string): Promise<PublicProfileRow | null> {
   const { data, error } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle();
@@ -75,16 +79,16 @@ export async function getProfileByUserId(userId: string): Promise<ProfileRow | n
     console.error('[ProfileService] getProfileByUserId error:', error);
     return null;
   }
-  return data as ProfileRow | null;
+  return data as PublicProfileRow | null;
 }
 
 /**
- * Get profile by username (case-insensitive lookup).
+ * Get public profile by username (case-insensitive lookup).
  */
-export async function getProfileByUsername(username: string): Promise<ProfileRow | null> {
+export async function getProfileByUsername(username: string): Promise<PublicProfileRow | null> {
   if (!username.trim()) return null;
   const { data, error } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('*')
     .ilike('username', username.trim())
     .maybeSingle();
@@ -93,7 +97,7 @@ export async function getProfileByUsername(username: string): Promise<ProfileRow
     console.error('[ProfileService] getProfileByUsername error:', error);
     return null;
   }
-  return data as ProfileRow | null;
+  return data as PublicProfileRow | null;
 }
 
 /**

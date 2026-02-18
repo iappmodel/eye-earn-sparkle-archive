@@ -53,7 +53,7 @@ export const NewChatSheet: React.FC<NewChatSheetProps> = ({
     setSearchLoading(true);
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('public_profiles')
         .select('id, user_id, username, display_name, avatar_url')
         .neq('user_id', user.id)
         .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)

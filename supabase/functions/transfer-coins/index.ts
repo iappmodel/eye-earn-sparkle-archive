@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { getCorsHeadersStrict } from "../_shared/cors.ts";
 
 const EXCHANGE_RATE = 10; // 10 Icoins = 1 Vicoin (and 1 Vicoin = 10 Icoins)
 
@@ -57,8 +53,12 @@ function getLimits(direction: TransferDirection) {
 }
 
 serve(async (req) => {
+  const cors = getCorsHeadersStrict(req);
+  if (!cors.ok) return cors.response;
+  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: cors.headers });
   }
 
   try {
@@ -70,7 +70,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized', success: false }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -80,7 +80,7 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized', success: false }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -90,7 +90,7 @@ serve(async (req) => {
     } catch {
       return new Response(
         JSON.stringify({ error: 'Invalid JSON body', success: false }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -104,7 +104,7 @@ serve(async (req) => {
           details: flattened.fieldErrors,
           limits: getLimits((body as { direction?: TransferDirection })?.direction ?? 'icoin_to_vicoin'),
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -129,18 +129,18 @@ serve(async (req) => {
               success: false,
               limits: getLimits('icoin_to_vicoin'),
             }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
           );
         }
         if (msg.includes('PROFILE_NOT_FOUND')) {
           return new Response(
             JSON.stringify({ error: 'User profile not found', code: 'PROFILE_NOT_FOUND', success: false }),
-            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 404, headers: { ...headers, 'Content-Type': 'application/json' } }
           );
         }
         return new Response(
           JSON.stringify({ error: 'Conversion failed', success: false }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -155,7 +155,7 @@ serve(async (req) => {
           exchange_rate: EXCHANGE_RATE,
           transfer_id: data.transfer_id,
         }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -177,18 +177,18 @@ serve(async (req) => {
             success: false,
             limits: getLimits('vicoin_to_icoin'),
           }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
         );
       }
       if (msg.includes('PROFILE_NOT_FOUND')) {
         return new Response(
           JSON.stringify({ error: 'User profile not found', code: 'PROFILE_NOT_FOUND', success: false }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 404, headers: { ...headers, 'Content-Type': 'application/json' } }
         );
       }
       return new Response(
         JSON.stringify({ error: 'Conversion failed', success: false }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -203,14 +203,14 @@ serve(async (req) => {
         exchange_rate: EXCHANGE_RATE,
         transfer_id: data.transfer_id,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
     console.error('[TransferCoins] Error:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
       JSON.stringify({ error: message, success: false }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   }
 });

@@ -1,11 +1,11 @@
 /**
  * useMainFeed – fetches main feed media from user_content and promotions.
- * Retries up to 3 times with exponential backoff (1s, 2s, 4s) on fetch errors.
+ * Uses React Query for deduplication, caching, and background refetch.
+ * Retries up to 3 times with exponential backoff on fetch errors.
  * Falls back to curated mock data when all retries fail or the database is empty.
- * Real backend content uses UUID creators; fallback uses non-UUID (creator-1, etc.)
- * so follow works in shell mode only for fallback.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { MAIN_FEED_STATUS } from '@/constants/contentStatus';
 import { supabase } from '@/integrations/supabase/client';
 import { isValidFollowTarget } from '@/services/follow.service';
@@ -315,7 +315,7 @@ export async function fetchContentById(id: string): Promise<MainFeedItem | null>
   if (!contentError && contentRow) {
     const profileMap = new Map<string, { username: string | null; display_name: string | null; avatar_url: string | null }>();
     const { data: profiles } = await supabase
-      .from('profiles')
+      .from('public_profiles')
       .select('user_id, username, display_name, avatar_url')
       .eq('user_id', contentRow.user_id);
     for (const p of profiles || []) {
@@ -344,155 +344,120 @@ export async function fetchContentById(id: string): Promise<MainFeedItem | null>
 }
 
 export function useContentById(contentId: string | null) {
-  const [item, setItem] = useState<MainFeedItem | null>(null);
-  const [isLoading, setIsLoading] = useState(!!contentId);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: item,
+    isLoading,
+    error,
+    refetch: refresh,
+  } = useQuery({
+    queryKey: ['content', contentId],
+    queryFn: () => fetchContentById(contentId!),
+    enabled: !!contentId,
+    staleTime: 60 * 1000,
+  });
 
-  const refresh = useCallback(async () => {
-    if (!contentId) {
-      setItem(null);
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
+  return {
+    item: item ?? null,
+    isLoading,
+    error: error ? (error instanceof Error ? error.message : 'Failed to load content') : null,
+    refresh,
+  };
+}
+
+async function loadMainFeed(): Promise<MainFeedItem[]> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await fetchContentById(contentId);
-      if (result) {
-        setItem(result);
-        setError(null);
-      } else {
-        setItem(null);
-        setError('Content not found');
+      const feedItems: MainFeedItem[] = [];
+
+      const contentResult = await supabase
+        .from('user_content')
+        .select('id, title, caption, media_url, thumbnail_url, media_type, reward_type, reward_amount, content_type, user_id, likes_count')
+        .eq('is_public', true)
+        .eq('status', MAIN_FEED_STATUS)
+        .eq('is_draft', false)
+        .not('media_url', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(30);
+
+      const { data: contentRows, error: ce } = contentResult;
+      const profileMap = new Map<string, { username: string | null; display_name: string | null; avatar_url: string | null }>();
+
+      if (ce) {
+        console.warn('[useMainFeed] user_content fetch error (attempt', attempt + 1, '):', ce);
+      } else if (contentRows && contentRows.length > 0) {
+        const userIds = [...new Set(contentRows.map((r: { user_id: string }) => r.user_id))];
+        const { data: profiles } = await supabase
+          .from('public_profiles')
+          .select('user_id, username, display_name, avatar_url')
+          .in('user_id', userIds);
+
+        for (const p of profiles || []) {
+          profileMap.set(p.user_id, {
+            username: p.username ?? null,
+            display_name: p.display_name ?? null,
+            avatar_url: p.avatar_url ?? null,
+          });
+        }
+
+        for (const row of contentRows) {
+          feedItems.push(mapUserContentToFeedItem(row, profileMap));
+        }
       }
+
+      const promosResult = await supabase
+        .from('promotions')
+        .select('id, business_id, business_name, description, image_url, video_url, reward_type, reward_amount, latitude, longitude, address, category, required_action')
+        .eq('is_active', true)
+        .or('expires_at.is.null,expires_at.gt.now()')
+        .limit(15);
+
+      const { data: promos, error: pe } = promosResult;
+
+      if (pe) {
+        console.warn('[useMainFeed] promotions fetch error (attempt', attempt + 1, '):', pe);
+      } else if (promos && promos.length > 0) {
+        for (const p of promos) {
+          feedItems.push(mapPromotionToFeedItem(p));
+        }
+      }
+
+      if (feedItems.length > 0) return feedItems;
+      if (!ce && !pe) return [];
+      lastError = new Error(ce ? String(ce) : pe ? String(pe) : 'Failed to load feed');
     } catch (err) {
-      console.error('[useContentById]', err);
-      setError(err instanceof Error ? err.message : 'Failed to load content');
-      setItem(null);
-    } finally {
-      setIsLoading(false);
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.error('[useMainFeed] Load error (attempt', attempt + 1, '):', err);
     }
-  }, [contentId]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (attempt < MAX_RETRIES) {
+      await delay(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
+    }
+  }
 
-  return { item, isLoading, error, refresh };
+  throw lastError ?? new Error('Failed to load feed');
 }
 
 export function useMainFeed() {
-  const [items, setItems] = useState<MainFeedItem[]>(FALLBACK_FEED);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadFeed = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const feedItems: MainFeedItem[] = [];
-
-        // 1. Fetch user_content (posts, stories, promotions)
-        const contentResult = await supabase
-          .from('user_content')
-          .select('id, title, caption, media_url, thumbnail_url, media_type, reward_type, reward_amount, content_type, user_id, likes_count')
-          .eq('is_public', true)
-          .eq('status', MAIN_FEED_STATUS)
-          .eq('is_draft', false)
-          .not('media_url', 'is', null)
-          .order('published_at', { ascending: false })
-          .limit(30);
-
-        const { data: contentRows, error: ce } = contentResult;
-        const profileMap = new Map<string, { username: string | null; display_name: string | null; avatar_url: string | null }>();
-
-        if (ce) {
-          console.warn('[useMainFeed] user_content fetch error (attempt', attempt + 1, '):', ce);
-        } else if (contentRows && contentRows.length > 0) {
-          const userIds = [...new Set(contentRows.map((r: { user_id: string }) => r.user_id))];
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('user_id, username, display_name, avatar_url')
-            .in('user_id', userIds);
-
-          for (const p of profiles || []) {
-            profileMap.set(p.user_id, {
-              username: p.username ?? null,
-              display_name: p.display_name ?? null,
-              avatar_url: p.avatar_url ?? null,
-            });
-          }
-
-          for (const row of contentRows) {
-            const item = mapUserContentToFeedItem(row, profileMap);
-            feedItems.push(item);
-          }
-        }
-
-        // 2. Fetch promotions with location (for route builder / watch later)
-        const promosResult = await supabase
-          .from('promotions')
-          .select('id, business_id, business_name, description, image_url, video_url, reward_type, reward_amount, latitude, longitude, address, category, required_action')
-          .eq('is_active', true)
-          .or('expires_at.is.null,expires_at.gt.now()')
-          .limit(15);
-
-        const { data: promos, error: pe } = promosResult;
-
-        if (pe) {
-          console.warn('[useMainFeed] promotions fetch error (attempt', attempt + 1, '):', pe);
-        } else if (promos && promos.length > 0) {
-          for (const p of promos) {
-            feedItems.push(mapPromotionToFeedItem(p));
-          }
-        }
-
-        // Success: we have data
-        if (feedItems.length > 0) {
-          setItems(feedItems);
-          setIsLoading(false);
-          return {};
-        }
-
-        // Empty result with no fetch errors: DB is empty, keep fallback
-        if (!ce && !pe) {
-          setIsLoading(false);
-          return {};
-        }
-
-        lastError = new Error(ce ? String(ce) : pe ? String(pe) : 'Failed to load feed');
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        console.error('[useMainFeed] Load error (attempt', attempt + 1, '):', err);
-      }
-
-      // Retry with backoff
-      if (attempt < MAX_RETRIES) {
-        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-        await delay(backoffMs);
-      }
-    }
-
-    // All retries exhausted: fall back to mock
-    const msg = lastError instanceof Error ? lastError.message : 'Failed to load feed';
-    setError(msg);
-    setItems(FALLBACK_FEED);
-    setIsLoading(false);
-    return { error: msg };
-  }, []);
-
-  useEffect(() => {
-    loadFeed();
-  }, [loadFeed]);
-
-  return {
-    items,
+  const {
+    data: items,
     isLoading,
     error,
-    refresh: loadFeed,
+    refetch: refresh,
+  } = useQuery({
+    queryKey: ['mainFeed'],
+    queryFn: loadMainFeed,
+    staleTime: 2 * 60 * 1000,
+    placeholderData: FALLBACK_FEED,
+    retry: MAX_RETRIES,
+    retryDelay: (attemptIndex) => INITIAL_BACKOFF_MS * Math.pow(2, attemptIndex),
+  });
+
+  return {
+    items: items ?? FALLBACK_FEED,
+    isLoading,
+    error: error ? (error instanceof Error ? error.message : 'Failed to load feed') : null,
+    refresh,
   };
 }

@@ -26,7 +26,7 @@ interface MediaCardProps {
   videoSrc?: string;
   duration?: number;
   reward?: { amount: number; type: 'vicoin' | 'icoin' };
-  onComplete?: (attentionValidated: boolean, attentionScore?: number, watchDuration?: number) => void;
+  onComplete?: (attentionValidated: boolean, attentionScore?: number, watchDuration?: number, attentionSessionId?: string) => void;
   onProgress?: (progress: number) => void;
   onSkip?: () => void;
   isActive?: boolean;
@@ -102,6 +102,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     needsUserGesture,
     resetAttention,
     retryTracking,
+    startPromoAttention,
+    stopPromoAttention,
     getAttentionResult,
   } = useEyeTracking({
     enabled: isPromoContent && isActive && isPlaying && eyeTrackingEnabled,
@@ -167,7 +169,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       attentionLostTimeRef.current += elapsed;
     }
 
-    const totalWatchedTime = currentTime * 1000;
+    const totalWatchedTime = (videoRef.current?.currentTime ?? currentTime) * 1000;
     const lostPercentage = totalWatchedTime > 0 ? (attentionLostTimeRef.current / totalWatchedTime) * 100 : 0;
 
     // Expose for UI (approaching-threshold warning)
@@ -278,20 +280,21 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     if (hasCompleted.current) return;
     hasCompleted.current = true;
 
+    stopPromoAttention();
     const rawWatchDuration = (Date.now() - startTimeRef.current) / 1000;
     // Clamp watchDuration to at most 1.4x totalDuration to stay within backend validation bounds
     const watchDuration = duration > 0 ? Math.min(rawWatchDuration, duration * 1.4) : rawWatchDuration;
     const attentionResult = getAttentionResult();
-    
+
     logger.log('[MediaCard] Promo complete, validating attention...', attentionResult);
 
     // Finalize heatmap data
     finalizeCurrentSegment();
 
-    // Calculate stats for display
-    const attentiveTime = (attentionResult.framesDetected / Math.max(attentionResult.totalFrames, 1)) * watchDuration;
-    const isEligible = attentionResult.score >= 70 && eyeTrackingEnabled;
-    const isPerfectAttention = attentionResult.score >= 95 && eyeTrackingEnabled;
+    // Use time-weighted attentiveMs for display; eligibility requires passed (score + cashEligible)
+    const attentiveTime = attentionResult.totalMs > 0 ? attentionResult.attentiveMs / 1000 : 0;
+    const isEligible = attentionResult.passed && eyeTrackingEnabled;
+    const isPerfectAttention = attentionResult.score >= 95 && eyeTrackingEnabled && attentionResult.cashEligible;
     
     // Record for achievements
     if (eyeTrackingEnabled) {
@@ -346,16 +349,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         return;
       }
 
-      // Validate with backend
+      // Validate with backend: server recomputes score from samples only (client score not authoritative).
       const { data, error } = await supabase.functions.invoke('validate-attention', {
         body: {
-          userId: user.id,
           contentId: resolvedContentId,
           attentionScore: attentionResult.score,
+          attentiveMs: attentionResult.attentiveMs,
+          totalMs: attentionResult.totalMs,
+          source: attentionResult.source,
+          sourceConfidence: attentionResult.sourceConfidence,
           watchDuration,
           totalDuration: duration,
           framesDetected: attentionResult.framesDetected,
           totalFrames: attentionResult.totalFrames,
+          samples: attentionResult.samples,
         },
       });
 
@@ -368,7 +375,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       logger.log('[MediaCard] Validation result:', data);
 
       if (data?.validated) {
-        onComplete?.(true, attentionResult.score, watchDuration);
+        onComplete?.(true, attentionResult.score, watchDuration, data.attentionSessionId ?? undefined);
       } else {
         onComplete?.(false, attentionResult.score);
       }
@@ -376,7 +383,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       logger.error('[MediaCard] Validation failed:', err);
       onComplete?.(false, attentionResult.score);
     }
-  }, [contentId, src, duration, getAttentionResult, onComplete, eyeTrackingEnabled, recordVideoCompletion, user]);
+  }, [contentId, src, duration, getAttentionResult, onComplete, eyeTrackingEnabled, recordVideoCompletion, user, stopPromoAttention, attentionStreakSec, finalizeCurrentSegment, haptic, sessionStats, soundEffects]);
 
   // Progress tracking for images/promos without video
   useEffect(() => {
@@ -402,15 +409,23 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     return () => clearInterval(interval);
   }, [isActive, isPlaying, duration, videoSrc, isPromoContent, handlePromoComplete, onComplete, onProgress]);
 
-  // Video element progress tracking
+  // Video element progress tracking — throttle state updates to ~4/s so we don't rerender every frame.
+  const lastTimeUpdateTs = useRef(0);
+  const VIDEO_PROGRESS_THROTTLE_MS = 250;
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !isActive) return;
 
     const handleTimeUpdate = () => {
-      const newProgress = (video.currentTime / video.duration) * 100;
+      const now = Date.now();
+      if (now - lastTimeUpdateTs.current < VIDEO_PROGRESS_THROTTLE_MS) return;
+      lastTimeUpdateTs.current = now;
+      const t = video.currentTime;
+      const d = video.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const newProgress = (t / d) * 100;
       setProgress(newProgress);
-      setCurrentTime(video.currentTime);
+      setCurrentTime(t);
       onProgress?.(newProgress);
     };
 
@@ -614,8 +629,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </div>
       )}
 
-      {/* Perfect attention celebration - disabled */}
-      {false && showPerfectCelebration && (
+      {/* Perfect attention celebration */}
+      {showPerfectCelebration && (
         <PerfectAttentionCelebration
           isActive={showPerfectCelebration}
           onComplete={() => setShowPerfectCelebration(false)}
@@ -774,31 +789,54 @@ export const MediaCard: React.FC<MediaCardProps> = ({
         </button>
       )}
 
-      {/* Tap-to-reveal playback controls - centered on screen */}
+      {/* Accessible way to open playback controls when playing and controls hidden (keyboard/screen reader) */}
+      {type !== 'image' && isPlaying && !showControls && !attentionPaused && (
+        <button
+          type="button"
+          onClick={() => {
+            setShowControls(true);
+            resetControlsTimeout();
+          }}
+          className="absolute bottom-4 right-4 z-10 w-10 h-10 rounded-full bg-background/70 backdrop-blur-md flex items-center justify-center border border-border/50 hover:bg-background/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
+          aria-label="Show playback controls"
+        >
+          <Volume2 className="w-5 h-5 text-foreground" aria-hidden />
+        </button>
+      )}
+
+      {/* Tap-to-reveal playback controls - centered on screen; also reachable via "Show playback controls" button */}
       {showControls && type !== 'image' && (
-        <div className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in">
+        <div
+          className="absolute inset-0 flex items-center justify-center z-20 animate-fade-in"
+          role="group"
+          aria-label="Playback controls"
+        >
           <div className="flex flex-col items-center gap-4">
             {/* Mute - top */}
             <button
+              type="button"
               onClick={toggleMute}
-              className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-lg"
+              className="w-12 h-12 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+              aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? (
-                <VolumeX className="w-5 h-5 text-foreground" />
+                <VolumeX className="w-5 h-5 text-foreground" aria-hidden />
               ) : (
-                <Volume2 className="w-5 h-5 text-foreground" />
+                <Volume2 className="w-5 h-5 text-foreground" aria-hidden />
               )}
             </button>
 
             {/* Play/Pause - bottom, larger */}
             <button
+              type="button"
               onClick={togglePlayPause}
-              className="w-16 h-16 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-xl"
+              className="w-16 h-16 rounded-full bg-background/60 backdrop-blur-md flex items-center justify-center transition-all hover:bg-background/80 active:scale-95 shadow-xl focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+              aria-label={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? (
-                <Pause className="w-7 h-7 text-foreground" />
+                <Pause className="w-7 h-7 text-foreground" aria-hidden />
               ) : (
-                <Play className="w-7 h-7 text-foreground ml-1" />
+                <Play className="w-7 h-7 text-foreground ml-1" aria-hidden />
               )}
             </button>
           </div>

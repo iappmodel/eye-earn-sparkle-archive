@@ -25,6 +25,8 @@ interface ControlsVisibilityContextType {
   /** When true, buttons stay visible (no auto-hide). When false, buttons can auto-hide. */
   buttonsPinned: boolean;
   setButtonsPinned: (pinned: boolean) => void;
+  /** Reveal controls (unhide if hidden, show if auto-hidden). Use for accessible "Show controls" button. */
+  revealControls: () => void;
 }
 
 const ControlsVisibilityContext = createContext<ControlsVisibilityContextType | null>(null);
@@ -38,6 +40,7 @@ export const useControlsVisibility = () => {
       buttonsHidden: false,
       buttonsPinned: false,
       setButtonsPinned: () => {},
+      revealControls: () => {},
     };
   }
   return context;
@@ -221,8 +224,17 @@ export const ControlsVisibilityProvider: React.FC<ControlsVisibilityProviderProp
         ? isVisible
         : true;
 
+  const revealControls = useCallback(() => {
+    if (buttonsHidden) {
+      setButtonsHidden(false);
+      setButtonsHiddenState(false);
+      window.dispatchEvent(new Event('storage'));
+    }
+    showControls();
+  }, [buttonsHidden, showControls]);
+
   return (
-    <ControlsVisibilityContext.Provider value={{ isVisible: finalVisible, showControls, buttonsHidden, buttonsPinned, setButtonsPinned: setPinned }}>
+    <ControlsVisibilityContext.Provider value={{ isVisible: finalVisible, showControls, buttonsHidden, buttonsPinned, setButtonsPinned: setPinned, revealControls }}>
       {children}
     </ControlsVisibilityContext.Provider>
   );
@@ -496,6 +508,38 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
   );
 };
 
+// Always-available accessible button to open controls (for keyboard/screen reader when controls are hidden)
+const AccessibleShowControlsButton: React.FC = () => {
+  const { isVisible, revealControls } = useControlsVisibility();
+  const { medium } = useHapticFeedback();
+
+  if (isVisible) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        medium();
+        revealControls();
+      }}
+      className={cn(
+        'fixed right-3 z-50',
+        'w-10 h-10 rounded-full',
+        'flex items-center justify-center',
+        'bg-primary/90 text-primary-foreground',
+        'border-2 border-primary-foreground/30',
+        'shadow-lg hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background',
+        'transition-transform'
+      )}
+      style={{ bottom: 'calc(100px + env(safe-area-inset-bottom, 0px))' }}
+      aria-label="Show controls"
+      title="Show controls"
+    >
+      <Eye className="w-5 h-5" aria-hidden />
+    </button>
+  );
+};
+
 // Visibility Toggle Button: tap to keep buttons in place (pinned), tap again to let them auto-hide (unpinned)
 const VisibilityToggleButton: React.FC = () => {
   const { buttonsPinned, setButtonsPinned } = useControlsVisibility();
@@ -710,6 +754,8 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
   return (
     <>
+      {/* Always-available accessible button when controls are hidden */}
+      <AccessibleShowControlsButton />
       {/* Right side: entire stack (including visibility toggle) hides together; tap screen to bring back */}
       <div 
         className={cn(
@@ -968,8 +1014,9 @@ export const QuickVisibilityToggle: React.FC = () => {
           : 'bg-muted/30 border-border/40 text-muted-foreground hover:bg-muted/50'
       )}
       title={isHidden ? 'Show buttons (or double-tap screen)' : 'Hide buttons (or double-tap screen)'}
+      aria-label={isHidden ? 'Show buttons' : 'Hide buttons'}
     >
-      <span className={cn('transition-all duration-300', isAnimating && 'rotate-180 scale-110')}>
+      <span className={cn('transition-all duration-300', isAnimating && 'rotate-180 scale-110')} aria-hidden>
         {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
       </span>
     </button>

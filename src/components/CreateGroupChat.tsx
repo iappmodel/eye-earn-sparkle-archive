@@ -46,7 +46,7 @@ export const CreateGroupChat: React.FC<CreateGroupChatProps> = ({ isOpen, onClos
   const loadUsers = async () => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('public_profiles')
         .select('id, user_id, username, display_name, avatar_url')
         .neq('user_id', user?.id)
         .limit(50);

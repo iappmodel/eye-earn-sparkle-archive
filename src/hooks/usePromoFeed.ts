@@ -222,7 +222,7 @@ export function usePromoFeed(options: UsePromoFeedOptions = {}): UsePromoFeedRet
       if (!contentErr && contentRows?.length) {
         const userIds = [...new Set(contentRows.map((r: { user_id: string }) => r.user_id))];
         const { data: profiles } = await supabase
-          .from('profiles')
+          .from('public_profiles')
           .select('user_id, username, display_name, avatar_url')
           .in('user_id', userIds);
         const profileMap = new Map(

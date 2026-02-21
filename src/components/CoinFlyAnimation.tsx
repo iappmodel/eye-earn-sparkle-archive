@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useAccessibility } from '@/contexts/AccessibilityContext';
 
 interface Coin {
   id: number;
@@ -20,7 +20,7 @@ export const CoinFlyAnimation: React.FC<CoinFlyAnimationProps> = ({
   amount,
   onComplete,
 }) => {
-  const prefersReducedMotion = useReducedMotion();
+  const { reducedMotion: prefersReducedMotion } = useAccessibility();
   const [coins, setCoins] = useState<Coin[]>([]);
   const [isVisible, setIsVisible] = useState(true);
 

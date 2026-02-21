@@ -684,7 +684,6 @@ export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, on
         isOpen={showComments}
         onClose={() => setShowComments(false)}
         contentId={currentPost?.id ?? ''}
-        contentType="user_content"
         contentType="friend_post"
       />
       <ShareSheet

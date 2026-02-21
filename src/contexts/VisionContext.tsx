@@ -373,9 +373,11 @@ export function VisionProvider({ children }: VisionProviderProps) {
         void visionStream.startFromUserGesture();
         return;
       }
-      if (requestCountRef.current > 0) {
-        void startCameraInternal();
-      }
+      // Pre-start camera on user gesture even when requestCount is 0, so getUserMedia
+      // runs inside the gesture stack (required on iOS). Consumers will call requestCamera
+      // later from effects; this ensures the camera is ready. No phantom request—we just
+      // start; requestCamera will add its ref count when the effect runs.
+      void startCameraInternal();
     };
 
     window.addEventListener('cameraUserStart', handler);

@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OfflineProvider } from "@/contexts/OfflineContext";
 import { LocalizationProvider } from "@/contexts/LocalizationContext";
@@ -38,6 +38,7 @@ import { VideoMuteProvider } from "@/contexts/VideoMuteContext";
 import { GestureTutorialProvider } from "@/contexts/GestureTutorialContext";
 import { VisionStreamProvider } from "@/contexts/VisionStreamContext";
 import { VisionProvider } from "@/contexts/VisionContext";
+import { useGazeBackendBridge } from "@/hooks/useGazeBackendBridge";
 
 // Code-split heavy features (studio, create/live, admin)
 const Studio = lazy(() => import("./pages/Studio"));
@@ -89,6 +90,11 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 
 const queryClient = new QueryClient();
 
+function GazeBackendBridge() {
+  useGazeBackendBridge();
+  return null;
+}
+
 const AppContent = () => {
   const { isSwipingBack, swipeProgress } = useSwipeBack({
     enabled: true,
@@ -136,15 +142,8 @@ const AppContent = () => {
       <OfflineBanner />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-        <Route path="/auth" element={<Auth />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Index />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/auth" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Index />} />
         <Route
           path="/create"
           element={
@@ -239,6 +238,7 @@ const App = () => (
                         <GestureTutorialProvider>
                           <VisionStreamProvider>
                             <VisionProvider>
+                              <GazeBackendBridge />
                               <AppContent />
                             </VisionProvider>
                           </VisionStreamProvider>

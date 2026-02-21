@@ -222,11 +222,14 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
   const skinTonePrevFrameRef = useRef<{ data: Uint8ClampedArray | null }>({ data: null });
 
   const visionCtx = useVision();
-  const useContextPath = USE_VISION_CONTEXT && !!visionCtx && enabled && !rcEnabled;
+  const rcSettings = loadRemoteControlSettings();
+  const gazeBackend = rcSettings.gazeBackend ?? 'mediapipe';
+  const useAlternateGaze = gazeBackend === 'gazecloud' || gazeBackend === 'webgazer';
+  // When gazeBackend is gazecloud/webgazer, GazeBackendBridge emits visionEngineSample; no own camera
+  const useContextPath = !useAlternateGaze && USE_VISION_CONTEXT && !!visionCtx && enabled && !rcEnabled;
   // When RC is off, run our own Vision Engine for MediaPipe-quality attention (no skin-tone fallback)
   // When useContextPath, we use VisionContext instead of own camera
-  const useOwnVision = enabled && !rcEnabled && !useContextPath;
-  const rcSettings = loadRemoteControlSettings();
+  const useOwnVision = !useAlternateGaze && enabled && !rcEnabled && !useContextPath;
   const vision = useVisionEngine({
     enabled: useOwnVision,
     videoRef,
@@ -681,32 +684,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     }
   }, [useOwnVision, vision.hasFace, vision.landmarks]);
 
-  // Sync rcEnabled and react to Remote Control enable/disable
-  useEffect(() => {
-    const handler = () => {
-      const next = loadRemoteControlSettings().enabled;
-      setRcEnabled(next);
-      if (next) {
-        // RC turned on – release our camera (own or context); Vision Engine will provide data via event
-        if (contextReleaseRef.current) {
-          contextReleaseRef.current();
-          contextReleaseRef.current = null;
-        }
-        releaseOwnCamera();
-        usingVisionEngineRef.current = true;
-        setState((prev) => ({ ...prev, source: 'vision_engine', visionStatus: 'active' }));
-      } else if (enabled) {
-        // RC turned off – start our camera + Vision or use context for MediaPipe-quality attention
-        usingVisionEngineRef.current = false;
-        startTracking();
-      }
-    };
-    handler(); // initial sync
-    window.addEventListener('remoteControlSettingsChanged', handler);
-    return () => window.removeEventListener('remoteControlSettingsChanged', handler);
-  }, [enabled, releaseOwnCamera, startTracking]);
-
-  // Stop tracking - defined first so startTracking can reference it
+  // Stop tracking - defined before startTracking so it can be referenced
   const stopTracking = useCallback(() => {
     if (visionFallbackTimerRef.current) {
       clearTimeout(visionFallbackTimerRef.current);
@@ -933,6 +911,31 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       }));
     }
   }, []);
+
+  // Sync rcEnabled and react to Remote Control enable/disable (must be after startTracking is defined)
+  useEffect(() => {
+    const handler = () => {
+      const next = loadRemoteControlSettings().enabled;
+      setRcEnabled(next);
+      if (next) {
+        // RC turned on – release our camera (own or context); Vision Engine will provide data via event
+        if (contextReleaseRef.current) {
+          contextReleaseRef.current();
+          contextReleaseRef.current = null;
+        }
+        releaseOwnCamera();
+        usingVisionEngineRef.current = true;
+        setState((prev) => ({ ...prev, source: 'vision_engine', visionStatus: 'active' }));
+      } else if (enabled) {
+        // RC turned off – start our camera + Vision or use context for MediaPipe-quality attention
+        usingVisionEngineRef.current = false;
+        startTracking();
+      }
+    };
+    handler(); // initial sync
+    window.addEventListener('remoteControlSettingsChanged', handler);
+    return () => window.removeEventListener('remoteControlSettingsChanged', handler);
+  }, [enabled, releaseOwnCamera, startTracking]);
 
   // Reset attention for new content (e.g. new promo video); resets time-weighted ledger.
   const resetAttention = useCallback(() => {

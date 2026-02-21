@@ -113,6 +113,8 @@ export const SlowBlinkTraining: React.FC<SlowBlinkTrainingProps> = ({
     driverPriority: true,
     visionBackend: loadRemoteControlSettings().visionBackend ?? 'face_mesh',
     blinkConfig: { calibrationMode: true },
+    minDetectionConfidence: 0.4,
+    minTrackingConfidence: 0.4,
   });
 
   visionRef.current = { eyeOpenness: vision.eyeOpenness, hasFace: vision.hasFace };

@@ -84,6 +84,8 @@ export interface RemoteControlSettings {
   extendedGazeCalibration?: boolean;
   /** Vision backend: face_mesh (legacy) or face_landmarker (Phase 3) */
   visionBackend?: 'face_mesh' | 'face_landmarker';
+  /** Gaze source: mediapipe (default), gazecloud (higher accuracy, server-side), webgazer (fallback) */
+  gazeBackend?: 'mediapipe' | 'gazecloud' | 'webgazer';
 }
 
 export interface GhostButton {

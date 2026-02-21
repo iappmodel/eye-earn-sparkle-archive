@@ -556,6 +556,8 @@ export const FacialExpressionScanning: React.FC<FacialExpressionScanningProps> =
     driverPriority: true,
     visionBackend: loadRemoteControlSettings().visionBackend ?? 'face_mesh',
     blinkConfig: { calibrationMode: true },
+    minDetectionConfidence: 0.4,
+    minTrackingConfidence: 0.4,
   });
 
   // Keep a ref that always points to the latest vision state so that

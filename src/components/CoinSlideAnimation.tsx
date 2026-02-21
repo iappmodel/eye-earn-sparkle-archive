@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useAccessibility } from '@/contexts/AccessibilityContext';
 
 interface CoinSlideAnimationProps {
   type: 'vicoin' | 'icoin';
@@ -15,7 +15,7 @@ export const CoinSlideAnimation: React.FC<CoinSlideAnimationProps> = ({
   isAnimating,
   onComplete,
 }) => {
-  const prefersReducedMotion = useReducedMotion();
+  const { reducedMotion: prefersReducedMotion } = useAccessibility();
 
   React.useEffect(() => {
     if (isAnimating) {

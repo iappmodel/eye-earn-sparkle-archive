@@ -1439,6 +1439,35 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 </div>
               </div>
 
+              {/* Gaze backend (for eye-tracking when RC is off) */}
+              <div className="space-y-2 p-4 rounded-lg border border-border">
+                <h4 className="font-medium">Gaze Backend</h4>
+                <p className="text-sm text-muted-foreground">Gaze source for attention tracking. MediaPipe is default. GazeCloud (higher accuracy) requires domain registration. WebGazer self-calibrates from clicks.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={(settings.gazeBackend ?? 'mediapipe') === 'mediapipe' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => updateSettings({ gazeBackend: 'mediapipe' })}
+                  >
+                    MediaPipe
+                  </Button>
+                  <Button
+                    variant={settings.gazeBackend === 'gazecloud' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => updateSettings({ gazeBackend: 'gazecloud' })}
+                  >
+                    GazeCloud (Beta)
+                  </Button>
+                  <Button
+                    variant={settings.gazeBackend === 'webgazer' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => updateSettings({ gazeBackend: 'webgazer' })}
+                  >
+                    WebGazer
+                  </Button>
+                </div>
+              </div>
+
               {/* Extended calibration (16 points) */}
               <div className="flex items-center justify-between p-4 rounded-lg border border-border">
                 <div>

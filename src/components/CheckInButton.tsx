@@ -99,16 +99,15 @@ export const CheckInButton: React.FC<CheckInButtonProps> = ({
         throw new Error('No active session');
       }
 
+      const idempotencyKey = crypto.randomUUID();
       const { data, error } = await supabase.functions.invoke('verify-checkin', {
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+        },
         body: {
           promotionId: promotion.id,
-          businessName: promotion.business_name,
-          promotionLat: promotion.latitude,
-          promotionLng: promotion.longitude,
           userLat,
           userLng,
-          rewardAmount: promotion.reward_amount,
-          rewardType: promotion.reward_type === 'both' ? 'vicoin' : promotion.reward_type,
           maxDistanceMeters: 100,
         },
       });

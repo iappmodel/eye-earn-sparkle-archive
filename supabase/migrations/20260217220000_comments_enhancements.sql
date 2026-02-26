@@ -1,6 +1,21 @@
 -- Comments enhancements: content_type, sync comments_count, realtime
 -- Supports both user_content (UUID) and promotions (UUID) via content_id TEXT
 
+-- 0. Create comments table if missing (base table for user_content and promotion comments)
+CREATE TABLE IF NOT EXISTS public.comments (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  content_id text NOT NULL,
+  content text NOT NULL,
+  parent_id uuid REFERENCES public.comments(id) ON DELETE CASCADE,
+  likes_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comments_content_id ON public.comments(content_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user_id ON public.comments(user_id);
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+
 -- 1. Add content_type to distinguish content source (user_content vs promotion)
 ALTER TABLE public.comments
   ADD COLUMN IF NOT EXISTS content_type TEXT DEFAULT 'user_content'

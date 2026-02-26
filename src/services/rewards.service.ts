@@ -70,6 +70,7 @@ export interface TransactionPeriodSummary {
 // Reward types — platform rewards VICOIN for login, usage, and engagement
 export type RewardType =
   | 'promo_view'
+  | 'promo_action_complete'
   | 'task_complete'
   | 'referral'
   | 'milestone'
@@ -178,16 +179,18 @@ class RewardsService {
           // supabase-js returns FunctionsHttpError with `context` as a Response object.
           const ctx = (error as any)?.context;
           let parsedError: string | undefined;
+          let parsedCode: string | undefined;
           if (ctx && typeof ctx === 'object' && typeof (ctx as Response).json === 'function') {
             try {
               const parsed = await (ctx as Response).clone().json().catch(() => null);
               parsedError = parsed?.error || parsed?.message;
+              parsedCode = parsed?.code;
             } catch { /* ignore */ }
           }
           const message = typeof parsedError === 'string' && parsedError.length > 0
             ? parsedError
             : (error as Error)?.message || 'Failed to issue reward';
-          return { success: false, error: message };
+          return { success: false, error: message, code: parsedCode };
         }
 
         // Check if response indicates failure - do not retry these
@@ -221,6 +224,8 @@ class RewardsService {
           if (result.success) return result;
           // Don't retry on user/business logic failures
           if (result.code === 'reward_already_claimed' || result.code === 'invalid_session' ||
+              result.code === 'action_not_supported' || result.code === 'action_not_found' || result.code === 'requirement_not_met' ||
+              result.code === 'self_interaction_not_rewardable' || result.code === 'invalid_content_id' || result.code === 'invalid_reward_type' ||
               result.error?.includes('already claimed') ||
               result.error?.includes('limit') ||
               result.error?.includes('attention session')) {
@@ -259,18 +264,12 @@ class RewardsService {
   }
 
   // Claim a reward
-  async claimReward(rewardId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { data, error } = await supabase.functions.invoke('claim-reward', {
-        body: { rewardId },
-      });
-
-      if (error) throw error;
-      return { success: true };
-    } catch (error) {
-      logger.error('[Rewards] Claim error:', error);
-      return { success: false, error: 'Failed to claim reward' };
-    }
+  async claimReward(_rewardId: string): Promise<{ success: boolean; error?: string }> {
+    logger.warn('[Rewards] claimReward() is deprecated; use issueReward()/recordView() with server-issued sessions.');
+    return {
+      success: false,
+      error: 'Claim flow is deprecated. Use the current reward issuance flow.',
+    };
   }
 
   /**
@@ -602,12 +601,12 @@ class RewardsService {
     radiusKm = 10
   ): Promise<Campaign[]> {
     try {
-      const { data, error } = await supabase.functions.invoke('get-nearby-campaigns', {
+      const { data, error } = await supabase.functions.invoke('get-nearby-promotions', {
         body: { latitude, longitude, radiusKm },
       });
 
       if (error) throw error;
-      return data?.campaigns || [];
+      return (data?.promotions || data?.campaigns || []) as Campaign[];
     } catch (error) {
       logger.error('[Rewards] Get nearby campaigns error:', error);
       return [];
@@ -643,18 +642,18 @@ class RewardsService {
 
   // Initiate withdrawal
   async initiateWithdrawal(
-    userId: string,
+    _userId: string,
     amount: number,
     coinType: CoinType,
     method: 'bank' | 'crypto' | 'paypal'
   ): Promise<{ success: boolean; transactionId?: string; error?: string }> {
     try {
-      const { data, error } = await supabase.functions.invoke('initiate-withdrawal', {
-        body: { userId, amount, coinType, method },
+      const { data, error } = await supabase.functions.invoke('request-payout', {
+        body: { amount, coinType, method },
       });
 
       if (error) throw error;
-      return { success: true, transactionId: data?.transactionId };
+      return { success: true, transactionId: data?.transaction_id ?? data?.transactionId };
     } catch (error) {
       logger.error('[Rewards] Withdrawal error:', error);
       return { success: false, error: 'Failed to initiate withdrawal' };

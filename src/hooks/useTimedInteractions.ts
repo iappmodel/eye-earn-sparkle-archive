@@ -35,6 +35,12 @@ interface UserSettings {
   showContributorBadges: boolean;
 }
 
+interface PublicProfileLite {
+  user_id: string;
+  username: string | null;
+  avatar_url: string | null;
+}
+
 export const useTimedInteractions = (contentId?: string) => {
   const { user } = useAuth();
   const [interactions, setInteractions] = useState<TimedInteraction[]>([]);
@@ -44,6 +50,25 @@ export const useTimedInteractions = (contentId?: string) => {
     showContributorBadges: true,
   });
   const [loading, setLoading] = useState(false);
+
+  const fetchPublicProfilesMap = useCallback(async (userIds: string[]) => {
+    const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return new Map<string, PublicProfileLite>();
+
+    const { data, error } = await supabase
+      .from('public_profiles')
+      .select('user_id, username, avatar_url')
+      .in('user_id', uniqueIds);
+
+    if (error || !data) {
+      console.warn('Failed to load public profiles for timed interactions:', error);
+      return new Map<string, PublicProfileLite>();
+    }
+
+    return new Map(
+      (data as PublicProfileLite[]).map((profile) => [profile.user_id, profile])
+    );
+  }, []);
 
   // Fetch user settings
   useEffect(() => {
@@ -76,24 +101,21 @@ export const useTimedInteractions = (contentId?: string) => {
       
       const { data, error } = await supabase
         .from('timed_interactions')
-        .select(`
-          *,
-          profiles:user_id (
-            username,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('content_id', contentId)
         .eq('is_visible', true)
         .order('timestamp_seconds', { ascending: true });
 
       if (!error && data) {
+        const profileMap = await fetchPublicProfilesMap(data.map((item: any) => item.user_id));
         const formattedInteractions = data.map((item: any) => ({
           ...item,
-          user: item.profiles ? {
-            username: item.profiles.username,
-            avatar_url: item.profiles.avatar_url,
-          } : undefined,
+          user: profileMap.get(item.user_id)
+            ? {
+                username: profileMap.get(item.user_id)?.username || 'Unknown',
+                avatar_url: profileMap.get(item.user_id)?.avatar_url || undefined,
+              }
+            : undefined,
         }));
         setInteractions(formattedInteractions);
       }
@@ -140,7 +162,7 @@ export const useTimedInteractions = (contentId?: string) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [contentId]);
+  }, [contentId, fetchPublicProfilesMap]);
 
   // Fetch contributors for content
   useEffect(() => {
@@ -149,23 +171,18 @@ export const useTimedInteractions = (contentId?: string) => {
     const fetchContributors = async () => {
       const { data, error } = await supabase
         .from('content_contributors')
-        .select(`
-          *,
-          profiles:user_id (
-            username,
-            avatar_url
-          )
-        `)
+        .select('*')
         .eq('content_id', contentId)
         .order('total_icoin_contributed', { ascending: false })
         .order('total_vicoin_contributed', { ascending: false })
         .limit(20);
 
       if (!error && data) {
+        const profileMap = await fetchPublicProfilesMap(data.map((item: any) => item.user_id));
         const formattedContributors = data.map((item: any) => ({
           user_id: item.user_id,
-          username: item.profiles?.username || 'Unknown',
-          avatar_url: item.profiles?.avatar_url,
+          username: profileMap.get(item.user_id)?.username || 'Unknown',
+          avatar_url: profileMap.get(item.user_id)?.avatar_url || undefined,
           total_icoin_contributed: item.total_icoin_contributed || 0,
           total_vicoin_contributed: item.total_vicoin_contributed || 0,
           interaction_count: item.interaction_count || 0,
@@ -176,7 +193,7 @@ export const useTimedInteractions = (contentId?: string) => {
     };
 
     fetchContributors();
-  }, [contentId]);
+  }, [contentId, fetchPublicProfilesMap]);
 
   // Add a timed interaction
   const addInteraction = useCallback(async (
@@ -259,16 +276,7 @@ export const useTimedInteractions = (contentId?: string) => {
     // Aggregate contributors across all content
     const { data, error } = await supabase
       .from('content_contributors')
-      .select(`
-        user_id,
-        total_icoin_contributed,
-        total_vicoin_contributed,
-        interaction_count,
-        profiles:user_id (
-          username,
-          avatar_url
-        )
-      `)
+      .select('user_id, total_icoin_contributed, total_vicoin_contributed, interaction_count')
       .in('content_id', contentIds);
 
     if (error || !data) return [];
@@ -285,12 +293,21 @@ export const useTimedInteractions = (contentId?: string) => {
       } else {
         aggregated.set(item.user_id, {
           user_id: item.user_id,
-          username: item.profiles?.username || 'Unknown',
-          avatar_url: item.profiles?.avatar_url,
+          username: 'Unknown',
+          avatar_url: undefined,
           total_icoin_contributed: item.total_icoin_contributed || 0,
           total_vicoin_contributed: item.total_vicoin_contributed || 0,
           interaction_count: item.interaction_count || 0,
         });
+      }
+    });
+
+    const profileMap = await fetchPublicProfilesMap(Array.from(aggregated.keys()));
+    aggregated.forEach((contributor, contributorUserId) => {
+      const profile = profileMap.get(contributorUserId);
+      if (profile) {
+        contributor.username = profile.username || 'Unknown';
+        contributor.avatar_url = profile.avatar_url || undefined;
       }
     });
 
@@ -299,7 +316,7 @@ export const useTimedInteractions = (contentId?: string) => {
       (a, b) => (b.total_icoin_contributed + b.total_vicoin_contributed) - 
                 (a.total_icoin_contributed + a.total_vicoin_contributed)
     );
-  }, [user]);
+  }, [user, fetchPublicProfilesMap]);
 
   return {
     interactions,

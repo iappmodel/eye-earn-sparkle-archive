@@ -184,18 +184,35 @@ export function PromotionDetails({ promotionId: propId, onClose, isModal = false
 
     setSubmittingReview(true);
     try {
-      const { error } = await supabase
-        .from('promotion_reviews')
-        .insert({
-          promotion_id: promotionId,
-          user_id: user.id,
+      const idempotencyKey = crypto.randomUUID();
+      const { data, error } = await supabase.functions.invoke('submit-promotion-review', {
+        headers: { 'idempotency-key': idempotencyKey },
+        body: {
+          promotionId,
           rating: newReview.rating,
           comment: newReview.comment || null,
-        });
+        },
+      });
 
-      if (error) throw error;
+      if (error) {
+        const errorWithContext = error as { context?: Response };
+        let message = error.message || 'Failed to submit review';
+        if (errorWithContext.context) {
+          try {
+            const payload = await errorWithContext.context.json() as { error?: string; code?: string };
+            if (payload?.error) message = payload.error;
+          } catch {
+            // keep fallback
+          }
+        }
+        throw new Error(message);
+      }
 
-      toast.success('Review submitted!');
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to submit review');
+      }
+
+      toast.success(data?.updated ? 'Review updated!' : 'Review submitted!');
       setNewReview({ rating: 5, comment: '' });
       loadReviews();
     } catch (error: any) {

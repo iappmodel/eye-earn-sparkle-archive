@@ -147,16 +147,15 @@ export const PromoCheckInFlow: React.FC<PromoCheckInFlowProps> = ({
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
 
+        const idempotencyKey = crypto.randomUUID();
         const { data, error } = await supabase.functions.invoke('verify-checkin', {
+          headers: {
+            'Idempotency-Key': idempotencyKey,
+          },
           body: {
             promotionId: promotion.id,
-            businessName: promotion.business_name,
-            promotionLat: promotion.latitude ?? userLat,
-            promotionLng: promotion.longitude ?? userLng,
             userLat,
             userLng,
-            rewardAmount: promotion.reward_amount,
-            rewardType: promotion.reward_type === 'both' ? 'vicoin' : promotion.reward_type,
             maxDistanceMeters: MAX_CHECKIN_DISTANCE_METERS,
           },
         });
@@ -232,20 +231,42 @@ export const PromoCheckInFlow: React.FC<PromoCheckInFlowProps> = ({
         // ignore
       }
     }
-    await earnings.completeAction('checkin');
-    await earnings.completeAction('qr_scan');
+    const checkinResult = await earnings.completeAction('checkin');
+    const qrResult = await earnings.completeAction('qr_scan');
     hapticSuccess();
     notificationSoundService.playReward?.();
-    toast.success('QR scanned! Check-in confirmed.');
+    if (checkinResult.rewarded || qrResult.rewarded) {
+      toast.success('QR scanned! Verified reward applied.');
+    } else {
+      toast.success('QR scanned! Check-in confirmed.', {
+        description: 'Some promo actions are recorded, but rewards are only granted for server-verified actions.',
+      });
+    }
     setStep('actions');
   }, [earnings, hasLocation, user, promotion.id, isDemo, checkInRecorded, recordCheckIn, hapticSuccess]);
 
   const handleCompleteAction = useCallback(
     async (actionId: string) => {
-      await earnings.completeAction(actionId);
+      const result = await earnings.completeAction(actionId);
       hapticSuccess();
       notificationSoundService.playReward?.();
-      toast.success('Action completed!');
+      if (result.rewarded) {
+        toast.success('Action completed! Reward granted.');
+      } else if (result.rewardErrorCode === 'action_not_supported') {
+        toast.success('Action completed.', {
+          description: 'Reward for this action is pending verified backend integration.',
+        });
+      } else if (result.rewardErrorCode === 'action_not_found' || result.rewardErrorCode === 'requirement_not_met') {
+        toast.success('Action recorded.', {
+          description: 'Reward will be granted after the action is verified by the backend.',
+        });
+      } else if (result.rewardError) {
+        toast.success('Action completed.', {
+          description: 'Reward could not be verified right now. Try again later.',
+        });
+      } else {
+        toast.success('Action completed!');
+      }
     },
     [earnings, hapticSuccess],
   );

@@ -124,64 +124,38 @@ export const CoinGifting: React.FC<CoinGiftingProps> = ({ vicoins, icoins, onGif
 
     setSending(true);
     try {
-      // Deduct from sender's balance
-      const balanceField = giftCoinType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
-      
-      const { error: deductError } = await supabase
-        .from('profiles')
-        .update({ [balanceField]: balance - amount })
-        .eq('user_id', user?.id);
-
-      if (deductError) throw deductError;
-
-      // Add to recipient's balance
-      const { data: recipientProfile, error: recipientFetchError } = await supabase
-        .from('profiles')
-        .select(balanceField)
-        .eq('user_id', selectedUser.user_id)
-        .single();
-
-      if (recipientFetchError) throw recipientFetchError;
-
-      const currentRecipientBalance = (recipientProfile as any)[balanceField] || 0;
-      
-      const { error: addError } = await supabase
-        .from('profiles')
-        .update({ [balanceField]: currentRecipientBalance + amount })
-        .eq('user_id', selectedUser.user_id);
-
-      if (addError) throw addError;
-
-      // Record the gift
-      const { error: giftError } = await supabase
-        .from('coin_gifts')
-        .insert({
-          sender_id: user?.id,
-          recipient_id: selectedUser.user_id,
-          amount,
-          coin_type: giftCoinType,
-          message: giftMessage || null,
-        });
-
-      if (giftError) throw giftError;
-
-      // Create transaction records
-      await supabase.from('transactions').insert([
-        {
-          user_id: user?.id,
-          type: 'gift_sent',
-          coin_type: giftCoinType,
-          amount: -amount,
-          description: `Gift to @${selectedUser.username}`,
+      const idempotencyKey = crypto.randomUUID();
+      const { data, error } = await supabase.functions.invoke('send-coin-gift', {
+        headers: {
+          'idempotency-key': idempotencyKey,
         },
-        {
-          user_id: selectedUser.user_id,
-          type: 'gift_received',
-          coin_type: giftCoinType,
+        body: {
+          recipientId: selectedUser.user_id,
           amount,
-          description: `Gift from @${user?.email?.split('@')[0] || 'user'}`,
+          coinType: giftCoinType,
+          message: giftMessage.trim() || undefined,
+          idempotencyKey,
         },
-      ]);
+      });
+
+      if (error) {
+        let message = error.message || 'Failed to send gift';
+        const errorWithContext = error as { context?: Response };
+        if (errorWithContext.context) {
+          try {
+            const payload = await errorWithContext.context.json() as { error?: string };
+            if (payload?.error) message = payload.error;
+          } catch {
+            // Keep fallback message.
+          }
+        }
+        throw new Error(message);
+      }
+
+      const result = data as { success?: boolean; error?: string };
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to send gift');
+      }
 
       toast({ title: `Gift sent to @${selectedUser.username}!` });
       setIsGifting(false);
@@ -194,7 +168,10 @@ export const CoinGifting: React.FC<CoinGiftingProps> = ({ vicoins, icoins, onGif
       onGiftSent?.();
     } catch (error) {
       console.error('Error sending gift:', error);
-      toast({ title: 'Failed to send gift', variant: 'destructive' });
+      toast({
+        title: error instanceof Error ? error.message : 'Failed to send gift',
+        variant: 'destructive',
+      });
     } finally {
       setSending(false);
     }

@@ -2,8 +2,44 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
 import { getCorsHeadersStrict } from "../_shared/cors.ts";
+import { checkRewardRateLimit } from "../_shared/rateLimit.ts";
 
 const EVENT_TYPES = ['view_start', 'view_progress', 'view_complete', 'like', 'unlike', 'share', 'save', 'unsave', 'feedback', 'update', 'skip'] as const;
+const VIEW_EVENTS = new Set<string>(['view_start', 'view_progress', 'view_complete']);
+const RATE_LIMITED_EVENTS = new Set<string>(['view_complete', 'share', 'like', 'unlike', 'save', 'unsave', 'feedback', 'skip']);
+const STRICT_CONTENT_VALIDATION_EVENTS = new Set<string>([
+  'view_start',
+  'view_progress',
+  'view_complete',
+  'share',
+  'like',
+  'unlike',
+  'save',
+  'unsave',
+  'feedback',
+  'skip',
+]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_WATCH_OVERRUN_RATIO = 2.0;
+const MAX_WATCH_OVERRUN_SECONDS = 30;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+class TrackInteractionHttpError extends Error {
+  status: number;
+  code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
 
 const MetadataSchema = z.object({
   device_type: z.string().max(50).optional(),
@@ -35,9 +71,11 @@ const TrackInteractionSchema = z.union([
 ]);
 
 type SingleEvent = z.infer<typeof SingleEventSchema>;
+// deno-lint-ignore no-explicit-any
+export type SupabaseClientLike = any;
 
 async function processOne(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClientLike,
   user: { id: string },
   event: SingleEvent
 ): Promise<{ interaction: any; prefsUpdated: boolean }> {
@@ -47,30 +85,98 @@ async function processOne(
     action, feedback, metadata, contentOwnerId,
   } = event;
 
-  const watchCompletionRate = totalDuration > 0 ? (watchDuration / totalDuration) * 100 : 0;
-
   const lastEventType = action === 'update' ? 'view_progress' : action;
-  const isViewEvent = ['view_start', 'view_progress', 'view_complete'].includes(action);
+  const isViewEvent = VIEW_EVENTS.has(action);
+  const hasWatchMetrics = watchDuration > 0 || totalDuration > 0;
+
+  if (action === 'feedback' && !feedback) {
+    throw new TrackInteractionHttpError(400, 'invalid_feedback', 'Feedback action requires feedback value');
+  }
+
+  if (isViewEvent) {
+    if (hasWatchMetrics && totalDuration <= 0) {
+      throw new TrackInteractionHttpError(400, 'invalid_view_metrics', 'totalDuration must be greater than 0 when watch metrics are provided');
+    }
+
+    if (watchDuration < 0 || totalDuration < 0) {
+      throw new TrackInteractionHttpError(400, 'invalid_view_metrics', 'Watch metrics cannot be negative');
+    }
+
+    if (totalDuration > 0) {
+      const maxAllowedWatchDuration = Math.max(
+        totalDuration * MAX_WATCH_OVERRUN_RATIO,
+        totalDuration + MAX_WATCH_OVERRUN_SECONDS
+      );
+      if (watchDuration > maxAllowedWatchDuration) {
+        throw new TrackInteractionHttpError(400, 'invalid_view_metrics', 'watchDuration is not plausible for the provided totalDuration');
+      }
+    }
+
+    if (action === 'view_complete' && (watchDuration <= 0 || totalDuration <= 0)) {
+      throw new TrackInteractionHttpError(400, 'invalid_view_metrics', 'view_complete requires positive watchDuration and totalDuration');
+    }
+  } else if (hasWatchMetrics && action !== 'update') {
+    throw new TrackInteractionHttpError(400, 'invalid_view_metrics', 'Watch metrics are only allowed on view events');
+  }
+
+  const watchCompletionRate = totalDuration > 0
+    ? clamp((watchDuration / totalDuration) * 100, 0, 100)
+    : 0;
+
+  let resolvedContentOwnerId: string | null = null;
+  if (isUuid(contentId)) {
+    const { data: contentRow, error: contentLookupError } = await supabase
+      .from('user_content')
+      .select('id, user_id, status')
+      .eq('id', contentId)
+      .limit(1)
+      .maybeSingle();
+
+    if (contentLookupError) {
+      console.error('[TrackInteraction] Content lookup error:', contentLookupError);
+      throw contentLookupError;
+    }
+
+    const isActiveContent = !!contentRow && String(contentRow.status ?? 'active') === 'active';
+    if (STRICT_CONTENT_VALIDATION_EVENTS.has(action) && !isActiveContent) {
+      throw new TrackInteractionHttpError(400, 'invalid_content', 'Content not found or inactive');
+    }
+
+    resolvedContentOwnerId = contentRow?.user_id ?? null;
+  }
 
   const row: Record<string, unknown> = {
     user_id: user.id,
     content_id: contentId,
     content_type: contentType,
-    watch_duration: watchDuration,
-    total_duration: totalDuration,
-    watch_completion_rate: watchCompletionRate,
-    attention_score: attentionScore,
-    liked: action === 'like' ? true : action === 'unlike' ? false : liked,
-    shared: action === 'share' ? true : shared,
-    skipped: action === 'skip' ? true : skipped,
     tags,
     category,
     last_event_type: lastEventType,
     metadata: metadata ?? {},
-    saved: action === 'save' ? true : action === 'unsave' ? false : saved,
   };
 
-  if (contentOwnerId) {
+  // Only write watch metrics on view events so like/share/feedback do not wipe prior watch evidence.
+  if (isViewEvent) {
+    row.watch_duration = watchDuration;
+    row.total_duration = totalDuration;
+    row.watch_completion_rate = watchCompletionRate;
+    row.attention_score = attentionScore;
+  } else if (attentionScore > 0) {
+    row.attention_score = attentionScore;
+  }
+
+  // Only update sticky booleans when the action actually toggles them.
+  if (action === 'like') row.liked = true;
+  if (action === 'unlike') row.liked = false;
+  if (action === 'share') row.shared = true;
+  if (action === 'skip') row.skipped = true;
+  if (action === 'save') row.saved = true;
+  if (action === 'unsave') row.saved = false;
+
+  // Server-authoritative owner resolution for UUID content rows; never trust client-provided owner id over DB.
+  if (resolvedContentOwnerId) {
+    row.content_owner_id = resolvedContentOwnerId;
+  } else if (contentOwnerId && !isUuid(contentId)) {
     row.content_owner_id = contentOwnerId;
   }
 
@@ -163,20 +269,12 @@ async function processOne(
   return { interaction, prefsUpdated: shouldUpdatePrefs };
 }
 
-serve(async (req) => {
-  const cors = getCorsHeadersStrict(req);
-  if (!cors.ok) return cors.response;
-  const headers = { ...cors.headers, 'Content-Type': 'application/json' };
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: cors.headers });
-  }
-
+export async function handleTrackInteraction(
+  req: Request,
+  supabase: SupabaseClientLike,
+  headers: Record<string, string>
+): Promise<Response> {
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -210,6 +308,29 @@ serve(async (req) => {
       ? data.batch
       : [data as SingleEvent];
 
+    const hasRateLimitedAction = events.some((event) => RATE_LIMITED_EVENTS.has(event.action));
+    if (hasRateLimitedAction) {
+      const rateLimit = await checkRewardRateLimit(supabase, user.id, req);
+      if (!rateLimit.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: 'Too many requests',
+            code: 'rate_limit_exceeded',
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+            success: false,
+          }),
+          {
+            status: 429,
+            headers: {
+              ...headers,
+              'Content-Type': 'application/json',
+              'Retry-After': String(rateLimit.retryAfterSeconds),
+            },
+          }
+        );
+      }
+    }
+
     const results: { contentId: string; watchCompletionRate?: number; attentionScore?: number; saved?: boolean }[] = [];
 
     for (const event of events) {
@@ -234,10 +355,33 @@ serve(async (req) => {
     );
   } catch (error: unknown) {
     console.error('[TrackInteraction] Error:', error);
+    if (error instanceof TrackInteractionHttpError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code, success: false }),
+        { status: error.status, headers: { ...headers, 'Content-Type': 'application/json' } }
+      );
+    }
     const message = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
       JSON.stringify({ error: message, success: false }),
       { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve(async (req) => {
+    const cors = getCorsHeadersStrict(req);
+    if (!cors.ok) return cors.response;
+    const headers = { ...cors.headers, 'Content-Type': 'application/json' };
+
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { headers: cors.headers });
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    return await handleTrackInteraction(req, supabase, headers);
+  });
+}

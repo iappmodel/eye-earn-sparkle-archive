@@ -3,7 +3,13 @@
  * First request with a key is processed and response cached; duplicate keys return cached response.
  */
 
-export type IdempotencyScope = "issue_reward" | "validate_attention" | "verify_checkin";
+export type IdempotencyScope =
+  | "issue_reward"
+  | "validate_attention"
+  | "verify_checkin"
+  | "request_payout"
+  | "send_coin_gift"
+  | "submit_promotion_review";
 
 const IDEMPOTENCY_TTL_HOURS = 24;
 

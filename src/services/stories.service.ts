@@ -158,17 +158,18 @@ export async function recordStoryView(contentId: string, _contentOwnerId: string
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  await supabase.from('content_interactions').upsert(
-    {
-      user_id: user.id,
-      content_id: contentId,
-      content_type: 'story',
-      watch_duration: 1,
-      watch_completion_rate: 100,
-    },
-    {
-      onConflict: 'user_id,content_id',
-      ignoreDuplicates: false,
-    }
-  );
+  try {
+    await supabase.functions.invoke('track-interaction', {
+      body: {
+        contentId,
+        contentType: 'story',
+        action: 'view_complete',
+        watchDuration: 1,
+        totalDuration: 1,
+        attentionScore: 0,
+      },
+    });
+  } catch (error) {
+    console.warn('[StoriesService] Failed to record story view via track-interaction:', error);
+  }
 }

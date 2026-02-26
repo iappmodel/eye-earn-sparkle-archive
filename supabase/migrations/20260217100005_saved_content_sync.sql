@@ -22,6 +22,7 @@ BEGIN
   ADD CONSTRAINT saved_content_user_id_content_id_key UNIQUE (user_id, content_id);
 EXCEPTION
   WHEN duplicate_object THEN NULL;
+  WHEN duplicate_table THEN NULL;  -- index/constraint name already exists
 END $$;
 
 ALTER TABLE public.saved_content ENABLE ROW LEVEL SECURITY;

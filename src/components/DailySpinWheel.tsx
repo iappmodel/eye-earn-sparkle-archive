@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { toast } from 'sonner';
 
 interface WheelSegment {
   label: string;
@@ -36,7 +37,6 @@ export const DailySpinWheel: React.FC<DailySpinWheelProps> = ({ className, onSpi
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [canSpin, setCanSpin] = useState(false);
-  const [lastSpinDate, setLastSpinDate] = useState<string | null>(null);
   const [reward, setReward] = useState<WheelSegment | null>(null);
   const [timeUntilNextSpin, setTimeUntilNextSpin] = useState<string>('');
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -51,19 +51,19 @@ export const DailySpinWheel: React.FC<DailySpinWheelProps> = ({ className, onSpi
     if (!user) return;
 
     const today = new Date().toISOString().split('T')[0];
-    
-    // Check last spin from daily_reward_caps or a dedicated field
+    const contentId = `daily_spin:${today}`;
+
+    // Check whether today's daily spin reward session has already been redeemed.
     const { data } = await supabase
-      .from('daily_reward_caps')
-      .select('date')
+      .from('reward_sessions')
+      .select('redeemed_at')
       .eq('user_id', user.id)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
+      .eq('reward_type', 'daily_spin')
+      .eq('content_id', contentId)
+      .maybeSingle();
 
     if (data) {
-      setLastSpinDate(data.date);
-      setCanSpin(data.date !== today);
+      setCanSpin(!data.redeemed_at);
     } else {
       setCanSpin(true);
     }
@@ -83,17 +83,6 @@ export const DailySpinWheel: React.FC<DailySpinWheelProps> = ({ className, onSpi
     setTimeUntilNextSpin(`${hours}h ${minutes}m ${seconds}s`);
   };
 
-  const selectWinningSegment = (): number => {
-    const totalProbability = WHEEL_SEGMENTS.reduce((sum, s) => sum + s.probability, 0);
-    let random = Math.random() * totalProbability;
-    
-    for (let i = 0; i < WHEEL_SEGMENTS.length; i++) {
-      random -= WHEEL_SEGMENTS[i].probability;
-      if (random <= 0) return i;
-    }
-    return 0;
-  };
-
   const handleSpin = async () => {
     if (!canSpin || spinning || !user) return;
 
@@ -101,8 +90,71 @@ export const DailySpinWheel: React.FC<DailySpinWheelProps> = ({ className, onSpi
     setReward(null);
     haptics.medium();
 
-    // Select winning segment
-    const winningIndex = selectWinningSegment();
+    const today = new Date().toISOString().split('T')[0];
+    const contentId = `daily_spin:${today}`;
+    const idempotencyKey = crypto.randomUUID();
+
+    let wonReward: WheelSegment;
+    try {
+      const { data, error } = await supabase.functions.invoke('issue-reward', {
+        headers: { 'idempotency-key': idempotencyKey },
+        body: {
+          rewardType: 'daily_spin',
+          contentId,
+        },
+      });
+
+      if (error) {
+        let message = error.message || 'Failed to claim daily spin reward';
+        const errorWithContext = error as { context?: Response };
+        if (errorWithContext.context) {
+          try {
+            const payload = await errorWithContext.context.json() as { error?: string; code?: string };
+            if (payload?.error) message = payload.error;
+            if (payload?.code === 'reward_already_claimed' || payload?.code === 'daily_type_cap') {
+              setCanSpin(false);
+            }
+          } catch {
+            // Keep fallback error message.
+          }
+        }
+        throw new Error(message);
+      }
+
+      const result = data as {
+        success?: boolean;
+        amount?: number;
+        coinType?: 'vicoin' | 'icoin';
+        error?: string;
+        code?: string;
+      };
+
+      if (!result?.success || result.amount == null || !result.coinType) {
+        if (result?.code === 'reward_already_claimed' || result?.code === 'daily_type_cap') {
+          setCanSpin(false);
+        }
+        throw new Error(result?.error || 'Failed to claim daily spin reward');
+      }
+
+      const segment = WHEEL_SEGMENTS.find(
+        (s) => s.value === result.amount && s.coinType === result.coinType
+      );
+      if (!segment) {
+        throw new Error('Server returned unsupported spin reward');
+      }
+      wonReward = segment;
+    } catch (error) {
+      console.error('Failed to claim daily spin reward:', error);
+      setSpinning(false);
+      toast.error(error instanceof Error ? error.message : 'Failed to claim daily spin reward');
+      // Refresh eligibility in case the reward was actually consumed but response failed.
+      checkSpinEligibility();
+      return;
+    }
+
+    const winningIndex = WHEEL_SEGMENTS.findIndex(
+      (s) => s.value === wonReward.value && s.coinType === wonReward.coinType
+    );
     const segmentAngle = 360 / WHEEL_SEGMENTS.length;
     const targetAngle = 360 - (winningIndex * segmentAngle) - segmentAngle / 2;
     const spins = 5 + Math.random() * 3; // 5-8 full spins
@@ -112,46 +164,10 @@ export const DailySpinWheel: React.FC<DailySpinWheelProps> = ({ className, onSpi
 
     // Wait for animation
     setTimeout(async () => {
-      const wonReward = WHEEL_SEGMENTS[winningIndex];
       setReward(wonReward);
       setSpinning(false);
       setCanSpin(false);
       haptics.heavy();
-
-      // Record the reward
-      try {
-        const balanceField = wonReward.coinType === 'vicoin' ? 'vicoin_balance' : 'icoin_balance';
-        
-        // Get current balance
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select(balanceField)
-          .eq('user_id', user.id)
-          .single();
-
-        if (profile) {
-          const currentBalance = (profile as any)[balanceField] || 0;
-          
-          // Update balance
-          await supabase
-            .from('profiles')
-            .update({ [balanceField]: currentBalance + wonReward.value })
-            .eq('user_id', user.id);
-
-          // Record transaction
-          await supabase
-            .from('transactions')
-            .insert({
-              user_id: user.id,
-              amount: wonReward.value,
-              coin_type: wonReward.coinType,
-              type: 'spin_reward',
-              description: `Daily spin wheel reward: ${wonReward.label}`
-            });
-        }
-      } catch (error) {
-        console.error('Failed to record spin reward:', error);
-      }
 
       onSpinComplete?.(wonReward);
     }, 5000);

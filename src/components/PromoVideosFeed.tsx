@@ -38,6 +38,9 @@ import { useVideoMute } from '@/contexts/VideoMuteContext';
 import { useSavedVideos } from '@/hooks/useSavedVideos';
 import { useContentLikes } from '@/hooks/useContentLikes';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { useEyeTracking } from '@/hooks/useEyeTracking';
+import { useMediaSettings } from './MediaSettings';
+import { dispatchCameraUserStart } from '@/lib/utils';
 
 const themeOverlays: Record<VideoTheme, string> = {
   purple: 'from-[hsl(270,95%,10%,0.4)] via-transparent to-[hsl(270,95%,5%,0.8)]',
@@ -81,6 +84,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   const { items: feedItems, isLoading, error, fromBackend, refresh } = promoFeed;
   const { saveVideo, isSaved } = useSavedVideos();
   const contentLikes = useContentLikes();
+  const { eyeTrackingEnabled, attentionPreset, requiredAttentionOverride } = useMediaSettings();
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -123,21 +127,54 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
 
   const currentItem = localItems[currentIndex];
   const currentTheme = currentItem?.theme ?? 'gold';
+  const isPromo = currentItem?.type === 'promo';
+  const hasVideo = !!(currentItem?.videoUrl && currentItem.videoUrl.length > 0);
+
+  const { getAttentionResult, stopPromoAttention, needsUserGesture } = useEyeTracking({
+    enabled: Boolean(user && isActive && isPromo && isWatching && !currentItem?.claimed && eyeTrackingEnabled),
+    preset: attentionPreset,
+    ...(requiredAttentionOverride > 0 ? { requiredAttentionThreshold: requiredAttentionOverride } : {}),
+  });
 
   const handleWatchComplete = useCallback(async () => {
     if (!currentItem || currentItem.type !== 'promo' || currentItem.claimed || !user) return;
     const duration = currentItem.duration ?? 0;
     if (duration <= 0) return;
+    if (!eyeTrackingEnabled) {
+      toast.info('Enable Eye Tracking to earn promo rewards');
+      return;
+    }
+    if (needsUserGesture) {
+      toast.info('Tap video to enable camera', {
+        description: 'Camera access is required to validate attention for promo rewards.',
+      });
+      return;
+    }
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(currentItem.id)) {
+      toast.info('Preview promo rewards unavailable', {
+        description: 'Rewards only work for live campaign items from the backend feed.',
+      });
+      return;
+    }
+
+    stopPromoAttention();
+    const attentionResult = getAttentionResult();
+
     try {
       const { data, error } = await supabase.functions.invoke('validate-attention', {
         body: {
-          userId: user.id,
           contentId: currentItem.id,
-          attentionScore: 70,
+          attentionScore: attentionResult.score,
+          attentiveMs: attentionResult.attentiveMs,
+          totalMs: attentionResult.totalMs,
+          source: attentionResult.source,
+          sourceConfidence: attentionResult.sourceConfidence,
           watchDuration: duration,
           totalDuration: duration,
-          framesDetected: 50,
-          totalFrames: 100,
+          framesDetected: attentionResult.framesDetected,
+          totalFrames: attentionResult.totalFrames,
+          samples: attentionResult.samples,
         },
       });
       if (error || !data?.validated || !data.attentionSessionId) {
@@ -158,10 +195,7 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
     } catch {
       toast.error('Could not validate watch');
     }
-  }, [currentItem, user]);
-
-  const isPromo = currentItem?.type === 'promo';
-  const hasVideo = !!(currentItem?.videoUrl && currentItem.videoUrl.length > 0);
+  }, [currentItem, user, eyeTrackingEnabled, needsUserGesture, stopPromoAttention, getAttentionResult]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -215,10 +249,13 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
         return;
       }
       lastTapRef.current = now;
+      if (isPromo && eyeTrackingEnabled) {
+        dispatchCameraUserStart();
+      }
       setShowControls((prev) => !prev);
       if (!showControls) resetControlsTimeout();
     },
-    [currentItem, showControls, resetControlsTimeout, haptics, contentLikes]
+    [currentItem, isPromo, eyeTrackingEnabled, showControls, resetControlsTimeout, haptics, contentLikes]
   );
 
   useEffect(() => () => {
@@ -771,6 +808,9 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
           <div className="flex flex-wrap items-center justify-center gap-3 max-w-full px-4">
             <Neu3DButton
               onClick={() => {
+                if (isPromo && eyeTrackingEnabled) {
+                  dispatchCameraUserStart();
+                }
                 if (hasVideo && videoRef.current) {
                   if (isPaused) videoRef.current.play();
                   else videoRef.current.pause();

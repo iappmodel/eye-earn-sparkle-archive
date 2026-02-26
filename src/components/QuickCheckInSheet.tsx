@@ -131,25 +131,24 @@ export const QuickCheckInSheet: React.FC<QuickCheckInSheetProps> = ({
       const body = promotion
         ? {
             promotionId: promotion.id,
-            businessName: promotion.business_name,
-            promotionLat: promotion.latitude,
-            promotionLng: promotion.longitude,
             userLat,
             userLng,
-            rewardAmount: promotion.reward_amount,
-            rewardType: promotion.reward_type === 'both' ? 'vicoin' : promotion.reward_type,
             maxDistanceMeters: MAX_CHECKIN_METERS,
           }
         : {
             standalone: true,
-            promotionLat: userLat,
-            promotionLng: userLng,
             userLat,
             userLng,
             maxDistanceMeters: MAX_CHECKIN_METERS,
           };
 
-      const { data, error } = await supabase.functions.invoke('verify-checkin', { body });
+      const idempotencyKey = crypto.randomUUID();
+      const { data, error } = await supabase.functions.invoke('verify-checkin', {
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+        },
+        body,
+      });
 
       if (error) throw error;
 

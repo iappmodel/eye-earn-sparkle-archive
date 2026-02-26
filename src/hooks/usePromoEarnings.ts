@@ -28,6 +28,13 @@ export interface PromoEarningsState {
   allDone: boolean;
 }
 
+export interface PromoActionCompleteResult {
+  completed: boolean;
+  rewarded: boolean;
+  rewardErrorCode?: string;
+  rewardError?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Default earning actions for a promotion
 // ---------------------------------------------------------------------------
@@ -88,6 +95,12 @@ export const DEFAULT_EARNING_ACTIONS: Omit<EarningAction, 'completed'>[] = [
 // ---------------------------------------------------------------------------
 
 const STORAGE_PREFIX = 'promo_earnings_';
+const REWARDED_STORAGE_PREFIX = 'promo_earnings_rewarded_';
+const SERVER_VERIFIED_REWARDABLE_ACTIONS = new Set(['checkin', 'watch_promo', 'leave_review', 'return_visit']);
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 function loadCompleted(promotionId: string): Set<string> {
   try {
@@ -105,6 +118,27 @@ function loadCompleted(promotionId: string): Set<string> {
 function saveCompleted(promotionId: string, ids: Set<string>) {
   try {
     localStorage.setItem(`${STORAGE_PREFIX}${promotionId}`, JSON.stringify([...ids]));
+  } catch {
+    // ignore
+  }
+}
+
+function loadRewarded(promotionId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(`${REWARDED_STORAGE_PREFIX}${promotionId}`);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr as string[]);
+    }
+  } catch {
+    // ignore
+  }
+  return new Set();
+}
+
+function saveRewarded(promotionId: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(`${REWARDED_STORAGE_PREFIX}${promotionId}`, JSON.stringify([...ids]));
   } catch {
     // ignore
   }
@@ -150,11 +184,23 @@ export function usePromoEarnings(options: UsePromoEarningsOptions) {
   const [completedIds, setCompletedIds] = useState<Set<string>>(() =>
     loadCompleted(promotionId),
   );
+  const [rewardedIds, setRewardedIds] = useState<Set<string>>(() =>
+    loadRewarded(promotionId),
+  );
+
+  useEffect(() => {
+    setCompletedIds(loadCompleted(promotionId));
+    setRewardedIds(loadRewarded(promotionId));
+  }, [promotionId]);
 
   // Persist whenever completed set changes
   useEffect(() => {
     saveCompleted(promotionId, completedIds);
   }, [promotionId, completedIds]);
+
+  useEffect(() => {
+    saveRewarded(promotionId, rewardedIds);
+  }, [promotionId, rewardedIds]);
 
   // Build full action list with completion state
   const actions: EarningAction[] = useMemo(
@@ -164,8 +210,8 @@ export function usePromoEarnings(options: UsePromoEarningsOptions) {
 
   const totalPossible = useMemo(() => template.reduce((s, a) => s + a.coinReward, 0), [template]);
   const totalEarned = useMemo(
-    () => actions.filter((a) => a.completed).reduce((s, a) => s + a.coinReward, 0),
-    [actions],
+    () => actions.filter((a) => rewardedIds.has(a.id)).reduce((s, a) => s + a.coinReward, 0),
+    [actions, rewardedIds],
   );
 
   const streakBonus = useMemo(() => {
@@ -184,49 +230,80 @@ export function usePromoEarnings(options: UsePromoEarningsOptions) {
   // Complete an action + issue the reward
   // ----------------------------------------------------------
   const completeAction = useCallback(
-    async (actionId: string) => {
+    async (actionId: string): Promise<PromoActionCompleteResult> => {
       const action = template.find((a) => a.id === actionId);
-      if (!action) return;
-      if (completedIds.has(actionId)) return; // already done
-
-      // Unique contentId per action so each action can be rewarded once (reward_logs dedupes by user_id, content_id, reward_type)
-      const baseContentId = `${promotionId}:${actionId}`;
-
-      // Issue reward through rewards service (best-effort)
-      try {
-        const coinType = action.coinType === 'both' ? 'vicoin' : action.coinType;
-        await rewardsService.issueReward('task_complete', baseContentId, {
-          amount: action.coinReward,
-          coinType,
-        });
-
-        // If "both", issue second coin type with distinct contentId so both rewards are granted
-        if (action.coinType === 'both') {
-          await rewardsService.issueReward('task_complete', `${baseContentId}:icoin`, {
-            amount: action.coinReward,
-            coinType: 'icoin',
-          });
+      if (!action) return { completed: false, rewarded: false, rewardErrorCode: 'action_not_found', rewardError: 'Action not found' };
+      if (completedIds.has(actionId)) {
+        const canRetryVerifiedReward =
+          isUuid(promotionId) &&
+          SERVER_VERIFIED_REWARDABLE_ACTIONS.has(actionId) &&
+          !rewardedIds.has(actionId);
+        if (canRetryVerifiedReward) {
+          // Allow retries until the backend confirms and rewards the action.
+        } else {
+          return { completed: true, rewarded: rewardedIds.has(actionId) };
         }
-      } catch (err) {
-        console.warn('[PromoEarnings] Reward issue failed (offline?):', err);
       }
 
-      // Dispatch wallet update event so WalletScreen refreshes
-      window.dispatchEvent(new CustomEvent('walletBalanceChanged'));
+      let rewardGranted = false;
+      let rewardErrorCode: string | undefined;
+      let rewardError: string | undefined;
+
+      if (isUuid(promotionId) && SERVER_VERIFIED_REWARDABLE_ACTIONS.has(actionId)) {
+        const baseContentId = `promo_action:${promotionId}:${actionId}`;
+        try {
+          const primary = await rewardsService.issueReward('promo_action_complete', baseContentId);
+          if (primary.success) {
+            rewardGranted = true;
+          } else {
+            rewardErrorCode = primary.code;
+            rewardError = primary.error;
+          }
+
+          if (rewardGranted && action.coinType === 'both') {
+            const secondary = await rewardsService.issueReward('promo_action_complete', `${baseContentId}:secondary`);
+            if (!secondary.success) {
+              rewardErrorCode = secondary.code;
+              rewardError = secondary.error;
+            }
+          }
+        } catch (err) {
+          console.warn('[PromoEarnings] Verified reward issue failed:', err);
+          rewardError = err instanceof Error ? err.message : 'Failed to issue reward';
+        }
+      } else {
+        rewardErrorCode = 'action_not_supported';
+        rewardError = 'Reward pending verified backend integration for this action';
+        console.warn('[PromoEarnings] Action completed without server-verifiable reward:', { promotionId, actionId });
+      }
+
+      if (rewardGranted) {
+        // Dispatch wallet update event so WalletScreen refreshes
+        window.dispatchEvent(new CustomEvent('walletBalanceChanged'));
+        setRewardedIds((prev) => {
+          const next = new Set(prev);
+          next.add(actionId);
+          return next;
+        });
+      }
 
       setCompletedIds((prev) => {
         const next = new Set(prev);
         next.add(actionId);
         return next;
       });
+
+      return { completed: true, rewarded: rewardGranted, rewardErrorCode, rewardError };
     },
-    [completedIds, promotionId, template],
+    [completedIds, rewardedIds, promotionId, template],
   );
 
   // Reset (useful for testing)
   const reset = useCallback(() => {
     setCompletedIds(new Set());
+    setRewardedIds(new Set());
     localStorage.removeItem(`${STORAGE_PREFIX}${promotionId}`);
+    localStorage.removeItem(`${REWARDED_STORAGE_PREFIX}${promotionId}`);
   }, [promotionId]);
 
   return {
@@ -239,7 +316,7 @@ export function usePromoEarnings(options: UsePromoEarningsOptions) {
     completeAction,
     reset,
   } satisfies PromoEarningsState & {
-    completeAction: (id: string) => Promise<void>;
+    completeAction: (id: string) => Promise<PromoActionCompleteResult>;
     reset: () => void;
   };
 }

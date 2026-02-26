@@ -53,6 +53,7 @@ interface ValidationCheck {
 /** Server-side attention from samples only. dt clamped to 500ms; raw >= threshold counts as attentive. */
 const ATTENTIVE_THRESHOLD = 0.6;
 const DT_CLAMP_MS = 500;
+const ATTENTION_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function computeAttentionFromSamples(
   samples: Array<{ t: number; r: number }>
@@ -403,6 +404,9 @@ serve(async (req) => {
 
     // Always write attention_sessions server-side (audit + single-use id). No multiplier when not validated.
     const finalRewardMultiplier = isValid ? rewardMultiplier : 0;
+    const sessionStartedAt = new Date().toISOString();
+    const sessionEndedAt = new Date().toISOString();
+    const sessionExpiresAt = new Date(Date.now() + ATTENTION_SESSION_TTL_MS).toISOString();
     const { data: session, error: sessionError } = await supabase
       .from('attention_sessions')
       .insert({
@@ -414,8 +418,9 @@ serve(async (req) => {
         validation_score: validationScore,
         reward_multiplier: finalRewardMultiplier,
         samples_hash: samplesHashForDb,
-        started_at: new Date().toISOString(),
-        ended_at: new Date().toISOString(),
+        started_at: sessionStartedAt,
+        ended_at: sessionEndedAt,
+        expires_at: sessionExpiresAt,
       })
       .select('id')
       .single();

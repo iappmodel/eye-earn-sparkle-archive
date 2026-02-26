@@ -57,8 +57,9 @@ export function useFeedInteraction() {
   const trackShare = useCallback(
     async (contentId: string, context?: FeedItemContext | null) => {
       if (!user) return;
+      let trackSucceeded = false;
       try {
-        await supabase.functions.invoke('track-interaction', {
+        const { data, error } = await supabase.functions.invoke('track-interaction', {
           body: {
             contentId,
             contentType: context?.contentType ?? 'video',
@@ -67,9 +68,11 @@ export function useFeedInteraction() {
             category: context?.category ?? null,
           },
         });
+        trackSucceeded = !error && (data?.success !== false);
       } catch (err) {
         console.warn('[useFeedInteraction] track-interaction share failed:', err);
       }
+      if (!trackSucceeded) return;
       rewardsService.issueReward('share', contentId, {}).catch(() => {});
     },
     [user]

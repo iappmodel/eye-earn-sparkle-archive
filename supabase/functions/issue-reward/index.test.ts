@@ -21,6 +21,8 @@ const HEADERS: Record<string, string> = {
 };
 
 const VALID_USER = { id: "user-123", email: "test@test.com" };
+const FUTURE_EXPIRES_AT = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const PAST_EXPIRES_AT = new Date(Date.now() - 60 * 1000).toISOString();
 
 function mockSupabase(overrides: {
   getUser?: () => Promise<{ data: { user: typeof VALID_USER | null }; error: Error | null }>;
@@ -66,6 +68,55 @@ function mockSupabase(overrides: {
           },
           error: null,
         })),
+  } as unknown as SupabaseClientLike;
+}
+
+function mockSupabaseSelfOwnedContent(contentOwnerId: string): SupabaseClientLike {
+  const makeChain = (table: string) => {
+    const responseData =
+      table === "user_content"
+        ? { id: "00000000-0000-4000-8000-000000000999", user_id: contentOwnerId, status: "active" }
+        : null;
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      limit: () => chain,
+      maybeSingle: () => Promise.resolve({ data: responseData, error: null }),
+      single: () => Promise.resolve({ data: responseData, error: null }),
+      or: () => chain,
+      gte: () => chain,
+      lte: () => chain,
+      order: () => chain,
+      not: () => chain,
+      is: () => chain,
+      insert: () => Promise.resolve({ data: null, error: null }),
+      update: () => chain,
+    };
+    return chain;
+  };
+
+  return {
+    auth: {
+      getUser: () => Promise.resolve({ data: { user: VALID_USER }, error: null }),
+    },
+    from: (table: string) => makeChain(table),
+    rpc: (name: string) => {
+      if (name === "check_reward_rate_limit") {
+        return Promise.resolve({ data: [{ allowed: true }], error: null });
+      }
+      return Promise.resolve({
+        data: {
+          success: true,
+          amount: 5,
+          coin_type: "vicoin",
+          new_balance: 100,
+          daily_remaining_icoin: 75,
+          daily_remaining_vicoin: 120,
+          daily_remaining_promo_views: 19,
+        },
+        error: null,
+      });
+    },
   } as unknown as SupabaseClientLike;
 }
 
@@ -153,6 +204,246 @@ Deno.test("issue-reward: forged amount/coinType → 400 (forbidden keys)", async
   );
 });
 
+Deno.test("issue-reward: daily_spin requires date-scoped contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "daily_spin",
+      contentId: "daily_spin:not-today",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("daily spin"));
+});
+
+Deno.test("issue-reward: user_task_complete requires UUID contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "user_task_complete",
+      contentId: "task-abc",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("task"));
+});
+
+Deno.test("issue-reward: achievement_unlock requires UUID contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "achievement_unlock",
+      contentId: "achievement-abc",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("achievement"));
+});
+
+Deno.test("issue-reward: share requires UUID contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "share",
+      contentId: "fake-content-id",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("share"));
+});
+
+Deno.test("issue-reward: like requires UUID contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "like",
+      contentId: "not-a-uuid",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("like"));
+});
+
+Deno.test("issue-reward: save requires UUID contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "save",
+      contentId: "not-a-uuid",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("save"));
+});
+
+Deno.test("issue-reward: comment requires UUID contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "comment",
+      contentId: "not-a-uuid",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("comment"));
+});
+
+Deno.test("issue-reward: self-like reward is rejected → 400", async () => {
+  const supabase = mockSupabaseSelfOwnedContent(VALID_USER.id);
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "like",
+      contentId: "00000000-0000-4000-8000-000000000999",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assertEquals(json.code, "self_interaction_not_rewardable");
+});
+
+Deno.test("issue-reward: self-share reward is rejected → 400", async () => {
+  const supabase = mockSupabaseSelfOwnedContent(VALID_USER.id);
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "share",
+      contentId: "00000000-0000-4000-8000-000000000999",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assertEquals(json.code, "self_interaction_not_rewardable");
+});
+
+Deno.test("issue-reward: promo_action_complete requires namespaced contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "promo_action_complete",
+      contentId: "promo-task:bad",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("promo action"));
+});
+
+Deno.test("issue-reward: promo_action_complete rejects unsupported action ids → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "promo_action_complete",
+      contentId: "promo_action:00000000-0000-4000-8000-000000000123:share_social",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "action_not_supported" || json.error?.toLowerCase().includes("verified"));
+});
+
+Deno.test("issue-reward: legacy task_complete requires promo_task namespaced contentId → 400", async () => {
+  const supabase = mockSupabase({});
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "task_complete",
+      contentId: "random-task-id",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_content_id" || json.error?.toLowerCase().includes("promo task"));
+});
+
 Deno.test("issue-reward: forged mediaId (session does not match media) → 400", async () => {
   const sessionId = "00000000-0000-0000-0000-000000000001";
   const mediaIdFromSession = "00000000-0000-0000-0000-000000000002";
@@ -166,6 +457,7 @@ Deno.test("issue-reward: forged mediaId (session does not match media) → 400",
         media_id: mediaIdFromSession,
         validated: true,
         validation_score: 95,
+        expires_at: FUTURE_EXPIRES_AT,
         redeemed_at: null,
       },
       error: null,
@@ -190,6 +482,43 @@ Deno.test("issue-reward: forged mediaId (session does not match media) → 400",
   assert(json.code === "invalid_session" || json.error?.toLowerCase().includes("match"));
 });
 
+Deno.test("issue-reward: expired attention session → 400", async () => {
+  const sessionId = "00000000-0000-0000-0000-000000000001";
+  const mediaId = "00000000-0000-0000-0000-000000000002";
+  const supabase = mockSupabase({
+    attentionSession: {
+      data: {
+        id: sessionId,
+        user_id: VALID_USER.id,
+        content_id: mediaId,
+        media_id: mediaId,
+        validated: true,
+        validation_score: 95,
+        expires_at: PAST_EXPIRES_AT,
+        redeemed_at: null,
+      },
+      error: null,
+    },
+  });
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "promo_view",
+      attentionSessionId: sessionId,
+      mediaId,
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assert(json.code === "invalid_session" || json.error?.toLowerCase().includes("expired"));
+});
+
 Deno.test("issue-reward: same session id twice → second call fails 400", async () => {
   const sessionId = "00000000-0000-0000-0000-000000000001";
   const mediaId = "00000000-0000-0000-0000-000000000002";
@@ -203,6 +532,7 @@ Deno.test("issue-reward: same session id twice → second call fails 400", async
         media_id: mediaId,
         validated: true,
         validation_score: 95,
+        expires_at: FUTURE_EXPIRES_AT,
         redeemed_at: null,
       },
       error: null,
@@ -278,6 +608,7 @@ Deno.test("issue-reward: 10 parallel requests → capped (mock allows 3, rest ge
         media_id: mediaId,
         validated: true,
         validation_score: 95,
+        expires_at: FUTURE_EXPIRES_AT,
         redeemed_at: null,
       },
       error: null,

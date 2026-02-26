@@ -149,16 +149,10 @@ async function processQueuedAction(action: QueuedAction): Promise<boolean> {
 
   switch (action.type) {
     case 'task_complete':
-      // Handle task completion
-      const { error: taskError } = await supabase
-        .from('user_tasks')
-        .update({
-          progress: action.payload.progress as number,
-          completed: action.payload.completed as boolean,
-          completed_at: action.payload.completed ? new Date().toISOString() : null,
-        })
-        .eq('id', action.payload.taskId as string);
-      return !taskError;
+      // Legacy offline task completion queue is deprecated.
+      // Task progression is now server-owned; drop stale queued actions instead of replaying client DB writes.
+      console.warn('Dropping legacy offline task_complete action; user_tasks writes are server-authoritative now.');
+      return true;
 
     case 'transaction':
       // Handle transaction

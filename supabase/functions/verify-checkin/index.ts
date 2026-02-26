@@ -41,16 +41,32 @@ function getStreakBonus(streakDays: number): number {
 const VerifyCheckinSchema = z.object({
   promotionId: z.string().uuid('Invalid promotion ID').optional().nullable(),
   businessName: z.string().max(255).optional(),
-  promotionLat: z.number().min(-90).max(90),
-  promotionLng: z.number().min(-180).max(180),
+  // Deprecated client hints; server resolves canonical promotion coords from DB for non-standalone check-ins.
+  promotionLat: z.number().min(-90).max(90).optional(),
+  promotionLng: z.number().min(-180).max(180).optional(),
   userLat: z.number().min(-90).max(90),
   userLng: z.number().min(-180).max(180),
+  // Deprecated client hints; reward amount/type are server-authoritative for non-standalone check-ins.
   rewardAmount: z.number().int().min(0).max(10000).optional(),
   rewardType: z.enum(['vicoin', 'icoin']).optional(),
   maxDistanceMeters: z.number().int().min(10).max(5000).default(100),
   /** Standalone check-in (no promotion): one per 24h, small fixed reward */
   standalone: z.boolean().optional().default(false),
 });
+
+// Server-authoritative geofence radius for promotion check-ins.
+// Clients may use their own local radius for UX hints, but backend verification must use a fixed threshold.
+const PROMOTION_CHECKIN_MAX_DISTANCE_METERS = 150;
+
+type FinalizePromotionCheckinRewardResult = {
+  success?: boolean;
+  already_claimed?: boolean;
+  amount_added?: number;
+  coin_type?: 'vicoin' | 'icoin' | string;
+  new_balance?: number;
+  xp_added?: number;
+  streak_day?: number;
+};
 
 serve(async (req) => {
   const cors = getCorsHeadersStrict(req);
@@ -128,22 +144,14 @@ serve(async (req) => {
     } = parseResult.data;
 
     const effectivePromotionId = standalone ? null : (promotionId ?? null);
-    const effectiveRewardAmount = standalone ? 10 : (rewardAmount ?? 0);
-    const effectiveRewardType = (standalone ? 'vicoin' : rewardType) ?? 'vicoin';
-    const effectiveBusinessName = businessName || (standalone ? 'Quick Check-In' : 'Unknown Business');
-
-    console.log('[verify-checkin] Request:', { 
-      userId: user.id, promotionId: effectivePromotionId, businessName: effectiveBusinessName,
-      promotionLat, promotionLng, userLat, userLng, standalone 
-    });
-
-    // Calculate distance between user and promotion (for standalone, use 0 so it always passes)
-    const distance = standalone ? 0 : calculateDistance(userLat, userLng, promotionLat, promotionLng);
-    console.log('[verify-checkin] Distance calculated:', distance, 'meters');
-
-    // Check if user is within geofence (standalone always in range)
-    const isWithinRange = standalone || distance <= maxDistanceMeters;
-    const status = isWithinRange ? 'verified' : 'failed';
+    let effectiveRewardAmount = standalone ? 10 : 0;
+    let effectiveRewardType: 'vicoin' | 'icoin' = 'vicoin';
+    let effectiveBusinessName = businessName || (standalone ? 'Quick Check-In' : 'Unknown Business');
+    let effectivePromotionLat = standalone ? (promotionLat ?? userLat) : 0;
+    let effectivePromotionLng = standalone ? (promotionLng ?? userLng) : 0;
+    const effectiveMaxDistanceMeters = standalone
+      ? maxDistanceMeters
+      : PROMOTION_CHECKIN_MAX_DISTANCE_METERS;
 
     if (!standalone && !effectivePromotionId) {
       return new Response(
@@ -152,13 +160,87 @@ serve(async (req) => {
       );
     }
 
+    if (!standalone && effectivePromotionId) {
+      const { data: promotion, error: promotionError } = await supabase
+        .from('promotions')
+        .select('id, business_name, latitude, longitude, reward_amount, reward_type, is_active, expires_at')
+        .eq('id', effectivePromotionId)
+        .maybeSingle();
+
+      if (promotionError) {
+        console.error('[verify-checkin] Promotion lookup error:', promotionError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to verify promotion', success: false }),
+          { status: 500, headers: { ...headers, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!promotion) {
+        return new Response(
+          JSON.stringify({ error: 'Promotion not found', success: false }),
+          { status: 404, headers: { ...headers, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const expired = promotion.expires_at ? new Date(promotion.expires_at).getTime() <= Date.now() : false;
+      if (!promotion.is_active || expired) {
+        return new Response(
+          JSON.stringify({ error: 'Promotion is not active', success: false }),
+          { status: 400, headers: { ...headers, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      effectiveBusinessName = promotion.business_name || effectiveBusinessName;
+      effectivePromotionLat = Number(promotion.latitude);
+      effectivePromotionLng = Number(promotion.longitude);
+      effectiveRewardAmount = Math.max(0, Math.floor(Number(promotion.reward_amount ?? 0)));
+      const promoRewardType = String(promotion.reward_type ?? 'vicoin');
+      // Promotions may be configured as "both"; preserve prior behavior by crediting vicoin for check-ins.
+      effectiveRewardType = promoRewardType === 'icoin' ? 'icoin' : 'vicoin';
+
+      if (
+        rewardAmount != null ||
+        rewardType != null ||
+        promotionLat != null ||
+        promotionLng != null ||
+        businessName != null ||
+        maxDistanceMeters !== PROMOTION_CHECKIN_MAX_DISTANCE_METERS
+      ) {
+        console.log('[verify-checkin] Ignoring client-provided promo reward/location/radius fields in favor of server values', {
+          userId: user.id,
+          promotionId: effectivePromotionId,
+        });
+      }
+    }
+
+    console.log('[verify-checkin] Request:', {
+      userId: user.id,
+      promotionId: effectivePromotionId,
+      businessName: effectiveBusinessName,
+      promotionLat: effectivePromotionLat,
+      promotionLng: effectivePromotionLng,
+      userLat,
+      userLng,
+      maxDistanceMeters: effectiveMaxDistanceMeters,
+      standalone,
+    });
+
+    // Calculate distance between user and promotion (for standalone, use 0 so it always passes)
+    const distance = standalone ? 0 : calculateDistance(userLat, userLng, effectivePromotionLat, effectivePromotionLng);
+    console.log('[verify-checkin] Distance calculated:', distance, 'meters');
+
+    // Check if user is within geofence (standalone always in range)
+    const isWithinRange = standalone || distance <= effectiveMaxDistanceMeters;
+    const status = isWithinRange ? 'verified' : 'failed';
+
     // Check for existing check-in in last 24 hours at this location (or standalone: one per 24h)
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     let query = supabase
       .from('promotion_checkins')
-      .select('id, checked_in_at')
+      .select('id, checked_in_at, status, reward_claimed, reward_amount, reward_type, streak_day, streak_bonus, distance_meters')
       .eq('user_id', user.id)
-      .gte('checked_in_at', twentyFourHoursAgo);
+      .gte('checked_in_at', twentyFourHoursAgo)
+      .order('checked_in_at', { ascending: false });
 
     if (standalone) {
       query = query.is('promotion_id', null);
@@ -169,6 +251,78 @@ serve(async (req) => {
     const { data: existingCheckin } = await query.limit(1).maybeSingle();
 
     if (existingCheckin) {
+      const existingRewardTotal = Math.max(0, Math.floor(Number(existingCheckin.reward_amount ?? 0)));
+      const existingRewardType = String(existingCheckin.reward_type ?? '');
+      const canFinalizePendingReward =
+        existingCheckin.status === 'verified' &&
+        existingCheckin.reward_claimed !== true &&
+        existingRewardTotal > 0 &&
+        (existingRewardType === 'vicoin' || existingRewardType === 'icoin');
+
+      if (canFinalizePendingReward) {
+        const { data: finalizeData, error: finalizeError } = await supabase.rpc('finalize_promotion_checkin_reward', {
+          p_user_id: user.id,
+          p_checkin_id: existingCheckin.id,
+        });
+
+        if (finalizeError) {
+          console.error('[verify-checkin] Failed to finalize pending check-in reward:', finalizeError);
+          return new Response(
+            JSON.stringify({
+              error: 'Check-in exists but reward processing is pending. Please retry.',
+              code: 'reward_processing_failed',
+              success: false,
+              checkinId: existingCheckin.id,
+              retryable: true,
+            }),
+            { status: 503, headers: { ...headers, 'Content-Type': 'application/json', 'Retry-After': '5' } }
+          );
+        }
+
+        console.log('[verify-checkin] Finalized pending check-in reward:', finalizeData);
+
+        const nextAvailable = new Date(new Date(existingCheckin.checked_in_at).getTime() + 24 * 60 * 60 * 1000);
+        const recoveredStreakDay = Math.max(1, Math.floor(Number(existingCheckin.streak_day ?? 1)));
+        const recoveredBonusAmount = Math.max(0, Math.floor(Number(existingCheckin.streak_bonus ?? 0)));
+        const recoveredBaseReward = Math.max(0, existingRewardTotal - recoveredBonusAmount);
+        const recoveredDistance = Number.isFinite(Number(existingCheckin.distance_meters))
+          ? Math.round(Number(existingCheckin.distance_meters))
+          : Math.round(distance);
+        const recoveredStreakBonusPercent = getStreakBonus(recoveredStreakDay);
+
+        const successBody = {
+          success: true,
+          verified: true,
+          status: 'verified',
+          distance: recoveredDistance,
+          maxDistance: effectiveMaxDistanceMeters,
+          streak: {
+            current: recoveredStreakDay,
+            longest: recoveredStreakDay,
+            bonus: recoveredStreakBonusPercent,
+            bonusAmount: recoveredBonusAmount,
+          },
+          reward: {
+            base: recoveredBaseReward,
+            bonus: recoveredBonusAmount,
+            total: existingRewardTotal,
+            type: existingRewardType,
+          },
+          message: `Check-in reward finalized! You earned ${existingRewardTotal} ${existingRewardType}${recoveredBonusAmount > 0 ? ` (+${recoveredBonusAmount} streak bonus!)` : ''}!`,
+          checkin: {
+            ...existingCheckin,
+            reward_claimed: true,
+          },
+          nextCheckInAvailableAt: nextAvailable.toISOString(),
+          recoveredPendingReward: true,
+        };
+        if (idempotencyKey) await setCachedResponse(supabase, idempotencyKey, user.id, 'verify_checkin', 200, successBody);
+        return new Response(
+          JSON.stringify(successBody),
+          { headers: { ...headers, 'Content-Type': 'application/json' } }
+        );
+      }
+
       const nextAvailable = new Date(new Date(existingCheckin.checked_in_at).getTime() + 24 * 60 * 60 * 1000);
       console.log('[verify-checkin] Already checked in within 24 hours');
       return new Response(
@@ -236,8 +390,8 @@ serve(async (req) => {
         user_id: user.id,
         promotion_id: effectivePromotionId,
         business_name: effectiveBusinessName,
-        latitude: promotionLat,
-        longitude: promotionLng,
+        latitude: effectivePromotionLat,
+        longitude: effectivePromotionLng,
         user_latitude: userLat,
         user_longitude: userLng,
         distance_meters: distance,
@@ -258,48 +412,29 @@ serve(async (req) => {
       );
     }
 
-    // If verified, update user's coin balance atomically and streak
+    // If verified, finalize reward + streak/XP in one DB transaction
     if (isWithinRange && totalReward && effectiveRewardType) {
-      // Use atomic balance update to prevent race conditions
-      const { data: balanceResult, error: balanceError } = await supabase.rpc('atomic_update_balance', {
+      const { data: finalizeData, error: finalizeError } = await supabase.rpc('finalize_promotion_checkin_reward', {
         p_user_id: user.id,
-        p_amount: totalReward,
-        p_coin_type: effectiveRewardType,
-        p_description: `Check-in reward at ${effectiveBusinessName}`,
-        p_reference_id: checkin.id,
+        p_checkin_id: checkin.id,
       });
 
-      if (balanceError) {
-        console.error('[verify-checkin] Atomic balance update error:', balanceError);
-      } else {
-        console.log('[verify-checkin] Updated balance atomically:', balanceResult);
+      if (finalizeError) {
+        console.error('[verify-checkin] Atomic check-in finalization error:', finalizeError);
+        return new Response(
+          JSON.stringify({
+            error: 'Check-in recorded, but reward processing failed. Please retry.',
+            code: 'reward_processing_failed',
+            success: false,
+            checkinId: checkin.id,
+            retryable: true,
+            nextCheckInAvailableAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          }),
+          { status: 503, headers: { ...headers, 'Content-Type': 'application/json', 'Retry-After': '5' } }
+        );
       }
 
-      // Update streak in user_levels
-      await supabase
-        .from('user_levels')
-        .update({ 
-          streak_days: newStreakDays,
-          longest_streak: newLongestStreak,
-          last_active_date: today,
-        })
-        .eq('user_id', user.id);
-
-      // Mark reward as claimed
-      await supabase
-        .from('promotion_checkins')
-        .update({ reward_claimed: true, reward_claimed_at: new Date().toISOString() })
-        .eq('id', checkin.id);
-
-      // Add XP for check-in
-      const xpReward = 25 + (newStreakDays >= 7 ? 10 : 0);
-      await supabase
-        .from('user_levels')
-        .update({ 
-          current_xp: (userLevel?.current_xp || 0) + xpReward,
-          total_xp: (userLevel?.total_xp || 0) + xpReward,
-        })
-        .eq('user_id', user.id);
+      console.log('[verify-checkin] Finalized check-in reward atomically:', finalizeData as FinalizePromotionCheckinRewardResult);
     }
 
     console.log('[verify-checkin] Success:', { 
@@ -315,7 +450,7 @@ serve(async (req) => {
       verified: isWithinRange,
       status,
       distance: Math.round(distance),
-      maxDistance: maxDistanceMeters,
+      maxDistance: effectiveMaxDistanceMeters,
       streak: {
         current: newStreakDays,
         longest: newLongestStreak,
@@ -330,7 +465,7 @@ serve(async (req) => {
       },
       message: isWithinRange 
         ? `Check-in successful! You earned ${totalReward} ${effectiveRewardType}${bonusAmount > 0 ? ` (+${bonusAmount} streak bonus!)` : ''}!` 
-        : `Too far from location. You are ${Math.round(distance)}m away (max ${maxDistanceMeters}m)`,
+        : `Too far from location. You are ${Math.round(distance)}m away (max ${effectiveMaxDistanceMeters}m)`,
       checkin,
       nextCheckInAvailableAt,
     };

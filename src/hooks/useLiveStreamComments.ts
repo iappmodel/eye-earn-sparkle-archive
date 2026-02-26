@@ -53,7 +53,7 @@ export function useLiveStreamComments(streamId: string | undefined, userId: stri
           const row = payload.new as CommentRow;
           // Fetch commenter profile for display
           const { data: profile } = await supabase
-            .from('profiles')
+            .from('public_profiles')
             .select('username, avatar_url')
             .eq('user_id', row.user_id)
             .maybeSingle();

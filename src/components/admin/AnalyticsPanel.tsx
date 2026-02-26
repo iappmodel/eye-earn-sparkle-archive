@@ -130,10 +130,12 @@ const AnalyticsPanel: React.FC = () => {
   const [cleanupHistoryOutcome, setCleanupHistoryOutcome] =
     useState<TrackInteractionCleanupHistoryOutcomeFilter>('all');
   const [cleanupHistorySince, setCleanupHistorySince] = useState<'all' | '1' | '7' | '30'>('all');
+  const [cleanupHistoryPageSize, setCleanupHistoryPageSize] = useState<'8' | '16' | '25'>('8');
   const [cleanupHistoryBeforeCreatedAt, setCleanupHistoryBeforeCreatedAt] = useState<string | null>(null);
   const [cleanupHistoryAfterCreatedAt, setCleanupHistoryAfterCreatedAt] = useState<string | null>(null);
   const [cleanupHistoryCursorStack, setCleanupHistoryCursorStack] = useState<Array<string | null>>([]);
   const cleanupHistorySinceDays = cleanupHistorySince === 'all' ? null : Number(cleanupHistorySince);
+  const cleanupHistoryLimit = Number(cleanupHistoryPageSize);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -142,7 +144,7 @@ const AnalyticsPanel: React.FC = () => {
       const [analyticsResult, trackHealthResult] = await Promise.allSettled([
         fetchAdminAnalytics(range),
         fetchTrackInteractionHealth(14, {
-          history_limit: 8,
+          history_limit: cleanupHistoryLimit,
           history_outcome: cleanupHistoryOutcome,
           history_since_days: cleanupHistorySinceDays,
           history_before_created_at: cleanupHistoryBeforeCreatedAt,
@@ -174,7 +176,14 @@ const AnalyticsPanel: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [range, cleanupHistoryOutcome, cleanupHistorySinceDays, cleanupHistoryBeforeCreatedAt, cleanupHistoryAfterCreatedAt]);
+  }, [
+    range,
+    cleanupHistoryOutcome,
+    cleanupHistorySinceDays,
+    cleanupHistoryBeforeCreatedAt,
+    cleanupHistoryAfterCreatedAt,
+    cleanupHistoryLimit,
+  ]);
 
   useEffect(() => {
     load();
@@ -185,7 +194,7 @@ const AnalyticsPanel: React.FC = () => {
     setTrackInteractionCleanupNotice(null);
     try {
       const result = await runTrackInteractionNonceCleanup(14, 5000, {
-        history_limit: 8,
+        history_limit: cleanupHistoryLimit,
         history_outcome: cleanupHistoryOutcome,
         history_since_days: cleanupHistorySinceDays,
         history_before_created_at: null,
@@ -212,7 +221,7 @@ const AnalyticsPanel: React.FC = () => {
     } finally {
       setIsRunningTrackInteractionCleanup(false);
     }
-  }, [cleanupHistoryOutcome, cleanupHistorySinceDays]);
+  }, [cleanupHistoryOutcome, cleanupHistorySinceDays, cleanupHistoryLimit]);
 
   if (error && !data) {
     return (
@@ -657,6 +666,25 @@ const AnalyticsPanel: React.FC = () => {
                             Clear filters
                           </Button>
                           <Select
+                            value={cleanupHistoryPageSize}
+                            onValueChange={(v) => {
+                              setCleanupHistoryCursorStack([]);
+                              setCleanupHistoryBeforeCreatedAt(null);
+                              setCleanupHistoryAfterCreatedAt(null);
+                              setCleanupHistoryPageSize(v as '8' | '16' | '25');
+                            }}
+                            disabled={isLoading || isRunningTrackInteractionCleanup}
+                          >
+                            <SelectTrigger className="h-8 w-[110px] text-xs">
+                              <SelectValue placeholder="Page size" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="8">8 rows</SelectItem>
+                              <SelectItem value="16">16 rows</SelectItem>
+                              <SelectItem value="25">25 rows</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
                             value={cleanupHistoryOutcome}
                             onValueChange={(v) => {
                               setCleanupHistoryCursorStack([]);
@@ -707,6 +735,7 @@ const AnalyticsPanel: React.FC = () => {
                                   ? 'all'
                                   : `${cleanupHistoryMeta.filters.since_days}d`}
                               </code>
+                              {' '}| size <code>{cleanupHistoryMeta.limit}</code>
                               {' '}| page{' '}
                               <code>
                                 {cleanupHistoryPageMode}

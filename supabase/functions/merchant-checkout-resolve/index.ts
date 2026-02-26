@@ -23,6 +23,8 @@ interface ResolveBody {
   accessibility: MerchantCheckoutAccessibility;
 }
 
+// Keep this entrypoint intentionally minimal; auth and resolver logic live in _shared.
+
 serve(async (req) => {
   const cors = getCorsHeadersStrict(req);
   if (!cors.ok) return cors.response;

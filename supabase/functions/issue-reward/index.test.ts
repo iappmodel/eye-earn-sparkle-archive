@@ -384,6 +384,46 @@ Deno.test("issue-reward: self-share reward is rejected → 400", async () => {
   assertEquals(json.code, "self_interaction_not_rewardable");
 });
 
+Deno.test("issue-reward: self-save reward is rejected → 400", async () => {
+  const supabase = mockSupabaseSelfOwnedContent(VALID_USER.id);
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "save",
+      contentId: "00000000-0000-4000-8000-000000000999",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assertEquals(json.code, "self_interaction_not_rewardable");
+});
+
+Deno.test("issue-reward: self-comment reward is rejected → 400", async () => {
+  const supabase = mockSupabaseSelfOwnedContent(VALID_USER.id);
+  const req = new Request("http://localhost/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: TEST_ORIGIN,
+      Authorization: "Bearer fake-token",
+    },
+    body: JSON.stringify({
+      rewardType: "comment",
+      contentId: "00000000-0000-4000-8000-000000000999",
+    }),
+  });
+  const res = await handleIssueReward(req, supabase, HEADERS);
+  assertEquals(res.status, 400);
+  const json = await res.json();
+  assertEquals(json.code, "self_interaction_not_rewardable");
+});
+
 Deno.test("issue-reward: promo_action_complete requires namespaced contentId → 400", async () => {
   const supabase = mockSupabase({});
   const req = new Request("http://localhost/", {

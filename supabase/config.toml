@@ -28,6 +28,21 @@ verify_jwt = false
 [functions.create-checkout]
 verify_jwt = false
 
+[functions.merchant-checkout-resolve]
+verify_jwt = false
+
+[functions.merchant-checkout-draft]
+verify_jwt = false
+
+[functions.merchant-checkout-confirm]
+verify_jwt = false
+
+[functions.merchant-checkout-tip]
+verify_jwt = false
+
+[functions.merchant-checkout-preferences]
+verify_jwt = false
+
 [functions.customer-portal]
 verify_jwt = false
 

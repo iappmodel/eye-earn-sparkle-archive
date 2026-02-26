@@ -3,10 +3,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.23.8";
 import { getCorsHeadersStrict } from "../_shared/cors.ts";
 import { checkRewardRateLimit } from "../_shared/rateLimit.ts";
+import { getCachedResponse, getIdempotencyKey, setCachedResponse } from "../_shared/idempotency.ts";
 
 const EVENT_TYPES = ['view_start', 'view_progress', 'view_complete', 'like', 'unlike', 'share', 'save', 'unsave', 'feedback', 'update', 'skip'] as const;
 const VIEW_EVENTS = new Set<string>(['view_start', 'view_progress', 'view_complete']);
 const RATE_LIMITED_EVENTS = new Set<string>(['view_complete', 'share', 'like', 'unlike', 'save', 'unsave', 'feedback', 'skip']);
+const NONCE_DEDUP_EVENTS = new Set<string>(['share', 'view_complete']);
 const STRICT_CONTENT_VALIDATION_EVENTS = new Set<string>([
   'view_start',
   'view_progress',
@@ -22,6 +24,11 @@ const STRICT_CONTENT_VALIDATION_EVENTS = new Set<string>([
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_WATCH_OVERRUN_RATIO = 2.0;
 const MAX_WATCH_OVERRUN_SECONDS = 30;
+const ACTION_COOLDOWNS: Partial<Record<string, { seconds: number; column: "last_share_at" | "last_view_complete_at" }>> = {
+  share: { seconds: 15, column: "last_share_at" },
+  view_complete: { seconds: 10, column: "last_view_complete_at" },
+};
+const INTERACTION_NONCE_RETENTION_DAYS = 14;
 
 function isUuid(value: string): boolean {
   return UUID_RE.test(value);
@@ -34,10 +41,12 @@ function clamp(value: number, min: number, max: number): number {
 class TrackInteractionHttpError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  details?: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, details?: Record<string, unknown>) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -49,6 +58,7 @@ const MetadataSchema = z.object({
 
 const SingleEventSchema = z.object({
   contentId: z.string().min(1).max(128),
+  eventNonce: z.string().uuid().optional(),
   contentType: z.enum(['video', 'image', 'reel', 'story']).default('video'),
   watchDuration: z.number().min(0).max(86400).default(0),
   totalDuration: z.number().min(0).max(86400).default(0),
@@ -74,13 +84,80 @@ type SingleEvent = z.infer<typeof SingleEventSchema>;
 // deno-lint-ignore no-explicit-any
 export type SupabaseClientLike = any;
 
+async function reserveInteractionEventNonce(
+  supabase: SupabaseClientLike,
+  userId: string,
+  event: SingleEvent
+): Promise<boolean> {
+  if (!NONCE_DEDUP_EVENTS.has(event.action) || !event.eventNonce) return true;
+
+  const { error } = await supabase
+    .from('interaction_event_nonces')
+    .insert({
+      user_id: userId,
+      event_nonce: event.eventNonce,
+      action: event.action,
+      content_id: event.contentId,
+    });
+
+  if (!error) return true;
+  const code = (error as { code?: string })?.code;
+  if (code === '23505') return false;
+  throw error;
+}
+
+async function hasInteractionEventNonce(
+  supabase: SupabaseClientLike,
+  userId: string,
+  event: SingleEvent
+): Promise<boolean> {
+  if (!NONCE_DEDUP_EVENTS.has(event.action) || !event.eventNonce) return false;
+
+  const { data, error } = await supabase
+    .from('interaction_event_nonces')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('event_nonce', event.eventNonce)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return !!data;
+}
+
+async function cleanupInteractionEventNoncesForUser(
+  supabase: SupabaseClientLike,
+  userId: string
+): Promise<void> {
+  const cutoff = new Date(Date.now() - INTERACTION_NONCE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    if (typeof supabase.rpc === 'function') {
+      const { error: rpcError } = await supabase.rpc('cleanup_interaction_event_nonces', {
+        p_user_id: userId,
+        p_before: cutoff,
+        p_limit: 250,
+      });
+      if (!rpcError) return;
+      console.warn('[TrackInteraction] cleanup_interaction_event_nonces RPC failed, falling back to direct delete:', rpcError);
+    }
+
+    await supabase
+      .from('interaction_event_nonces')
+      .delete()
+      .eq('user_id', userId)
+      .lt('created_at', cutoff);
+  } catch (error) {
+    console.warn('[TrackInteraction] Failed to cleanup interaction event nonces:', error);
+  }
+}
+
 async function processOne(
   supabase: SupabaseClientLike,
   user: { id: string },
   event: SingleEvent
-): Promise<{ interaction: any; prefsUpdated: boolean }> {
+): Promise<{ interaction: any; prefsUpdated: boolean; deduped?: boolean; eventNonce?: string }> {
   const {
-    contentId, contentType, watchDuration, totalDuration,
+    contentId, eventNonce, contentType, watchDuration, totalDuration,
     attentionScore, liked, shared, skipped, saved, tags, category,
     action, feedback, metadata, contentOwnerId,
   } = event;
@@ -145,6 +222,49 @@ async function processOne(
     resolvedContentOwnerId = contentRow?.user_id ?? null;
   }
 
+  if (await hasInteractionEventNonce(supabase, user.id, event)) {
+    return { interaction: null, prefsUpdated: false, deduped: true, eventNonce };
+  }
+
+  const actionCooldown = ACTION_COOLDOWNS[action];
+  if (actionCooldown && action !== 'update') {
+    const { data: existingInteraction, error: existingInteractionError } = await supabase
+      .from('content_interactions')
+      .select('id, updated_at, last_event_type, last_share_at, last_view_complete_at, watch_completion_rate, attention_score, saved')
+      .eq('user_id', user.id)
+      .eq('content_id', contentId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingInteractionError) {
+      console.error('[TrackInteraction] Existing interaction lookup error:', existingInteractionError);
+      throw existingInteractionError;
+    }
+
+    const cooldownTimestampRaw = existingInteraction?.[actionCooldown.column];
+    const fallbackTimestampRaw =
+      String(existingInteraction?.last_event_type ?? '').toLowerCase() === String(lastEventType).toLowerCase()
+        ? existingInteraction?.updated_at
+        : null;
+    const effectiveCooldownTimestamp = cooldownTimestampRaw ?? fallbackTimestampRaw;
+    const updatedAtMs = Date.parse(String(effectiveCooldownTimestamp ?? ''));
+    if (
+      existingInteraction &&
+      Number.isFinite(updatedAtMs)
+    ) {
+      const ageMs = Date.now() - updatedAtMs;
+      if (ageMs >= 0 && ageMs < actionCooldown.seconds * 1000) {
+        const retryAfterSeconds = Math.max(1, Math.ceil((actionCooldown.seconds * 1000 - ageMs) / 1000));
+        throw new TrackInteractionHttpError(
+          429,
+          'action_cooldown',
+          'Action is cooling down',
+          { action: lastEventType, retryAfterSeconds }
+        );
+      }
+    }
+  }
+
   const row: Record<string, unknown> = {
     user_id: user.id,
     content_id: contentId,
@@ -172,6 +292,15 @@ async function processOne(
   if (action === 'skip') row.skipped = true;
   if (action === 'save') row.saved = true;
   if (action === 'unsave') row.saved = false;
+
+  if (actionCooldown) {
+    row[actionCooldown.column] = new Date().toISOString();
+  }
+
+  const nonceReserved = await reserveInteractionEventNonce(supabase, user.id, event);
+  if (!nonceReserved) {
+    return { interaction: null, prefsUpdated: false, deduped: true, eventNonce };
+  }
 
   // Server-authoritative owner resolution for UUID content rows; never trust client-provided owner id over DB.
   if (resolvedContentOwnerId) {
@@ -266,7 +395,7 @@ async function processOne(
     }
   }
 
-  return { interaction, prefsUpdated: shouldUpdatePrefs };
+  return { interaction, prefsUpdated: shouldUpdatePrefs, eventNonce };
 }
 
 export async function handleTrackInteraction(
@@ -290,6 +419,17 @@ export async function handleTrackInteraction(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...headers, 'Content-Type': 'application/json' } }
       );
+    }
+
+    const idempotencyKey = getIdempotencyKey(req);
+    if (idempotencyKey) {
+      const cached = await getCachedResponse(supabase, idempotencyKey, user.id, 'track_interaction');
+      if (cached) {
+        return new Response(JSON.stringify(cached.body), {
+          status: cached.status,
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     const body = await req.json().catch(() => ({}));
@@ -331,34 +471,62 @@ export async function handleTrackInteraction(
       }
     }
 
-    const results: { contentId: string; watchCompletionRate?: number; attentionScore?: number; saved?: boolean }[] = [];
+    const hasNonceDedupEvent = events.some((event) => NONCE_DEDUP_EVENTS.has(event.action) && !!event.eventNonce);
+    if (hasNonceDedupEvent) {
+      await cleanupInteractionEventNoncesForUser(supabase, user.id);
+    }
+
+    const results: { contentId: string; watchCompletionRate?: number; attentionScore?: number; saved?: boolean; deduped?: boolean; eventNonce?: string }[] = [];
 
     for (const event of events) {
-      const { interaction } = await processOne(supabase, user, event);
+      const { interaction, deduped, eventNonce } = await processOne(supabase, user, event);
       results.push({
         contentId: event.contentId,
         watchCompletionRate: interaction?.watch_completion_rate ?? undefined,
         attentionScore: interaction?.attention_score ?? undefined,
         saved: interaction?.saved ?? undefined,
+        deduped: deduped || undefined,
+        eventNonce: deduped ? eventNonce : undefined,
       });
     }
 
     console.log('[TrackInteraction] Success:', { userId: user.id, count: results.length });
 
+    const successBody = {
+      success: true,
+      interactions: results,
+      count: results.length,
+    };
+    if (idempotencyKey) {
+      await setCachedResponse(supabase, idempotencyKey, user.id, 'track_interaction', 200, successBody);
+    }
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        interactions: results,
-        count: results.length,
-      }),
+      JSON.stringify(successBody),
       { headers: { ...headers, 'Content-Type': 'application/json' } }
     );
   } catch (error: unknown) {
     console.error('[TrackInteraction] Error:', error);
     if (error instanceof TrackInteractionHttpError) {
+      const retryAfterSeconds = typeof error.details?.retryAfterSeconds === 'number'
+        ? Math.max(1, Math.floor(error.details.retryAfterSeconds))
+        : null;
+      const body = {
+        error: error.message,
+        code: error.code,
+        success: false,
+        ...(error.details ?? {}),
+      };
       return new Response(
-        JSON.stringify({ error: error.message, code: error.code, success: false }),
-        { status: error.status, headers: { ...headers, 'Content-Type': 'application/json' } }
+        JSON.stringify(body),
+        {
+          status: error.status,
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+            ...(retryAfterSeconds ? { 'Retry-After': String(retryAfterSeconds) } : {}),
+          },
+        }
       );
     }
     const message = error instanceof Error ? error.message : 'Internal server error';

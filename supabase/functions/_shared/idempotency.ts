@@ -7,6 +7,7 @@ export type IdempotencyScope =
   | "issue_reward"
   | "validate_attention"
   | "verify_checkin"
+  | "track_interaction"
   | "request_payout"
   | "send_coin_gift"
   | "submit_promotion_review";

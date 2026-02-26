@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.redeem_attention_reward(UUID, UUID, INTEGER, INTEGER, INTEGER);

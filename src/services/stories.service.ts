@@ -159,9 +159,14 @@ export async function recordStoryView(contentId: string, _contentOwnerId: string
   if (!user) return;
 
   try {
+    const eventNonce = crypto.randomUUID();
     await supabase.functions.invoke('track-interaction', {
+      headers: {
+        'Idempotency-Key': eventNonce,
+      },
       body: {
         contentId,
+        eventNonce,
         contentType: 'story',
         action: 'view_complete',
         watchDuration: 1,

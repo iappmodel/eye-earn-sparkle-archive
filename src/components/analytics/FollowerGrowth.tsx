@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, TrendingUp, Target, Award, ArrowUp, ArrowDown, 
   Minus, Calendar, UserPlus, UserMinus, ChevronRight
@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { supabase } from '@/integrations/supabase/client';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
 
 interface GrowthData {
@@ -29,11 +30,28 @@ interface GrowthGoal {
   progress: number;
 }
 
+interface GrowthDataMeta {
+  loading: boolean;
+  error: boolean;
+  hasActivity: boolean;
+  exactEventLedger: boolean;
+  unfollowHistoryTracked: boolean;
+  ledgerCoverageMayBePartial: boolean;
+}
+
 export const FollowerGrowth: React.FC = () => {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
   const [growthData, setGrowthData] = useState<GrowthData[]>([]);
+  const [growthMeta, setGrowthMeta] = useState<GrowthDataMeta>({
+    loading: true,
+    error: false,
+    hasActivity: false,
+    exactEventLedger: false,
+    unfollowHistoryTracked: false,
+    ledgerCoverageMayBePartial: true,
+  });
   const [goal, setGoal] = useState<GrowthGoal>({
     target: 1000,
     current: profile?.followers_count || 0,
@@ -50,11 +68,7 @@ export const FollowerGrowth: React.FC = () => {
     growthRate: 0,
   });
 
-  useEffect(() => {
-    generateGrowthData();
-  }, [period, profile]);
-
-  const generateGrowthData = () => {
+  const loadGrowthData = useCallback(async () => {
     const currentFollowers = profile?.followers_count || 0;
     let daysBack: number;
     
@@ -70,58 +84,140 @@ export const FollowerGrowth: React.FC = () => {
         break;
     }
 
+    setGrowthMeta((prev) => ({ ...prev, loading: true, error: false }));
+
     const days = eachDayOfInterval({ 
       start: subDays(new Date(), daysBack - 1), 
       end: new Date() 
     });
 
-    // Generate realistic growth data
-    let runningTotal = Math.max(0, currentFollowers - Math.floor(Math.random() * 100));
-    const data = days.map((day, index) => {
-      const gained = Math.floor(Math.random() * 15) + 2;
-      const lost = Math.floor(Math.random() * 5);
-      runningTotal = runningTotal + gained - lost;
-
-      return {
+    if (!user?.id) {
+      setGrowthData(days.map((day) => ({
         date: format(day, period === 'monthly' ? 'MMM d' : 'EEE'),
-        followers: runningTotal,
-        gained,
-        lost,
-      };
-    });
-
-    // Adjust last entry to match current followers
-    if (data.length > 0) {
-      data[data.length - 1].followers = currentFollowers;
+        followers: 0,
+        gained: 0,
+        lost: 0,
+      })));
+      setStats({ netGain: 0, gainedToday: 0, lostToday: 0, avgDailyGrowth: 0, growthRate: 0 });
+      setGrowthMeta({
+        loading: false,
+        error: false,
+        hasActivity: false,
+        exactEventLedger: false,
+        unfollowHistoryTracked: false,
+        ledgerCoverageMayBePartial: true,
+      });
+      return;
     }
 
-    setGrowthData(data);
+    try {
+      const startDate = subDays(new Date(), daysBack - 1);
+      type FollowEventRow = {
+        event_at: string;
+        event_type: 'follow' | 'unfollow';
+      };
+      const { data: followEvents, error } = await supabase
+        .from('user_follow_events' as never)
+        .select('event_at, event_type')
+        .eq('following_id', user.id)
+        .gte('event_at', startDate.toISOString())
+        .order('event_at', { ascending: true });
 
-    // Calculate stats
-    const totalGained = data.reduce((sum, d) => sum + d.gained, 0);
-    const totalLost = data.reduce((sum, d) => sum + d.lost, 0);
-    const netGain = totalGained - totalLost;
-    const lastDay = data[data.length - 1] || { gained: 0, lost: 0 };
-    const firstFollowers = data[0]?.followers || currentFollowers;
-    const growthRate = firstFollowers > 0 
-      ? ((currentFollowers - firstFollowers) / firstFollowers * 100) 
-      : 0;
+      if (error) throw error;
 
-    setStats({
-      netGain,
-      gainedToday: lastDay.gained,
-      lostToday: lastDay.lost,
-      avgDailyGrowth: Math.round(netGain / daysBack),
-      growthRate,
-    });
+      const keyFor = (d: Date) => format(d, 'yyyy-MM-dd');
+      const gainedByDay = new Map<string, number>();
+      const lostByDay = new Map<string, number>();
+      (followEvents as FollowEventRow[] | null ?? []).forEach((row) => {
+        const key = keyFor(new Date(row.event_at));
+        if (row.event_type === 'follow') {
+          gainedByDay.set(key, (gainedByDay.get(key) ?? 0) + 1);
+        } else if (row.event_type === 'unfollow') {
+          lostByDay.set(key, (lostByDay.get(key) ?? 0) + 1);
+        }
+      });
 
-    // Update goal progress
-    setGoal(prev => ({
-      ...prev,
-      current: currentFollowers,
-      progress: Math.min(100, (currentFollowers / prev.target) * 100),
-    }));
-  };
+      const totalGained = Array.from(gainedByDay.values()).reduce((sum, v) => sum + v, 0);
+      const totalLost = Array.from(lostByDay.values()).reduce((sum, v) => sum + v, 0);
+      const periodNet = totalGained - totalLost;
+      // Exact baseline for the selected period if the ledger covers the period:
+      // start_count = current_count - net_change_in_period
+      let runningFollowers = Math.max(0, currentFollowers - periodNet);
+
+      const data = days.map((day) => {
+        const key = keyFor(day);
+        const gained = gainedByDay.get(key) ?? 0;
+        const lost = lostByDay.get(key) ?? 0;
+        runningFollowers = Math.max(0, runningFollowers + gained - lost);
+        return {
+          date: format(day, period === 'monthly' ? 'MMM d' : 'EEE'),
+          followers: runningFollowers,
+          gained,
+          lost,
+        };
+      });
+
+      if (data.length > 0) {
+        data[data.length - 1].followers = currentFollowers;
+      }
+
+      setGrowthData(data);
+
+      const netGain = totalGained - totalLost;
+      const lastDay = data[data.length - 1] || { gained: 0, lost: 0 };
+      const firstFollowers = data[0]?.followers || currentFollowers;
+      const growthRate = firstFollowers > 0
+        ? ((currentFollowers - firstFollowers) / firstFollowers * 100)
+        : 0;
+
+      setStats({
+        netGain,
+        gainedToday: lastDay.gained,
+        lostToday: lastDay.lost,
+        avgDailyGrowth: Math.round(netGain / daysBack),
+        growthRate,
+      });
+
+      setGrowthMeta({
+        loading: false,
+        error: false,
+        hasActivity: totalGained > 0 || totalLost > 0,
+        exactEventLedger: true,
+        unfollowHistoryTracked: true,
+        // Current migration backfills active follows and records all future follow/unfollow events,
+        // but older periods before rollout may still be incomplete.
+        ledgerCoverageMayBePartial: true,
+      });
+    } catch (error) {
+      console.error('Error loading follower growth data:', error);
+      setGrowthData(days.map((day) => ({
+        date: format(day, period === 'monthly' ? 'MMM d' : 'EEE'),
+        followers: 0,
+        gained: 0,
+        lost: 0,
+      })));
+      setStats({ netGain: 0, gainedToday: 0, lostToday: 0, avgDailyGrowth: 0, growthRate: 0 });
+      setGrowthMeta({
+        loading: false,
+        error: true,
+        hasActivity: false,
+        exactEventLedger: false,
+        unfollowHistoryTracked: false,
+        ledgerCoverageMayBePartial: true,
+      });
+    } finally {
+      // Update goal progress even if data query fails
+      setGoal(prev => ({
+        ...prev,
+        current: currentFollowers,
+        progress: Math.min(100, (currentFollowers / prev.target) * 100),
+      }));
+    }
+  }, [period, profile?.followers_count, user?.id]);
+
+  useEffect(() => {
+    void loadGrowthData();
+  }, [loadGrowthData]);
 
   const updateGoal = () => {
     const target = parseInt(newGoalTarget, 10);
@@ -222,7 +318,14 @@ export const FollowerGrowth: React.FC = () => {
               <UserMinus className="w-4 h-4 text-red-500" />
               <span className="text-xs text-muted-foreground">Lost Today</span>
             </div>
-            <p className="text-xl font-bold text-red-500">-{stats.lostToday}</p>
+            {growthMeta.unfollowHistoryTracked ? (
+              <p className="text-xl font-bold text-red-500">-{stats.lostToday}</p>
+            ) : (
+              <p className="text-xl font-bold text-muted-foreground">—</p>
+            )}
+            {!growthMeta.unfollowHistoryTracked && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">Unfollows not tracked</p>
+            )}
           </CardContent>
         </Card>
         <Card className="neu-card">
@@ -258,48 +361,65 @@ export const FollowerGrowth: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={growthData}>
-                <defs>
-                  <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis 
-                  dataKey="date" 
-                  className="text-xs" 
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} 
-                />
-                <YAxis 
-                  className="text-xs" 
-                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                  domain={['dataMin - 10', 'dataMax + 10']}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px',
-                  }}
-                  formatter={(value: number, name: string) => {
-                    const label = name === 'followers' ? 'Followers' : name === 'gained' ? 'Gained' : 'Lost';
-                    return [value.toLocaleString(), label];
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="followers"
-                  stroke="hsl(var(--primary))"
-                  fillOpacity={1}
-                  fill="url(#colorFollowers)"
-                  name="followers"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          {growthMeta.loading ? (
+            <div className="h-48 rounded-xl bg-muted animate-pulse" />
+          ) : growthMeta.error ? (
+            <div className="h-48 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 flex items-center justify-center p-4 text-center text-sm text-muted-foreground">
+              Unable to load follower trend right now.
+            </div>
+          ) : !growthMeta.hasActivity ? (
+            <div className="h-48 rounded-xl border border-dashed border-border/60 bg-muted/20 flex items-center justify-center p-4 text-center text-sm text-muted-foreground">
+              No new follower activity in this period yet.
+            </div>
+          ) : (
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={growthData}>
+                  <defs>
+                    <linearGradient id="colorFollowers" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="date" 
+                    className="text-xs" 
+                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} 
+                  />
+                  <YAxis 
+                    className="text-xs" 
+                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    domain={['dataMin - 10', 'dataMax + 10']}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                    formatter={(value: number, name: string) => {
+                      const label = name === 'followers' ? 'Followers' : name === 'gained' ? 'Gained' : 'Lost';
+                      return [value.toLocaleString(), label];
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="followers"
+                    stroke="hsl(var(--primary))"
+                    fillOpacity={1}
+                    fill="url(#colorFollowers)"
+                    name="followers"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {!growthMeta.loading && !growthMeta.error && growthMeta.exactEventLedger && growthMeta.ledgerCoverageMayBePartial && (
+            <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Uses the follow/unfollow event ledger for exact gains/losses. Older periods before the ledger rollout may be partially backfilled.
+            </div>
+          )}
         </CardContent>
       </Card>
 

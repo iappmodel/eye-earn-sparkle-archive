@@ -58,10 +58,15 @@ export function useFeedInteraction() {
     async (contentId: string, context?: FeedItemContext | null) => {
       if (!user) return;
       let trackSucceeded = false;
+      const eventNonce = crypto.randomUUID();
       try {
         const { data, error } = await supabase.functions.invoke('track-interaction', {
+          headers: {
+            'Idempotency-Key': eventNonce,
+          },
           body: {
             contentId,
+            eventNonce,
             contentType: context?.contentType ?? 'video',
             action: 'share',
             tags: context?.tags ?? [],

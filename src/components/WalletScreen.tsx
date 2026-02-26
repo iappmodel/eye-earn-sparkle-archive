@@ -60,6 +60,8 @@ import { Progress } from './ui/progress';
 import { toast } from 'sonner';
 import { PromoEarningsSection } from './PromoEarningsSection';
 import { PaymentMethodManager } from './PaymentMethodManager';
+import { WalletReadyToPayCard } from '@/features/merchantCheckout/WalletReadyToPayCard';
+import { MerchantCheckoutSheet } from '@/features/merchantCheckout/MerchantCheckoutSheet';
 
 interface DailyLimits {
   icoin_earned: number;
@@ -229,6 +231,8 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   const [txSearchDebounced, setTxSearchDebounced] = useState('');
   const [showConvertConfirm, setShowConvertConfirm] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [merchantCheckoutOpen, setMerchantCheckoutOpen] = useState(false);
+  const [merchantCheckoutLaunchMode, setMerchantCheckoutLaunchMode] = useState<'scan' | 'link' | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -653,6 +657,19 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     )}
                   </button>
                 </div>
+
+                <WalletReadyToPayCard
+                  icoins={icoins}
+                  vicoins={vicoins}
+                  onScanToPay={() => {
+                    setMerchantCheckoutLaunchMode('scan');
+                    setMerchantCheckoutOpen(true);
+                  }}
+                  onPasteCheckoutLink={() => {
+                    setMerchantCheckoutLaunchMode('link');
+                    setMerchantCheckoutOpen(true);
+                  }}
+                />
 
                 {/* Lifetime stats from summary */}
                 {summary && !summaryLoading && (summary.total_earned > 0 || summary.total_withdrawn > 0) && (
@@ -1564,6 +1581,17 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
           </>
         )}
       </div>
+
+      <MerchantCheckoutSheet
+        open={merchantCheckoutOpen}
+        onClose={() => {
+          setMerchantCheckoutOpen(false);
+          setMerchantCheckoutLaunchMode(null);
+        }}
+        icoins={icoins}
+        vicoins={vicoins}
+        launchMode={merchantCheckoutLaunchMode}
+      />
 
       {/* Transaction detail sheet */}
       <Sheet open={!!selectedTransaction} onOpenChange={(open) => !open && setSelectedTransaction(null)}>

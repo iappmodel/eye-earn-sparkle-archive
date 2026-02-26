@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy:issue-reward": "supabase functions deploy issue-reward",
-    "test:functions": "npx deno test supabase/functions/stripe-webhook/index.test.ts supabase/functions/issue-reward/index.test.ts supabase/functions/request-payout/index.test.ts supabase/functions/send-coin-gift/index.test.ts supabase/functions/submit-promotion-review/index.test.ts --allow-env --no-check"
+    "test:functions": "npx deno test supabase/functions/stripe-webhook/index.test.ts supabase/functions/issue-reward/index.test.ts supabase/functions/request-payout/index.test.ts supabase/functions/send-coin-gift/index.test.ts supabase/functions/submit-promotion-review/index.test.ts supabase/functions/track-interaction/index.test.ts supabase/functions/track-interaction-health/index.test.ts --allow-env --no-check"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
@@ -80,6 +80,9 @@
     "vaul": "^0.9.9",
     "vite-plugin-pwa": "^1.2.0",
     "webgazer": "^3.4.0",
+    "workbox-precaching": "^7.4.0",
+    "workbox-routing": "^7.4.0",
+    "workbox-window": "^7.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

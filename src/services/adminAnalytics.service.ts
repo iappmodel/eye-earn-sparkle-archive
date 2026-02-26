@@ -64,6 +64,118 @@ export interface AdminAnalyticsOverview {
   transactionBreakdown: TransactionTypeBreakdown[];
 }
 
+export interface TrackInteractionHealthStats {
+  success?: boolean;
+  retention_days: number;
+  retention_cutoff: string;
+  nonce_table: {
+    total_rows: number;
+    rows_older_than_retention: number;
+    rows_last_24h: number;
+    oldest_created_at: string | null;
+    newest_created_at: string | null;
+    action_counts_last_24h: Record<string, number>;
+  };
+  cooldown_columns: {
+    rows_with_last_share_at: number;
+    rows_with_last_view_complete_at: number;
+    legacy_share_rows_missing_timestamp: number;
+    legacy_view_complete_missing_timestamp: number;
+    legacy_view_complete_rows_missing_timestamp?: number;
+  };
+}
+
+export interface TrackInteractionHealthWarning {
+  code: string;
+  severity: 'info' | 'warn';
+  metric: string;
+  count: number;
+  actual: number;
+  threshold: number;
+  message: string;
+}
+
+export interface TrackInteractionHealthAssessment {
+  status: 'ok' | 'warn';
+  warning_count: number;
+  summary: {
+    warn_count: number;
+    info_count: number;
+    top_warning_code: string | null;
+    top_warning_severity: 'warn' | 'info' | null;
+  };
+  warnings: TrackInteractionHealthWarning[];
+}
+
+export interface TrackInteractionCleanupHistoryEntry {
+  id: string;
+  admin_id: string;
+  admin_display_name: string | null;
+  admin_username: string | null;
+  admin_label: string | null;
+  created_at: string;
+  outcome: 'success' | 'error' | 'unknown';
+  rows_deleted: number;
+  retention_days: number | null;
+  cleanup_limit: number | null;
+  assessment_status: string | null;
+  assessment_warning_count: number | null;
+  cleanup_error: string | null;
+}
+
+export type TrackInteractionCleanupHistoryOutcomeFilter = 'all' | 'success' | 'error' | 'unknown';
+
+export interface TrackInteractionHealthHistoryOptions {
+  history_limit?: number;
+  history_outcome?: TrackInteractionCleanupHistoryOutcomeFilter;
+  history_since_days?: number | null;
+  history_before_created_at?: string | null;
+  history_after_created_at?: string | null;
+}
+
+export interface TrackInteractionHealthResponse {
+  success: boolean;
+  generated_at: string;
+  action?: 'stats' | 'cleanup';
+  requested_retention_days: number;
+  cleanup?: {
+    attempted: boolean;
+    before: string;
+    limit: number;
+    result: {
+      success?: boolean;
+      rows_deleted?: number;
+      [key: string]: unknown;
+    } | null;
+  } | null;
+  audit_log?: {
+    attempted: boolean;
+    logged: boolean;
+    error?: string;
+  } | null;
+  cleanup_history?: TrackInteractionCleanupHistoryEntry[];
+  cleanup_history_meta?: {
+    limit: number;
+    returned_count?: number;
+    has_more?: boolean;
+    has_older?: boolean;
+    has_newer?: boolean;
+    next_before_created_at?: string | null;
+    next_after_created_at?: string | null;
+    paging_direction?: 'latest' | 'older' | 'newer';
+    filters?: {
+      outcome: TrackInteractionCleanupHistoryOutcomeFilter;
+      since_days: number | null;
+      before_created_at?: string | null;
+      after_created_at?: string | null;
+    };
+    error: string | null;
+    profile_error?: string | null;
+  };
+  assessment?: TrackInteractionHealthAssessment;
+  stats: TrackInteractionHealthStats | null;
+}
+
 function getRangeBounds(range: AnalyticsTimeRange): { start: Date; days: number } {
   const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
   return { start: startOfDay(subDays(new Date(), days)), days };
@@ -253,4 +365,67 @@ export async function fetchTotalRewardsAmountAllTime(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+export async function fetchTrackInteractionHealth(
+  retentionDays = 14,
+  options: TrackInteractionHealthHistoryOptions = {}
+): Promise<TrackInteractionHealthResponse> {
+  const { data, error } = await supabase.functions.invoke('track-interaction-health', {
+    body: {
+      retention_days: retentionDays,
+      history_limit: options.history_limit,
+      history_outcome: options.history_outcome,
+      history_since_days: options.history_since_days,
+      history_before_created_at: options.history_before_created_at,
+      history_after_created_at: options.history_after_created_at,
+    },
+    headers: {
+      'X-Admin-Client': 'analytics-panel',
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message ?? 'Failed to load interaction health');
+  }
+
+  const payload = (data ?? {}) as Partial<TrackInteractionHealthResponse> & { error?: string };
+  if (!payload.success) {
+    throw new Error(payload.error ?? 'Failed to load interaction health');
+  }
+
+  return payload as TrackInteractionHealthResponse;
+}
+
+export async function runTrackInteractionNonceCleanup(
+  retentionDays = 14,
+  cleanupLimit = 5000,
+  options: TrackInteractionHealthHistoryOptions = {}
+): Promise<TrackInteractionHealthResponse> {
+  const { data, error } = await supabase.functions.invoke('track-interaction-health', {
+    body: {
+      action: 'cleanup',
+      retention_days: retentionDays,
+      cleanup_limit: cleanupLimit,
+      history_limit: options.history_limit,
+      history_outcome: options.history_outcome,
+      history_since_days: options.history_since_days,
+      history_before_created_at: options.history_before_created_at,
+      history_after_created_at: options.history_after_created_at,
+    },
+    headers: {
+      'X-Admin-Client': 'analytics-panel',
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message ?? 'Failed to run interaction nonce cleanup');
+  }
+
+  const payload = (data ?? {}) as Partial<TrackInteractionHealthResponse> & { error?: string };
+  if (!payload.success) {
+    throw new Error(payload.error ?? 'Failed to run interaction nonce cleanup');
+  }
+
+  return payload as TrackInteractionHealthResponse;
 }

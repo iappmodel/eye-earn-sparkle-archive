@@ -5,6 +5,7 @@ import {
   clampPreferences,
   createServiceRoleClient,
   jsonResponse,
+  logCheckoutEvent,
   loadCheckoutPreferences,
   readJson,
   requireUserId,
@@ -35,6 +36,17 @@ serve(async (req) => {
 
     if (action === "GET") {
       const prefs = await loadCheckoutPreferences(supabase, userId);
+      await logCheckoutEvent({
+        supabase,
+        payload: {
+          userId,
+          eventName: "checkout_preferences_loaded",
+          metadata: {
+            hasChosenLabelLanguage: prefs.hasChosenLabelLanguage,
+            version: prefs.version,
+          },
+        },
+      });
       return jsonResponse(headers, { preferences: prefs });
     }
 
@@ -48,6 +60,21 @@ serve(async (req) => {
       userId,
       incoming: clampPreferences(body.preferences as Record<string, unknown>),
       expectedVersion: typeof body.version === "number" ? body.version : null,
+    });
+    await logCheckoutEvent({
+      supabase,
+      payload: {
+        userId,
+        eventName: "checkout_preferences_saved",
+        metadata: {
+          hasChosenLabelLanguage: saved.hasChosenLabelLanguage,
+          labelLanguage: saved.labelLanguage,
+          tipPromptLayoutGlobal: saved.tipPromptLayoutGlobal,
+          categoryOverridesCount: Object.keys(saved.tipPromptLayoutByCategory ?? {}).length,
+          autoConvertPreferenceEnabled: saved.autoConvertPreferenceEnabled,
+          version: saved.version,
+        },
+      },
     });
 
     return jsonResponse(headers, {
@@ -65,4 +92,3 @@ serve(async (req) => {
     return jsonResponse(headers, { error: message }, status);
   }
 });
-

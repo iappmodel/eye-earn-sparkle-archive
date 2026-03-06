@@ -5,6 +5,7 @@ import {
   createServiceRoleClient,
   jsonResponse,
   loadCheckoutSession,
+  logCheckoutEvent,
   patchSessionDraft,
   readJson,
   requireUserId,
@@ -48,6 +49,29 @@ serve(async (req) => {
       accessibility: body.accessibility,
     });
     await saveCheckoutSession(supabase, userId, nextRecord);
+    await logCheckoutEvent({
+      supabase,
+      payload: {
+        userId,
+        eventName: "checkout_draft_updated",
+        checkoutSessionId: body.checkoutSessionId,
+        entryType: nextRecord.scenario.entry.entryType,
+        merchantId: nextRecord.scenario.merchant.id,
+        merchantCategory: nextRecord.scenario.merchant.category,
+        checkoutMode: nextRecord.plan.resolvedCheckoutMode,
+        modeVisibility: nextRecord.plan.modeBadge.visible ? "VISIBLE" : "HIDDEN",
+        tipMode: nextRecord.plan.tipPlan.mode,
+        tipTiming: nextRecord.plan.tipPlan.timing,
+        amountMinor: nextRecord.quote.amountMinor,
+        tipAmountMinor: nextRecord.quote.tipMinor,
+        currencyCode: nextRecord.quote.currencyCode,
+        autoConvertUsed: nextRecord.draft.paymentSourceSelection === "AUTO_CONVERT",
+        metadata: {
+          currentScreen: nextRecord.plan.screens[0] ?? null,
+          autoConvertEligible,
+        },
+      },
+    });
 
     return jsonResponse(headers, {
       checkoutSessionId: body.checkoutSessionId,
@@ -63,4 +87,3 @@ serve(async (req) => {
     return jsonResponse(headers, { error: message }, status);
   }
 });
-

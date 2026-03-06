@@ -38,6 +38,30 @@ export interface CheckoutSessionRecord {
   transactionId?: string;
 }
 
+export interface MerchantCheckoutEventPayload {
+  userId: string;
+  eventName: string;
+  checkoutSessionId?: string | null;
+  paymentId?: string | null;
+  entryType?: string | null;
+  merchantId?: string | null;
+  merchantCategory?: string | null;
+  checkoutMode?: string | null;
+  modeVisibility?: string | null;
+  tipMode?: string | null;
+  tipTiming?: string | null;
+  autoConvertUsed?: boolean | null;
+  amountMinor?: number | null;
+  tipAmountMinor?: number | null;
+  currencyCode?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface MerchantCheckoutCachedResponse {
+  responseStatus: number;
+  responseBody: Record<string, unknown>;
+}
+
 export function createServiceRoleClient() {
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -229,6 +253,164 @@ export function buildTipResult(record: CheckoutSessionRecord, selection: TipSele
   };
 }
 
+export async function getIdempotentCheckoutResponse(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  userId: string;
+  scope: "confirm" | "tip";
+  idempotencyKey?: string | null;
+}) {
+  const key = typeof args.idempotencyKey === "string" ? args.idempotencyKey.trim() : "";
+  if (!key) return null;
+
+  const { data, error } = await args.supabase
+    .from("merchant_checkout_idempotency")
+    .select("response_status, response_body")
+    .eq("user_id", args.userId)
+    .eq("scope", args.scope)
+    .eq("idempotency_key", key)
+    .maybeSingle();
+
+  if (error) throw new HttpError(500, error.message || "Failed to load idempotency record");
+  if (!data) return null;
+
+  return {
+    responseStatus: Number(data.response_status ?? 200),
+    responseBody: (data.response_body ?? {}) as Record<string, unknown>,
+  } as MerchantCheckoutCachedResponse;
+}
+
+export async function saveIdempotentCheckoutResponse(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  userId: string;
+  scope: "confirm" | "tip";
+  checkoutSessionId: string;
+  idempotencyKey?: string | null;
+  responseStatus: number;
+  responseBody: Record<string, unknown>;
+}) {
+  const key = typeof args.idempotencyKey === "string" ? args.idempotencyKey.trim() : "";
+  if (!key) return;
+
+  const row = {
+    user_id: args.userId,
+    scope: args.scope,
+    checkout_session_id: args.checkoutSessionId,
+    idempotency_key: key,
+    response_status: args.responseStatus,
+    response_body: args.responseBody,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await args.supabase
+    .from("merchant_checkout_idempotency")
+    .upsert(row, { onConflict: "user_id,scope,idempotency_key" });
+  if (error) throw new HttpError(500, error.message || "Failed to save idempotency record");
+}
+
+export async function saveCheckoutPayment(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  userId: string;
+  checkoutSessionId: string;
+  paymentId: string;
+  merchantId: string;
+  status: "SUCCEEDED" | "PENDING" | "FAILED";
+  receipt: Record<string, unknown>;
+}) {
+  const row = {
+    payment_id: args.paymentId,
+    checkout_session_id: args.checkoutSessionId,
+    user_id: args.userId,
+    merchant_id: args.merchantId,
+    status: args.status,
+    receipt: args.receipt,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await args.supabase
+    .from("merchant_checkout_payments")
+    .upsert(row, { onConflict: "payment_id" });
+  if (error) throw new HttpError(500, error.message || "Failed to save payment status");
+}
+
+export async function loadCheckoutPaymentById(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  userId: string;
+  paymentId: string;
+}) {
+  const { data, error } = await args.supabase
+    .from("merchant_checkout_payments")
+    .select("payment_id, checkout_session_id, status, receipt, created_at")
+    .eq("user_id", args.userId)
+    .eq("payment_id", args.paymentId)
+    .maybeSingle();
+
+  if (error) throw new HttpError(500, error.message || "Failed to load payment status");
+  if (!data) return null;
+
+  return {
+    paymentId: String(data.payment_id),
+    checkoutSessionId: String(data.checkout_session_id),
+    status: String(data.status),
+    receipt: (data.receipt ?? {}) as Record<string, unknown>,
+    createdAt: String(data.created_at ?? ""),
+  };
+}
+
+export async function loadCheckoutPaymentBySession(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  userId: string;
+  checkoutSessionId: string;
+}) {
+  const { data, error } = await args.supabase
+    .from("merchant_checkout_payments")
+    .select("payment_id, checkout_session_id, status, receipt, created_at")
+    .eq("user_id", args.userId)
+    .eq("checkout_session_id", args.checkoutSessionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new HttpError(500, error.message || "Failed to load payment status");
+  if (!data) return null;
+
+  return {
+    paymentId: String(data.payment_id),
+    checkoutSessionId: String(data.checkout_session_id),
+    status: String(data.status),
+    receipt: (data.receipt ?? {}) as Record<string, unknown>,
+    createdAt: String(data.created_at ?? ""),
+  };
+}
+
+export async function saveCheckoutTip(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  userId: string;
+  checkoutSessionId: string;
+  paymentId?: string | null;
+  tipId: string;
+  status: "SUCCEEDED" | "FAILED";
+  tipAmountMinor: number;
+  currencyCode: string;
+  response: Record<string, unknown>;
+}) {
+  const row = {
+    tip_id: args.tipId,
+    checkout_session_id: args.checkoutSessionId,
+    payment_id: args.paymentId ?? null,
+    user_id: args.userId,
+    status: args.status,
+    tip_amount_minor: args.tipAmountMinor,
+    currency_code: args.currencyCode,
+    response: args.response,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await args.supabase
+    .from("merchant_checkout_tips")
+    .upsert(row, { onConflict: "tip_id" });
+  if (error) throw new HttpError(500, error.message || "Failed to save tip status");
+}
+
 export async function saveCheckoutSession(
   supabase: ReturnType<typeof createServiceRoleClient>,
   userId: string,
@@ -333,4 +515,37 @@ export async function saveCheckoutPreferences(args: {
     ...incoming,
     version: nextVersion,
   };
+}
+
+export async function logCheckoutEvent(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>;
+  payload: MerchantCheckoutEventPayload;
+}) {
+  const row = {
+    user_id: args.payload.userId,
+    event_name: args.payload.eventName,
+    checkout_session_id: args.payload.checkoutSessionId ?? null,
+    payment_id: args.payload.paymentId ?? null,
+    entry_type: args.payload.entryType ?? null,
+    merchant_id: args.payload.merchantId ?? null,
+    merchant_category: args.payload.merchantCategory ?? null,
+    checkout_mode: args.payload.checkoutMode ?? null,
+    mode_visibility: args.payload.modeVisibility ?? null,
+    tip_mode: args.payload.tipMode ?? null,
+    tip_timing: args.payload.tipTiming ?? null,
+    auto_convert_used: typeof args.payload.autoConvertUsed === "boolean" ? args.payload.autoConvertUsed : null,
+    amount_minor: Number.isFinite(args.payload.amountMinor) ? args.payload.amountMinor : null,
+    tip_amount_minor: Number.isFinite(args.payload.tipAmountMinor) ? args.payload.tipAmountMinor : null,
+    currency_code: args.payload.currencyCode ?? null,
+    metadata: args.payload.metadata ?? {},
+  };
+
+  const { error } = await args.supabase.from("merchant_checkout_events").insert(row);
+  if (error) {
+    console.warn("[merchant_checkout] Failed to write analytics event", {
+      eventName: args.payload.eventName,
+      code: error.code,
+      message: error.message,
+    });
+  }
 }

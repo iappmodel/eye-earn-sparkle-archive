@@ -43,6 +43,15 @@ verify_jwt = false
 [functions.merchant-checkout-preferences]
 verify_jwt = false
 
+[functions.merchant-checkout-event]
+verify_jwt = false
+
+[functions.merchant-checkout-payment-status]
+verify_jwt = false
+
+[functions.merchant-checkout-funnel]
+verify_jwt = false
+
 [functions.customer-portal]
 verify_jwt = false
 

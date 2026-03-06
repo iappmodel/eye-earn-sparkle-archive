@@ -51,6 +51,12 @@ import {
 
 type LaunchMode = 'scan' | 'link' | null;
 type SimAuthMethod = 'FACE_ID' | 'PIN';
+type SettlementStatus = 'completed' | 'pending' | 'reversed';
+
+interface SettlementTimelineStep {
+  label: string;
+  state: 'done' | 'current' | 'upcoming' | 'error';
+}
 
 interface MerchantCheckoutSheetProps {
   open: boolean;
@@ -58,6 +64,8 @@ interface MerchantCheckoutSheetProps {
   icoins: number;
   vicoins: number;
   launchMode?: LaunchMode;
+  autoStartScenarioId?: string | null;
+  demoSettlementOutcome?: SettlementStatus;
 }
 
 interface ActiveFlowState {
@@ -76,6 +84,10 @@ interface ActiveFlowState {
   postPayTipStatus: 'idle' | 'sending' | 'sent' | 'failed';
   postPayTipMinor: number;
   showTipLayoutShortcut: boolean;
+  receiptStatus: SettlementStatus;
+  receiptTimeline: SettlementTimelineStep[];
+  receiptTransactionId: string | null;
+  receiptCreatedAt: string | null;
 }
 
 function toMinorFromIcoins(icoins: number) {
@@ -145,6 +157,31 @@ function getPaymentSourceLabel(flow: ActiveFlowState) {
   return flow.draft.paymentSourceSelection === 'AUTO_CONVERT' ? 'Vicoins + auto-convert' : 'Icoins';
 }
 
+function buildSettlementTimeline(status: SettlementStatus): SettlementTimelineStep[] {
+  if (status === 'pending') {
+    return [
+      { label: 'Initiated', state: 'done' },
+      { label: 'Verification', state: 'done' },
+      { label: 'Processing', state: 'current' },
+      { label: 'Completed', state: 'upcoming' },
+    ];
+  }
+  if (status === 'reversed') {
+    return [
+      { label: 'Initiated', state: 'done' },
+      { label: 'Verification', state: 'done' },
+      { label: 'Processing', state: 'done' },
+      { label: 'Reversed', state: 'error' },
+    ];
+  }
+  return [
+    { label: 'Initiated', state: 'done' },
+    { label: 'Verification', state: 'done' },
+    { label: 'Processing', state: 'done' },
+    { label: 'Completed', state: 'current' },
+  ];
+}
+
 type BarcodeDetectorResultLike = { rawValue?: string };
 type BarcodeDetectorLike = {
   detect: (source: ImageBitmapSource) => Promise<BarcodeDetectorResultLike[]>;
@@ -179,6 +216,8 @@ export function MerchantCheckoutSheet({
   icoins,
   vicoins,
   launchMode = null,
+  autoStartScenarioId = null,
+  demoSettlementOutcome = 'completed',
 }: MerchantCheckoutSheetProps) {
   const prefs = useMerchantCheckoutPreferences();
   const { canAccessAdmin } = useUserRole();
@@ -207,6 +246,9 @@ export function MerchantCheckoutSheet({
     () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && qrScanningSupported,
     [qrScanningSupported]
   );
+  const trackClientEvent = useCallback((params: Parameters<typeof merchantCheckoutService.trackClientEvent>[0]) => {
+    void merchantCheckoutService.trackClientEvent(params);
+  }, []);
 
   useEffect(() => {
     activeFlowRef.current = activeFlow;
@@ -308,6 +350,7 @@ export function MerchantCheckoutSheet({
 
   const scenarios = getMerchantCheckoutScenarios(entryFilter);
   const canSeeDemoScenarios = import.meta.env.DEV || canAccessAdmin;
+  const autoStartHandledRef = useRef<string | null>(null);
 
   const startScenario = useCallback(async (scenario: MerchantCheckoutScenario) => {
     setIsServiceBusy(true);
@@ -346,6 +389,21 @@ export function MerchantCheckoutSheet({
         postPayTipStatus: 'idle',
         postPayTipMinor: 0,
         showTipLayoutShortcut: false,
+        receiptStatus: 'completed',
+        receiptTimeline: buildSettlementTimeline('completed'),
+        receiptTransactionId: null,
+        receiptCreatedAt: null,
+      });
+      trackClientEvent({
+        eventName: 'checkout_started',
+        checkoutSessionId: resolved.checkoutSessionId,
+        currentScreen: resolved.plan.screens[0],
+        metadata: {
+          entryType: scenario.entry.entryType,
+          merchantId: scenario.merchant.id,
+          merchantCategory: scenario.merchant.category,
+          mode: scenario.merchant.settings.mode,
+        },
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to open checkout';
@@ -358,8 +416,22 @@ export function MerchantCheckoutSheet({
     prefs.labelLanguage,
     prefs.tipPromptLayoutByCategory,
     prefs.tipPromptLayoutGlobal,
+    trackClientEvent,
     walletSnapshot,
   ]);
+
+  useEffect(() => {
+    if (!open) {
+      autoStartHandledRef.current = null;
+      return;
+    }
+    if (!autoStartScenarioId || activeFlow || isServiceBusy) return;
+    if (autoStartHandledRef.current === autoStartScenarioId) return;
+    const scenario = getMerchantCheckoutScenarios(null).find((item) => item.id === autoStartScenarioId);
+    if (!scenario) return;
+    autoStartHandledRef.current = autoStartScenarioId;
+    void startScenario(scenario);
+  }, [activeFlow, autoStartScenarioId, isServiceBusy, open, startScenario]);
 
   const syncDraftToService = async (payload: {
     checkoutSessionId: string;
@@ -433,7 +505,18 @@ export function MerchantCheckoutSheet({
     setActiveFlow((prev) => {
       if (!prev) return prev;
       const nextIndex = Math.min(prev.plan.screens.length - 1, prev.screenIndex + 1);
-      return { ...prev, screenIndex: nextIndex, currentScreen: prev.plan.screens[nextIndex] };
+      const nextScreen = prev.plan.screens[nextIndex];
+      trackClientEvent({
+        eventName: 'checkout_step_changed',
+        checkoutSessionId: prev.checkoutSessionId,
+        currentScreen: nextScreen,
+        metadata: {
+          from: prev.currentScreen,
+          to: nextScreen,
+          direction: 'next',
+        },
+      });
+      return { ...prev, screenIndex: nextIndex, currentScreen: nextScreen };
     });
   };
 
@@ -441,7 +524,18 @@ export function MerchantCheckoutSheet({
     setActiveFlow((prev) => {
       if (!prev) return prev;
       const nextIndex = Math.max(0, prev.screenIndex - 1);
-      return { ...prev, screenIndex: nextIndex, currentScreen: prev.plan.screens[nextIndex] };
+      const nextScreen = prev.plan.screens[nextIndex];
+      trackClientEvent({
+        eventName: 'checkout_step_changed',
+        checkoutSessionId: prev.checkoutSessionId,
+        currentScreen: nextScreen,
+        metadata: {
+          from: prev.currentScreen,
+          to: nextScreen,
+          direction: 'back',
+        },
+      });
+      return { ...prev, screenIndex: nextIndex, currentScreen: nextScreen };
     });
   };
 
@@ -451,6 +545,18 @@ export function MerchantCheckoutSheet({
   };
 
   const handleClose = () => {
+    const flow = activeFlowRef.current;
+    if (flow && (!flow.paymentConfirmed || (flow.currentScreen !== 'RECEIPT' && flow.currentScreen !== 'POST_PAY_TIP'))) {
+      trackClientEvent({
+        eventName: 'checkout_abandoned',
+        checkoutSessionId: flow.checkoutSessionId,
+        currentScreen: flow.currentScreen,
+        metadata: {
+          paymentConfirmed: flow.paymentConfirmed,
+          screenIndex: flow.screenIndex,
+        },
+      });
+    }
     stopQrCamera();
     resetFlow();
     setShowSettingsPanel(false);
@@ -477,6 +583,12 @@ export function MerchantCheckoutSheet({
   const handleManualEntryLaunch = () => {
     const launched = launchFromParsedEntry(manualEntryInput);
     if (!launched) return;
+    trackClientEvent({
+      eventName: 'checkout_manual_entry_launched',
+      metadata: {
+        inputLength: manualEntryInput.trim().length,
+      },
+    });
   };
 
   const handlePickQrImage = () => {
@@ -504,6 +616,10 @@ export function MerchantCheckoutSheet({
       if (decoded) {
         setManualEntryInput(decoded);
         stopQrCamera();
+        trackClientEvent({
+          eventName: 'checkout_qr_scan_succeeded',
+          metadata: { source: 'live_camera' },
+        });
         const launched = launchFromParsedEntry(decoded);
         if (!launched) {
           setManualEntryError(
@@ -514,14 +630,22 @@ export function MerchantCheckoutSheet({
       }
     } catch (err) {
       console.warn('[merchantCheckout] live QR detect failed', err);
+      trackClientEvent({
+        eventName: 'checkout_qr_scan_failed',
+        metadata: { source: 'live_camera', message: err instanceof Error ? err.message : String(err) },
+      });
     } finally {
       qrDetectBusyRef.current = false;
     }
 
     qrScanRafRef.current = requestAnimationFrame(() => void scanQrFromLiveVideo());
-  }, [launchFromParsedEntry, stopQrCamera]);
+  }, [launchFromParsedEntry, stopQrCamera, trackClientEvent]);
 
   const handleStartQrCamera = useCallback(async () => {
+    trackClientEvent({
+      eventName: 'checkout_qr_scan_started',
+      metadata: { source: 'live_camera' },
+    });
     if (!qrCameraSupported) {
       setQrCameraError('Live camera scanning is not supported in this browser. Use a photo or paste the checkout payload.');
       return;
@@ -559,19 +683,31 @@ export function MerchantCheckoutSheet({
     } finally {
       setQrCameraStarting(false);
     }
-  }, [qrCameraActive, qrCameraStarting, qrCameraSupported, scanQrFromLiveVideo, stopQrCamera]);
+  }, [qrCameraActive, qrCameraStarting, qrCameraSupported, scanQrFromLiveVideo, stopQrCamera, trackClientEvent]);
 
   const handleQrImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setIsQrDecodeBusy(true);
     setManualEntryError(null);
+    trackClientEvent({
+      eventName: 'checkout_qr_scan_started',
+      metadata: { source: 'image_file' },
+    });
     try {
       const decoded = await decodeQrTextFromImageFile(file);
       if (!decoded) {
         setManualEntryError('No QR code was detected in this image. Try another photo or paste the checkout payload.');
+        trackClientEvent({
+          eventName: 'checkout_qr_scan_failed',
+          metadata: { source: 'image_file', reason: 'no_qr_detected' },
+        });
         return;
       }
+      trackClientEvent({
+        eventName: 'checkout_qr_scan_succeeded',
+        metadata: { source: 'image_file' },
+      });
       setManualEntryInput(decoded);
       const launched = launchFromParsedEntry(decoded);
       if (!launched) {
@@ -581,6 +717,10 @@ export function MerchantCheckoutSheet({
       }
     } catch (err) {
       setManualEntryError(err instanceof Error ? err.message : 'Failed to scan QR image');
+      trackClientEvent({
+        eventName: 'checkout_qr_scan_failed',
+        metadata: { source: 'image_file', message: err instanceof Error ? err.message : String(err) },
+      });
     } finally {
       setIsQrDecodeBusy(false);
       event.currentTarget.value = '';
@@ -650,6 +790,7 @@ export function MerchantCheckoutSheet({
           idempotencyKey: crypto.randomUUID(),
         })
         .then((result) => {
+          const settlementStatus: SettlementStatus = demoSettlementOutcome;
           setActiveFlow((prev) =>
             prev && prev.checkoutSessionId === result.checkoutSessionId
               ? {
@@ -657,19 +798,53 @@ export function MerchantCheckoutSheet({
                   paymentConfirmed: true,
                   paymentId: result.paymentId,
                   simulatedAuthMethod: result.receipt.authMethod,
+                  receiptStatus: settlementStatus,
+                  receiptTimeline: buildSettlementTimeline(settlementStatus),
+                  receiptTransactionId: result.receipt.transactionId,
+                  receiptCreatedAt: result.receipt.createdAt,
                 }
               : prev
           );
           goToNextScreen();
         })
         .catch((err) => {
-          setServiceError(err instanceof Error ? err.message : 'Failed to confirm payment');
+          void merchantCheckoutService
+            .getPaymentStatus({ checkoutSessionId: activeFlow.checkoutSessionId })
+            .then((status) => {
+              if (status.found && status.status === 'SUCCEEDED' && status.receipt) {
+                const settlementStatus: SettlementStatus = demoSettlementOutcome;
+                setActiveFlow((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        paymentConfirmed: true,
+                        paymentId: status.paymentId ?? prev.paymentId,
+                        simulatedAuthMethod: status.receipt?.authMethod ?? prev.simulatedAuthMethod,
+                        receiptStatus: settlementStatus,
+                        receiptTimeline: buildSettlementTimeline(settlementStatus),
+                        receiptTransactionId: status.receipt?.transactionId ?? prev.receiptTransactionId,
+                        receiptCreatedAt: status.receipt?.createdAt ?? prev.receiptCreatedAt,
+                      }
+                    : prev
+                );
+                goToNextScreen();
+                return;
+              }
+              setServiceError(err instanceof Error ? err.message : 'Failed to confirm payment');
+            })
+            .catch(() => {
+              setServiceError(err instanceof Error ? err.message : 'Failed to confirm payment');
+            });
         })
         .finally(() => setIsServiceBusy(false));
       return;
     }
 
     if (currentScreen === 'RECEIPT') {
+      if (activeFlow.receiptStatus === 'reversed') {
+        handleClose();
+        return;
+      }
       if (plan.tipPlan.enabled && plan.tipPlan.timing === 'POST_PAY') {
         goToNextScreen();
         return;
@@ -1550,17 +1725,54 @@ function AuthenticateScreen(props: {
 function ReceiptScreen({ flow }: { flow: ActiveFlowState }) {
   const quote = flow.quote;
   const total = quote ? formatCurrencyMinor(quote.totalMinor, flow.scenario.entry.currencyCode) : '—';
+  const statusMeta =
+    flow.receiptStatus === 'pending'
+      ? {
+          title: 'Payment pending',
+          description: `${flow.scenario.merchant.name} payment is processing.`,
+          tone: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+        }
+      : flow.receiptStatus === 'reversed'
+        ? {
+            title: 'Payment reversed',
+            description: `${flow.scenario.merchant.name} payment was reversed in demo mode.`,
+            tone: 'border-destructive/40 bg-destructive/10 text-destructive',
+          }
+        : {
+            title: 'Payment sent',
+            description: `${flow.scenario.merchant.name} received ${total}`,
+            tone: 'border-primary/30 bg-primary/5 text-primary',
+          };
+
   return (
     <div className="space-y-4">
-      <div role="status" aria-live="polite" className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+      <div role="status" aria-live="polite" className={cn('rounded-2xl border p-4', statusMeta.tone)}>
         <div className="flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 text-primary mt-0.5" />
+          <CheckCircle2 className="w-5 h-5 mt-0.5" />
           <div>
-            <h3 className="font-semibold">Payment sent</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {flow.scenario.merchant.name} received {total}
-            </p>
+            <h3 className="font-semibold">{statusMeta.title}</h3>
+            <p className="text-sm text-muted-foreground mt-1">{statusMeta.description}</p>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 p-3">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground mb-3">Status timeline</p>
+        <div className="space-y-2">
+          {flow.receiptTimeline.map((item) => (
+            <div key={item.label} className="flex items-center gap-2 text-sm">
+              <span
+                className={cn(
+                  'w-2.5 h-2.5 rounded-full',
+                  item.state === 'done' && 'bg-primary',
+                  item.state === 'current' && 'bg-amber-400',
+                  item.state === 'upcoming' && 'bg-muted-foreground/40',
+                  item.state === 'error' && 'bg-destructive'
+                )}
+              />
+              <span className={cn(item.state === 'upcoming' && 'text-muted-foreground')}>{item.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -1571,13 +1783,17 @@ function ReceiptScreen({ flow }: { flow: ActiveFlowState }) {
           ...(quote && quote.tipMinor > 0 ? [['Tip', formatCurrencyMinor(quote.tipMinor, flow.scenario.entry.currencyCode)] as [string, string]] : []),
           ...(quote && quote.conversionFeeMinor > 0 ? [['Conversion fee', formatCurrencyMinor(quote.conversionFeeMinor, flow.scenario.entry.currencyCode)] as [string, string]] : []),
           ['Paid with', flow.draft.paymentSourceSelection === 'AUTO_CONVERT' ? 'Vicoins + auto-convert' : 'Icoins'],
+          ['Status', flow.receiptStatus === 'pending' ? 'Pending' : flow.receiptStatus === 'reversed' ? 'Reversed' : 'Completed'],
           ['Total', total],
-          ['Transaction ID', `txn_${flow.scenario.id.replace(/[^a-z0-9]/gi, '').slice(0, 12)}`],
+          ['Transaction ID', flow.receiptTransactionId ?? `txn_${flow.scenario.id.replace(/[^a-z0-9]/gi, '').slice(0, 12)}`],
           ['Auth method', flow.simulatedAuthMethod === 'PIN' ? 'PIN' : 'Face ID / Touch ID'],
+          ...(flow.receiptCreatedAt
+            ? [['Created', new Date(flow.receiptCreatedAt).toLocaleString()] as [string, string]]
+            : []),
         ]}
       />
 
-      {flow.plan.tipPlan.enabled && flow.plan.tipPlan.timing === 'POST_PAY' && (
+      {flow.receiptStatus !== 'reversed' && flow.plan.tipPlan.enabled && flow.plan.tipPlan.timing === 'POST_PAY' && (
         <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground flex items-center gap-2">
           <Receipt className="w-4 h-4" />
           Post-pay tip is enabled for this merchant. The next step is a separate charge.
@@ -1955,6 +2171,7 @@ function getPrimaryActionLabel(flow: ActiveFlowState, totalMinor: number | null)
     case 'AUTHENTICATE':
       return flow.simulatedAuthMethod === 'PIN' ? 'Confirm with PIN' : 'Confirm payment';
     case 'RECEIPT':
+      if (flow.receiptStatus === 'reversed') return 'Done';
       return flow.plan.tipPlan.enabled && flow.plan.tipPlan.timing === 'POST_PAY' ? 'Add tip' : 'Done';
     case 'POST_PAY_TIP': {
       if (flow.postPayTipStatus === 'sent') return 'Done';

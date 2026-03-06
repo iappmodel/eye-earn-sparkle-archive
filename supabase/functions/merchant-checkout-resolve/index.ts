@@ -4,6 +4,7 @@ import {
   HttpError,
   createServiceRoleClient,
   jsonResponse,
+  logCheckoutEvent,
   readJson,
   requireUserId,
   resolveSession,
@@ -49,6 +50,27 @@ serve(async (req) => {
       accessibility: body.accessibility,
     });
     const expiresAt = await saveCheckoutSession(supabase, userId, record);
+    await logCheckoutEvent({
+      supabase,
+      payload: {
+        userId,
+        eventName: "checkout_resolved",
+        checkoutSessionId: record.checkoutSessionId,
+        entryType: record.scenario.entry.entryType,
+        merchantId: record.scenario.merchant.id,
+        merchantCategory: record.scenario.merchant.category,
+        checkoutMode: record.plan.resolvedCheckoutMode,
+        modeVisibility: record.plan.modeBadge.visible ? "VISIBLE" : "HIDDEN",
+        tipMode: record.plan.tipPlan.mode,
+        tipTiming: record.plan.tipPlan.timing,
+        amountMinor: record.quote.amountMinor,
+        currencyCode: record.quote.currencyCode,
+        metadata: {
+          screens: record.plan.screens,
+          analyticsDimensions: record.plan.analyticsDimensions,
+        },
+      },
+    });
 
     return jsonResponse(headers, {
       checkoutSessionId: record.checkoutSessionId,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Image, Video, Megaphone, Target, X, MapPin, Hash, Link as LinkIcon, DollarSign, Clapperboard, Wand2, Clock, Calendar, Save, RotateCcw, Share2, Camera, Upload, Eye, Sparkles, History, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -98,8 +98,17 @@ const contentTypes: { id: ContentType; label: string; icon: React.ReactNode; des
 
 const Create = forwardRef<HTMLDivElement>((_, ref) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [selectedType, setSelectedType] = useState<ContentType | null>(null);
+
+  // Preselect type when navigating from Creator Tools (e.g. state.preselectedType === 'promotion')
+  useEffect(() => {
+    const preselected = (location.state as { preselectedType?: ContentType })?.preselectedType;
+    if (preselected && ['post', 'story', 'promotion', 'campaign'].includes(preselected)) {
+      setSelectedType(preselected);
+    }
+  }, [location.state]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [enableSchedule, setEnableSchedule] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');

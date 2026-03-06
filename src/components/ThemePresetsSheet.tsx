@@ -39,6 +39,7 @@ interface ThemePreset {
 }
 
 const themePresets: ThemePreset[] = [
+  { id: 'midnight', name: 'Midnight', category: 'minimal', icon: <Moon className="w-5 h-5" />, description: 'Dark premium blue + gold', colors: { primary: '210 96% 62%', accent: '42 96% 56%', glow: '195 96% 62%' }, buttonStyle: 'rounded', glowIntensity: 'medium' },
   { id: 'glass', name: 'Glass', category: 'minimal', icon: <Sparkles className="w-5 h-5" />, description: 'Liquid glass translucency', colors: { primary: '210 100% 62%', accent: '260 85% 70%', glow: '180 100% 55%' }, buttonStyle: 'soft', glowIntensity: 'subtle' },
   { id: 'cyberpunk', name: 'Cyberpunk', category: 'neon', icon: <Zap className="w-5 h-5" />, description: 'Neon purple & magenta', colors: { primary: '270 95% 65%', accent: '320 90% 60%', glow: '270 95% 65%' }, buttonStyle: 'rounded', glowIntensity: 'intense' },
   { id: 'aura', name: 'Aura', category: 'minimal', icon: <Sun className="w-5 h-5" />, description: 'White neumorphic soft', colors: { primary: '220 25% 55%', accent: '180 25% 60%', glow: '220 25% 55%' }, buttonStyle: 'soft', glowIntensity: 'subtle' },

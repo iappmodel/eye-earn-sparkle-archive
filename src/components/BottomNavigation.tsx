@@ -90,7 +90,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
 
   const handleLogoClick = () => {
     haptic.light();
-    navigate('/create');
+    onTabChange('logo');
   };
 
   const handleLongPressStart = useCallback((itemId: string) => {
@@ -121,12 +121,8 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
       return;
     }
     haptic.light();
-    if (item.id === 'profile') {
-      navigate('/my-page');
-    } else {
-      onTabChange(item.id);
-    }
-  }, [navigate, onTabChange]);
+    onTabChange(item.id);
+  }, [onTabChange]);
 
   return (
     <>

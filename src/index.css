@@ -267,78 +267,78 @@
 
 @layer base {
   :root {
-    /* Cyberpunk Neon - Deep Black Base */
-    --background: 240 15% 4%;
+    /* Dark premium baseline */
+    --background: 222 32% 6%;
     --foreground: 210 40% 98%;
 
-    --card: 240 15% 7%;
+    --card: 222 28% 9%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 240 15% 6%;
+    --popover: 222 28% 8%;
     --popover-foreground: 210 40% 98%;
 
-    /* Primary - Electric Purple */
-    --primary: 270 95% 65%;
+    /* Primary - Premium blue */
+    --primary: 210 96% 62%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 15% 12%;
+    --secondary: 222 22% 14%;
     --secondary-foreground: 210 40% 95%;
 
-    --muted: 240 15% 15%;
+    --muted: 222 16% 16%;
     --muted-foreground: 215 20% 60%;
 
-    /* Accent - Magenta/Hot Pink */
-    --accent: 320 90% 60%;
+    /* Accent - Gold */
+    --accent: 42 96% 56%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 85% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 270 30% 20%;
-    --input: 240 15% 12%;
-    --ring: 270 95% 65%;
+    --border: 215 32% 22%;
+    --input: 222 22% 13%;
+    --ring: 210 96% 62%;
 
     --radius: 1rem;
 
     /* Neon Glow Colors */
-    --neon-purple: 270 95% 65%;
-    --neon-magenta: 320 90% 60%;
-    --neon-cyan: 185 100% 50%;
-    --neon-blue: 220 100% 60%;
-    --neon-pink: 330 100% 65%;
+    --neon-purple: 210 96% 62%;
+    --neon-magenta: 42 96% 56%;
+    --neon-cyan: 190 100% 54%;
+    --neon-blue: 210 96% 62%;
+    --neon-pink: 42 96% 56%;
     
     /* Currency Colors */
-    --vicoin: 270 95% 65%;
+    --vicoin: 210 96% 62%;
     --icoin: 45 100% 55%;
     
     /* Glass morphism */
-    --glass-bg: 240 15% 8%;
-    --glass-border: 270 30% 25%;
+    --glass-bg: 222 26% 10%;
+    --glass-border: 215 34% 24%;
     
     /* Gradient stops */
-    --gradient-start: 270 95% 65%;
-    --gradient-mid: 320 90% 60%;
-    --gradient-end: 185 100% 50%;
+    --gradient-start: 210 96% 62%;
+    --gradient-mid: 42 96% 56%;
+    --gradient-end: 190 100% 54%;
     
     /* Depth layers */
-    --depth-1: 240 15% 10%;
-    --depth-2: 240 15% 8%;
-    --depth-3: 240 15% 5%;
-    --depth-glow: 270 95% 65%;
+    --depth-1: 222 24% 12%;
+    --depth-2: 222 24% 10%;
+    --depth-3: 222 30% 7%;
+    --depth-glow: 210 96% 62%;
     
     /* Ambient effects */
-    --ambient-warm: 320 90% 60%;
-    --ambient-cool: 185 100% 50%;
-    --ambient-energy: 270 95% 65%;
+    --ambient-warm: 42 96% 56%;
+    --ambient-cool: 190 100% 54%;
+    --ambient-energy: 210 96% 62%;
     
-    --sidebar-background: 240 15% 5%;
+    --sidebar-background: 222 30% 7%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 270 95% 65%;
+    --sidebar-primary: 210 96% 62%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 15% 12%;
+    --sidebar-accent: 222 20% 14%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 270 30% 20%;
-    --sidebar-ring: 270 95% 65%;
+    --sidebar-border: 215 32% 22%;
+    --sidebar-ring: 210 96% 62%;
     
     /* UI Density */
     --ui-density: 1;

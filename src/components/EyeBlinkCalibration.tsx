@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { useVisionEngine } from '@/hooks/useVisionEngine';
+import { isDemoVisionSimulationEnabled } from '@/lib/demoRuntime';
 import {
   loadRemoteControlSettings,
   loadCalibrationData,
@@ -601,6 +602,7 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
   const CALIBRATION_POSITIONS = extendedCalibration
     ? (orientationMode === 'portrait' ? CALIBRATION_POSITIONS_16_PORTRAIT : CALIBRATION_POSITIONS_16_LANDSCAPE)
     : (orientationMode === 'portrait' ? CALIBRATION_POSITIONS_PORTRAIT : CALIBRATION_POSITIONS_LANDSCAPE);
+  const demoVisionFallback = isDemoVisionSimulationEnabled();
   
   // Blink detection refs
   const lastBlinkTimeRef = useRef<number>(0);
@@ -2008,6 +2010,37 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
     });
   }, [gestureResults]);
 
+  const runDemoCalibration = useCallback(() => {
+    const now = Date.now();
+    const syntheticPositions = CALIBRATION_POSITIONS.map((position, index) => {
+      const requiredBlinks = getBlinkRequirement(index);
+      return {
+        position: { x: position.x, y: position.y },
+        blinkData: {
+          requiredBlinks,
+          actualBlinks: requiredBlinks,
+          timing: Array.from({ length: requiredBlinks }, (_, i) => 260 + i * 140),
+        },
+        gazeData: {
+          avgX: clamp01(position.x + (Math.random() - 0.5) * 0.03),
+          avgY: clamp01(position.y + (Math.random() - 0.5) * 0.03),
+        },
+      };
+    });
+    const result: CalibrationResult = {
+      positions: syntheticPositions,
+      landscapePositions: undefined,
+      eyeFrameData: {
+        captured: true,
+        timestamp: now,
+      },
+      gestureTraining: GESTURE_SEQUENCE.map((g) => ({ id: g.id, completed: true, timestamp: now })),
+      completedAt: now,
+    };
+    onComplete(result);
+    onClose();
+  }, [CALIBRATION_POSITIONS, onClose, onComplete]);
+
   const handleComplete = () => {
     const result: CalibrationResult = {
       positions: orientationMode === 'landscape' ? landscapeCalibrationData : calibrationData,
@@ -2766,6 +2799,16 @@ export const EyeBlinkCalibration: React.FC<EyeBlinkCalibrationProps> = ({
               )}
               {cameraStatus === 'idle' && <span>Starting camera… If it doesn’t start, tap “Start Calibration”.</span>}
             </div>
+
+            {cameraStatus === 'error' && demoVisionFallback && (
+              <Button
+                variant="outline"
+                onClick={runDemoCalibration}
+                className="mt-3 border-white/30 text-white hover:bg-white/10"
+              >
+                Run simulated calibration (Demo)
+              </Button>
+            )}
             
             {onSkip && (
               <Button

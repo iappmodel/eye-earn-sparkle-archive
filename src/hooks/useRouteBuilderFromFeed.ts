@@ -4,6 +4,7 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getMapboxEnvToken } from '@/lib/demoRuntime';
 
 export interface NearbyPromoForRoute {
   id: string;
@@ -59,7 +60,7 @@ export function useRouteBuilderFromFeed(open: boolean) {
 
   // Mapbox token (env or edge function)
   useEffect(() => {
-    const envToken = import.meta.env.VITE_MAPBOX_TOKEN;
+    const envToken = getMapboxEnvToken();
     if (envToken) {
       setMapboxToken(envToken);
       return;

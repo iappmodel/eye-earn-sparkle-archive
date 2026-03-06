@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Settings, Grid3X3, Video, Camera, Crown, Heart, Eye, Play, ImageIcon, BarChart3 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSubscription } from '@/hooks/useSubscription';
@@ -23,9 +23,18 @@ type ContentItem = {
 
 const MyPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { profile, user } = useAuth();
   const { tier, tierName } = useSubscription();
   const [activeTab, setActiveTab] = useState<ContentTab>('grid');
+
+  // Support ?tab=analytics from URL (e.g. from Creator Tools)
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['grid', 'videos', 'analytics', 'rewards'].includes(tab)) {
+      setActiveTab(tab as ContentTab);
+    }
+  }, [searchParams]);
   const [showSettings, setShowSettings] = useState(false);
   const [userContent, setUserContent] = useState<ContentItem[]>([]);
   const [contentLoading, setContentLoading] = useState(true);

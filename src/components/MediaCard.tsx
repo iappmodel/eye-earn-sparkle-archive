@@ -31,6 +31,10 @@ interface MediaCardProps {
   onSkip?: () => void;
   isActive?: boolean;
   contentId?: string;
+  /** Optional demo flag to prefer landscape framing for video playback. */
+  preferLandscapePlayback?: boolean;
+  /** Current viewport orientation; used for orientation-aware video framing. */
+  isLandscapeViewport?: boolean;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({
@@ -44,6 +48,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   onSkip,
   isActive = true,
   contentId,
+  preferLandscapePlayback = false,
+  isLandscapeViewport = false,
 }) => {
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -454,6 +460,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
 
   // Auto-start promo/video content. On iOS with eye tracking, require tap first (no gesture for getUserMedia otherwise).
   const shouldRequireTapOnIOS = type === 'promo' && isActive && eyeTrackingEnabled && isIOS();
+  const useLandscapeFraming = Boolean(videoSrc) && (preferLandscapePlayback || isLandscapeViewport);
+  const showRotateHint = Boolean(videoSrc) && !isLandscapeViewport && !preferLandscapePlayback;
   useEffect(() => {
     if ((type === 'promo' || type === 'video') && isActive && !shouldRequireTapOnIOS) {
       const timer = setTimeout(() => {
@@ -549,20 +557,36 @@ export const MediaCard: React.FC<MediaCardProps> = ({
     >
       {/* Fullscreen media background - image or video */}
       {videoSrc ? (
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          src={videoSrc}
-          poster={src}
-          muted={isMuted}
-          playsInline
-          loop={type !== 'promo'}
-        />
+        <div
+          className={cn(
+            'absolute inset-0 bg-black',
+            useLandscapeFraming && 'flex items-center justify-center'
+          )}
+        >
+          <video
+            ref={videoRef}
+            className={cn(
+              'w-full h-full',
+              useLandscapeFraming ? 'object-contain' : 'object-cover'
+            )}
+            src={videoSrc}
+            poster={src}
+            muted={isMuted}
+            playsInline
+            loop={type !== 'promo'}
+          />
+        </div>
       ) : (
         <div 
           className="absolute inset-0 bg-cover bg-center transition-transform duration-300"
           style={{ backgroundImage: `url(${src})` }}
         />
+      )}
+
+      {showRotateHint && (
+        <div className="absolute top-4 right-4 z-20 px-3 py-1.5 rounded-full bg-black/55 border border-white/20 text-[11px] text-slate-100 tracking-wide">
+          Rotate for landscape playback
+        </div>
       )}
       
       {/* Subtle vignette overlay for depth */}

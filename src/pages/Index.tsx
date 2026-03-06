@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { MediaCard } from '@/components/MediaCard';
 import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, useControlsVisibility } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
-import { WalletScreen } from '@/components/WalletScreen';
+import { WalletScreen, type WalletTourCommand } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { DiscoveryMap } from '@/components/DiscoveryMap';
 import { PersonalizedFeed } from '@/components/PersonalizedFeed';
@@ -12,6 +12,7 @@ import { UnifiedContentFeed } from '@/components/UnifiedContentFeed';
 import { MessagesScreen } from '@/components/MessagesScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
 import { BottomNavigation } from '@/components/BottomNavigation';
+import { CreatorToolsSheet } from '@/components/CreatorToolsSheet';
 import { OnboardingFlow } from '@/components/onboarding';
 import { FriendsPostsFeed } from '@/components/FriendsPostsFeed';
 import { PromoVideosFeed } from '@/components/PromoVideosFeed';
@@ -56,9 +57,12 @@ import { NotificationCenter } from '@/components/NotificationCenter';
 import { NotificationPreferences } from '@/components/NotificationPreferences';
 import { ContentReportFlow } from '@/components/ContentReportFlow';
 import { TipSheet } from '@/components/TipSheet';
+import { DemoScenarioSelector, type DemoScenarioId } from '@/components/demo/DemoScenarioSelector';
+import { DemoControlsSheet, type DemoControlsState } from '@/components/demo/DemoControlsSheet';
+import { GuidedInvestorTour, type GuidedTourAction } from '@/components/demo/GuidedInvestorTour';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Route as RouteIcon, Bookmark } from 'lucide-react';
+import { Route as RouteIcon, Bookmark, Settings2 } from 'lucide-react';
 
 // Auto-hide wrapper for the network status indicator
 const NetworkStatusAutoHide: React.FC = () => {
@@ -101,10 +105,65 @@ const ScreenIndicatorsAutoHide: React.FC<{
 
 type HorizontalScreen = 'friends' | 'main' | 'promos';
 
+const DEMO_SCENARIO_SEEN_KEY = 'i_demo_scenario_seen_v1';
+const DEMO_CONTROLS_KEY = 'i_demo_controls_v2';
+const DEMO_BALANCES_KEY = 'i_demo_balances_v1';
+
+const defaultDemoControls: DemoControlsState = {
+  forceLandscapePlayback: false,
+  rewardMode: 'auto',
+  verificationDelayMs: 2000,
+  checkoutOutcome: 'completed',
+  simulateVisionInput: false,
+  simulateMapFallback: false,
+};
+
+interface DemoBalances {
+  vicoins: number;
+  icoins: number;
+}
+
+const defaultDemoBalances: DemoBalances = {
+  vicoins: 3200,
+  icoins: 28,
+};
+
+const getStoredDemoControls = (): DemoControlsState => {
+  try {
+    const raw = localStorage.getItem(DEMO_CONTROLS_KEY);
+    if (!raw) return defaultDemoControls;
+    const parsed = JSON.parse(raw) as Partial<DemoControlsState>;
+    return {
+      forceLandscapePlayback: parsed.forceLandscapePlayback ?? defaultDemoControls.forceLandscapePlayback,
+      rewardMode: parsed.rewardMode ?? defaultDemoControls.rewardMode,
+      verificationDelayMs: parsed.verificationDelayMs ?? defaultDemoControls.verificationDelayMs,
+      checkoutOutcome: parsed.checkoutOutcome ?? defaultDemoControls.checkoutOutcome,
+      simulateVisionInput: parsed.simulateVisionInput ?? defaultDemoControls.simulateVisionInput,
+      simulateMapFallback: parsed.simulateMapFallback ?? defaultDemoControls.simulateMapFallback,
+    };
+  } catch {
+    return defaultDemoControls;
+  }
+};
+
+const getStoredDemoBalances = (): DemoBalances => {
+  try {
+    const raw = localStorage.getItem(DEMO_BALANCES_KEY);
+    if (!raw) return defaultDemoBalances;
+    const parsed = JSON.parse(raw) as Partial<DemoBalances>;
+    return {
+      vicoins: Number.isFinite(parsed.vicoins) ? Math.max(0, Number(parsed.vicoins)) : defaultDemoBalances.vicoins,
+      icoins: Number.isFinite(parsed.icoins) ? Math.max(0, Number(parsed.icoins)) : defaultDemoBalances.icoins,
+    };
+  } catch {
+    return defaultDemoBalances;
+  }
+};
+
 const Index = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { t } = useLocalization();
+  const { t, locale, setLocale } = useLocalization();
   const { user, profile, refreshProfile, refreshSubscription } = useAuth();
   const messagesUnreadCount = useMessagesUnread(user?.id);
   const { unreadCount: notificationsUnreadCount } = useNotifications();
@@ -150,7 +209,7 @@ const Index = () => {
   const [coinSlideAmount, setCoinSlideAmount] = useState<number | null>(null);
   const [isClaimingReward, setIsClaimingReward] = useState(false);
   const [showWallet, setShowWallet] = useState(false);
-  const [walletInitialTab, setWalletInitialTab] = useState<'overview' | 'transactions' | 'subscription' | 'payout' | undefined>();
+  const [walletInitialTab, setWalletInitialTab] = useState<'overview' | 'transactions' | 'subscription' | 'payout' | 'checkout' | undefined>();
   const [showProfile, setShowProfile] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
@@ -175,7 +234,27 @@ const Index = () => {
   const [showTipSheet, setShowTipSheet] = useState(false);
   const [tipSheetSource, setTipSheetSource] = useState<'button' | 'gesture' | 'remote'>('button');
   const [showBookmarks, setShowBookmarks] = useState(false);
-  
+  const [showCreatorTools, setShowCreatorTools] = useState(false);
+  const demoModeEnabled = true;
+  const [showScenarioSelector, setShowScenarioSelector] = useState(() => {
+    try {
+      return localStorage.getItem(DEMO_SCENARIO_SEEN_KEY) !== 'true';
+    } catch {
+      return true;
+    }
+  });
+  const [showDemoControls, setShowDemoControls] = useState(false);
+  const [demoControls, setDemoControls] = useState<DemoControlsState>(() => getStoredDemoControls());
+  const [demoBalances, setDemoBalances] = useState<DemoBalances>(() => getStoredDemoBalances());
+  const [showGuidedTour, setShowGuidedTour] = useState(false);
+  const [guidedScenarioId, setGuidedScenarioId] = useState<DemoScenarioId | null>(null);
+  const [walletTourCommand, setWalletTourCommand] = useState<WalletTourCommand | null>(null);
+  const walletCommandSeqRef = useRef(0);
+  const [isLandscapeViewport, setIsLandscapeViewport] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(orientation: landscape)').matches;
+  });
+
   // Route system - lifted to app level for sharing between feed and map
   const promoRoute = usePromoRoute();
   const routeBuilderFeed = useRouteBuilderFromFeed(showRouteBuilderFromFeed);
@@ -183,6 +262,36 @@ const Index = () => {
   const savedVideos = useSavedVideos();
   const contentLikes = useFeedInteraction();
   const mainFeed = useMainFeed();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEMO_CONTROLS_KEY, JSON.stringify(demoControls));
+    } catch {
+      // ignore persistence errors in private mode
+    }
+  }, [demoControls]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEMO_BALANCES_KEY, JSON.stringify(demoBalances));
+    } catch {
+      // ignore persistence errors in private mode
+    }
+  }, [demoBalances]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const updateOrientation = () => {
+      setIsLandscapeViewport(window.matchMedia('(orientation: landscape)').matches);
+    };
+    updateOrientation();
+    window.addEventListener('resize', updateOrientation);
+    window.addEventListener('orientationchange', updateOrientation);
+    return () => {
+      window.removeEventListener('resize', updateOrientation);
+      window.removeEventListener('orientationchange', updateOrientation);
+    };
+  }, []);
 
   // Nearby promotions with route suggestion detection
   const { routeSuggestion, dismissRouteSuggestion } = useNearbyPromotions(true);
@@ -223,9 +332,9 @@ const Index = () => {
   
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
-  
-  const vicoins = profile?.vicoin_balance || 0;
-  const icoins = profile?.icoin_balance || 0;
+
+  const vicoins = profile?.vicoin_balance ?? demoBalances.vicoins;
+  const icoins = profile?.icoin_balance ?? demoBalances.icoins;
   
   // Check if current media is promo content
   const feedItems = mainFeed.items;
@@ -236,6 +345,117 @@ const Index = () => {
     creatorId: currentMedia?.creator?.id ?? null,
     skipFetch: currentMedia?.isShellCreator === true, // shell mode: no DB lookup for fallback creators
   });
+
+  const focusFirstPromo = useCallback(() => {
+    const promoIndex = feedItems.findIndex((item) => item.type === 'promo' && item.reward);
+    if (promoIndex >= 0) {
+      setCurrentIndex(promoIndex);
+      return true;
+    }
+    return false;
+  }, [feedItems]);
+
+  const handleStartScenario = useCallback((scenarioId: DemoScenarioId) => {
+    const scenarioSeed: Record<DemoScenarioId, DemoBalances> = {
+      'us-earner': { vicoins: 4200, icoins: 76 },
+      'brazil-shopper': { vicoins: 3600, icoins: 64 },
+      'wallet-explorer': { vicoins: 8200, icoins: 145 },
+    };
+    setDemoBalances(scenarioSeed[scenarioId]);
+    setShowScenarioSelector(false);
+    setShowDemoControls(false);
+    closeOnboarding();
+    setActiveTab('home');
+    try {
+      localStorage.setItem(DEMO_SCENARIO_SEEN_KEY, 'true');
+    } catch {
+      // ignore
+    }
+
+    if (scenarioId === 'us-earner') {
+      setLocale('en');
+      focusFirstPromo();
+      setGuidedScenarioId(scenarioId);
+      setShowGuidedTour(true);
+      toast.info('US Earner loaded', {
+        description: 'Watch a promo, then open Wallet to convert and withdraw.',
+      });
+      return;
+    }
+
+    if (scenarioId === 'brazil-shopper') {
+      setLocale('pt');
+      focusFirstPromo();
+      setGuidedScenarioId(scenarioId);
+      setShowGuidedTour(true);
+      toast.info('Brazil Shopper loaded', {
+        description: 'Watch a promo, then open Wallet and use Pay (Pix path).',
+      });
+      return;
+    }
+
+    setLocale('en');
+    setShowWallet(true);
+    setWalletInitialTab('overview');
+    setGuidedScenarioId(scenarioId);
+    setShowGuidedTour(true);
+    toast.info('Wallet Explorer loaded', {
+      description: 'Review pending/completed states and run checkout demos.',
+    });
+  }, [closeOnboarding, focusFirstPromo, setLocale]);
+
+  const issueWalletTourCommand = useCallback(
+    (action: WalletTourCommand['action'], scenarioId?: string) => {
+      walletCommandSeqRef.current += 1;
+      setWalletTourCommand({
+        id: `wallet-tour-${walletCommandSeqRef.current}`,
+        action,
+        scenarioId,
+      });
+    },
+    []
+  );
+
+  const simulateDemoReward = useCallback(() => {
+    const rewardType = currentMedia?.reward?.type ?? 'icoin';
+    const rewardAmount = currentMedia?.reward?.amount ?? 1;
+    setCoinSlideType(rewardType);
+    setCoinSlideAmount(rewardAmount);
+    setShowCoinSlide(true);
+    setDemoBalances((prev) => ({
+      ...prev,
+      [rewardType === 'vicoin' ? 'vicoins' : 'icoins']:
+        prev[rewardType === 'vicoin' ? 'vicoins' : 'icoins'] + rewardAmount,
+    }));
+    toast.success(`Simulated reward: +${rewardAmount} ${rewardType === 'vicoin' ? 'Vicoins' : 'Icoins'}`);
+  }, [currentMedia?.reward?.amount, currentMedia?.reward?.type]);
+
+  const handleGuidedTourAction = useCallback(
+    (action: GuidedTourAction) => {
+      if (action.type === 'simulate_reward') {
+        simulateDemoReward();
+        return;
+      }
+      if (action.type === 'open_wallet_overview') {
+        setShowWallet(true);
+        setWalletInitialTab('overview');
+        issueWalletTourCommand('open_overview');
+        return;
+      }
+      if (action.type === 'open_wallet_payout') {
+        setShowWallet(true);
+        setWalletInitialTab('payout');
+        issueWalletTourCommand('open_payout');
+        return;
+      }
+      if (action.type === 'open_wallet_checkout') {
+        setShowWallet(true);
+        setWalletInitialTab('overview');
+        issueWalletTourCommand('open_checkout', action.scenarioId);
+      }
+    },
+    [issueWalletTourCommand, simulateDemoReward]
+  );
 
   // Clamp index when feed length changes
   useEffect(() => {
@@ -416,15 +636,40 @@ const Index = () => {
     _watchDuration?: number,
     attentionSessionId?: string
   ) => {
-    if (!currentMedia?.reward || !profile) return;
+    if (!currentMedia?.reward) return;
 
-    if (!attentionValidated) {
-      console.log('[Index] Reward not given - attention validation failed');
+    const effectiveAttentionValidated =
+      demoControls.rewardMode === 'always_pass'
+        ? true
+        : demoControls.rewardMode === 'always_fail'
+          ? false
+          : attentionValidated;
+
+    if (!effectiveAttentionValidated) {
+      toast.info('No reward earned', { description: 'Full watch and attention are required for this campaign.' });
       return;
     }
 
-    if (!attentionSessionId) {
-      console.warn('[Index] No attention session id - reward requires validate-attention first');
+    const shouldUseSimulatedReward = demoModeEnabled || !profile || !attentionSessionId;
+    if (shouldUseSimulatedReward) {
+      setIsClaimingReward(true);
+      const rewardType = currentMedia.reward.type;
+      const rewardAmount = currentMedia.reward.amount;
+      window.setTimeout(() => {
+        setCoinSlideType(rewardType);
+        setCoinSlideAmount(rewardAmount);
+        setShowCoinSlide(true);
+        setDemoBalances((prev) => ({
+          ...prev,
+          [rewardType === 'vicoin' ? 'vicoins' : 'icoins']:
+            prev[rewardType === 'vicoin' ? 'vicoins' : 'icoins'] + rewardAmount,
+        }));
+        toast.success(`+${rewardAmount} ${rewardType === 'vicoin' ? 'Vicoins' : 'Icoins'}`, {
+          description: 'Demo verification completed.',
+        });
+        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+        setIsClaimingReward(false);
+      }, Math.max(0, demoControls.verificationDelayMs));
       return;
     }
 
@@ -469,13 +714,20 @@ const Index = () => {
     } finally {
       setIsClaimingReward(false);
     }
-  }, [currentMedia, profile, refreshProfile]);
+  }, [currentMedia, demoControls.rewardMode, demoControls.verificationDelayMs, demoModeEnabled, profile, refreshProfile]);
 
   const handleRewardEarned = useCallback((amount: number, type: 'vicoin' | 'icoin') => {
     setCoinSlideType(type);
     setCoinSlideAmount(amount);
     setShowCoinSlide(true);
-  }, []);
+    if (demoModeEnabled) {
+      setDemoBalances((prev) => ({
+        ...prev,
+        [type === 'vicoin' ? 'vicoins' : 'icoins']:
+          prev[type === 'vicoin' ? 'vicoins' : 'icoins'] + amount,
+      }));
+    }
+  }, [demoModeEnabled]);
 
   const handleCoinSlideComplete = useCallback(() => {
     setShowCoinSlide(false);
@@ -883,6 +1135,7 @@ const Index = () => {
     setShowNotifications(false);
     setShowNotificationPrefs(false);
     setShowBookmarks(false);
+    setShowCreatorTools(false);
 
     switch (tab) {
       case 'profile':
@@ -904,6 +1157,9 @@ const Index = () => {
       case 'create':
         setShowFeed(true); // Show personalized feed on create tab for now
         break;
+      case 'logo':
+        setShowCreatorTools(true);
+        break;
       default:
         break;
     }
@@ -921,6 +1177,26 @@ const Index = () => {
           className="fixed inset-0 bg-background overflow-hidden touch-none"
           {...handlers}
         >
+        {demoModeEnabled && !showScenarioSelector && (
+          <div className="fixed top-3 left-3 z-[95] flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowScenarioSelector(true)}
+              className="min-h-[44px] rounded-full border border-sky-400/40 bg-slate-900/70 backdrop-blur-md px-3 py-1.5 text-xs font-medium text-sky-100"
+            >
+              Demo Mode
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDemoControls(true)}
+              className="min-h-[44px] w-10 h-10 rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-md text-slate-100 flex items-center justify-center"
+              aria-label="Open demo controls"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Dynamic Page Container with transitions */}
         <div className={cn("absolute inset-0", getTransitionClasses())} style={getTransitionStyles()}>
           {/* Render based on current page content type */}
@@ -942,6 +1218,8 @@ const Index = () => {
                       duration={currentMedia.duration}
                       reward={currentMedia.reward}
                       contentId={currentMedia.id}
+                      preferLandscapePlayback={demoControls.forceLandscapePlayback}
+                      isLandscapeViewport={isLandscapeViewport}
                       onComplete={handleMediaComplete}
                       onSkip={handleSkip}
                       isActive={!isTransitioning && isAtCenter}
@@ -1152,6 +1430,11 @@ const Index = () => {
           vicoins={vicoins}
           icoins={icoins}
           initialTab={walletInitialTab}
+          demoCheckoutOutcome={demoControls.checkoutOutcome}
+          tourCommand={walletTourCommand}
+          onTourCommandHandled={(id) => {
+            setWalletTourCommand((prev) => (prev?.id === id ? null : prev));
+          }}
           onDiscover={() => {
             setShowWallet(false);
             setShowMap(true);
@@ -1210,6 +1493,12 @@ const Index = () => {
         <NotificationPreferences
           isOpen={showNotificationPrefs}
           onClose={() => setShowNotificationPrefs(false)}
+        />
+
+        {/* Creator Tools – I button → Create, Promote, Studio, Analytics */}
+        <CreatorToolsSheet
+          isOpen={showCreatorTools}
+          onClose={() => { setShowCreatorTools(false); setActiveTab('home'); }}
         />
 
         {/* Bookmarks hub – Home long-press → Bookmarks */}
@@ -1424,6 +1713,7 @@ const Index = () => {
           notificationsUnreadCount={notificationsUnreadCount}
           bookmarksCount={savedVideos.savedVideos.length + promoRoute.watchLater.length + contentLikes.count}
           onHomeRefresh={handleRefresh}
+          className={cn(isLandscapeViewport && 'scale-90')}
         />
 
         {/* Onboarding: product tour + KYC for new or unverified users */}
@@ -1548,6 +1838,28 @@ const Index = () => {
           isActive={showCelebration}
           type={celebrationType}
           onComplete={stopCelebration}
+        />
+
+        <DemoScenarioSelector
+          isOpen={showScenarioSelector}
+          onOpenDemoControls={() => setShowDemoControls(true)}
+          onStartScenario={handleStartScenario}
+        />
+
+        <DemoControlsSheet
+          isOpen={showDemoControls}
+          locale={locale === 'pt' ? 'pt' : 'en'}
+          controls={demoControls}
+          onClose={() => setShowDemoControls(false)}
+          onControlsChange={setDemoControls}
+          onLocaleChange={(nextLocale) => setLocale(nextLocale)}
+        />
+
+        <GuidedInvestorTour
+          isOpen={showGuidedTour}
+          scenarioId={guidedScenarioId}
+          onAction={handleGuidedTourAction}
+          onClose={() => setShowGuidedTour(false)}
         />
         </div>
       </DoubleTapGestureDetector>

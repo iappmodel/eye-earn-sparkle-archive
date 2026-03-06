@@ -10,6 +10,7 @@ import { getPassThreshold, isCashEligible } from '@/constants/attentionPass';
 import { loadRemoteControlSettings } from '@/hooks/useBlinkRemoteControl';
 import { useVisionEngine } from '@/hooks/useVisionEngine';
 import { useVision, USE_VISION_CONTEXT } from '@/contexts/VisionContext';
+import { getCameraRuntimeIssue, isDemoVisionSimulationEnabled } from '@/lib/demoRuntime';
 import type { SkinToneFallbackResult } from '@/lib/skinToneFallback';
 import {
   createAttentionState,
@@ -219,6 +220,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const visionFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visionRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const demoVisionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const skinTonePrevFrameRef = useRef<{ data: Uint8ClampedArray | null }>({ data: null });
 
   const visionCtx = useVision();
@@ -301,8 +303,16 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
+  const stopDemoVisionSimulation = useCallback(() => {
+    if (demoVisionIntervalRef.current) {
+      clearInterval(demoVisionIntervalRef.current);
+      demoVisionIntervalRef.current = null;
+    }
+  }, []);
+
   // Helper: release our own camera when Vision Engine takes over (avoids duplicate camera).
   const releaseOwnCamera = useCallback(() => {
+    stopDemoVisionSimulation();
     if (visionFallbackTimerRef.current) {
       clearTimeout(visionFallbackTimerRef.current);
       visionFallbackTimerRef.current = null;
@@ -330,7 +340,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       workerRef.current = null;
     }
     isInitializingRef.current = false;
-  }, []);
+  }, [stopDemoVisionSimulation]);
 
   // Build gaze positions from a vision payload (shared for batching).
   const gazeFromPayload = useCallback((d: { gazePosition?: { x: number; y: number }; calibratedGazePosition?: { x: number; y: number } }) => {
@@ -535,6 +545,51 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     processFallbackResultRef.current = processFallbackResult;
   }, [processFallbackResult]);
 
+  const startDemoVisionSimulation = useCallback(
+    (reason: string) => {
+      stopDemoVisionSimulation();
+      usingVisionEngineRef.current = true;
+      const seed = Math.random() * Math.PI;
+      setState((prev) => ({
+        ...prev,
+        isTracking: true,
+        isPermissionGranted: true,
+        error: null,
+        needsUserGesture: false,
+        source: 'vision_engine',
+        visionStatus: 'active',
+      }));
+      demoVisionIntervalRef.current = setInterval(() => {
+        const t = Date.now() / 1000 + seed;
+        const gazeX = 0.5 + Math.sin(t * 0.85) * 0.03;
+        const gazeY = 0.5 + Math.cos(t * 0.7) * 0.025;
+        processVisionPayload(
+          {
+            hasFace: true,
+            eyeEAR: 0.26 + Math.sin(t * 1.2) * 0.01,
+            gazePosition: { x: gazeX, y: gazeY },
+            calibratedGazePosition: { x: gazeX, y: gazeY },
+            headYaw: Math.sin(t * 0.7) * 4,
+            headPitch: Math.cos(t * 0.6) * 3,
+          },
+          'vision',
+          0.65
+        );
+      }, SAMPLE_INTERVAL_MS);
+      // Expose demo state to RC/diagnostics listeners.
+      try {
+        window.dispatchEvent(
+          new CustomEvent('visionEngineSample', {
+            detail: { hasFace: true, eyeEAR: 0.26, needsUserGesture: false, source: 'demo', reason },
+          })
+        );
+      } catch {
+        // ignore
+      }
+    },
+    [processVisionPayload, stopDemoVisionSimulation]
+  );
+
   // Listen for Vision Engine samples from Remote Control (when active).
   // Lightweight: only store latest payload and release camera; scoring runs at 5–10 Hz in sample interval.
   useEffect(() => {
@@ -686,6 +741,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
 
   // Stop tracking - defined before startTracking so it can be referenced
   const stopTracking = useCallback(() => {
+    stopDemoVisionSimulation();
     if (visionFallbackTimerRef.current) {
       clearTimeout(visionFallbackTimerRef.current);
       visionFallbackTimerRef.current = null;
@@ -736,7 +792,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       visionStatus: 'fallback',
       needsUserGesture: false,
     }));
-  }, [useContextPath]);
+  }, [useContextPath, stopDemoVisionSimulation]);
 
   // Request camera permission and start tracking
   const startTracking = useCallback(async () => {
@@ -753,18 +809,48 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       return;
     }
 
-    // When using VisionContext (RC off), trigger camera start (effect already requested)
-    if (useContextPath && visionCtx) {
-      await visionCtx.startCamera();
+    const runtimeIssue = getCameraRuntimeIssue();
+    const allowDemoVision = isDemoVisionSimulationEnabled();
+    if (runtimeIssue) {
+      if (allowDemoVision) {
+        startDemoVisionSimulation(runtimeIssue);
+        return;
+      }
       setState((prev) => ({
         ...prev,
-        isTracking: true,
-        isPermissionGranted: true,
-        error: null,
-        needsUserGesture: visionCtx.needsUserGesture ?? false,
-        source: 'vision_engine',
-        visionStatus: visionCtx.isActive ? 'active' : 'loading',
+        isTracking: false,
+        isPermissionGranted: false,
+        error: runtimeIssue,
+        needsUserGesture: false,
       }));
+      return;
+    }
+
+    // When using VisionContext (RC off), trigger camera start (effect already requested)
+    if (useContextPath && visionCtx) {
+      try {
+        await visionCtx.startCamera();
+        setState((prev) => ({
+          ...prev,
+          isTracking: true,
+          isPermissionGranted: true,
+          error: null,
+          needsUserGesture: visionCtx.needsUserGesture ?? false,
+          source: 'vision_engine',
+          visionStatus: visionCtx.isActive ? 'active' : 'loading',
+        }));
+      } catch (err) {
+        if (allowDemoVision) {
+          startDemoVisionSimulation(err instanceof Error ? err.message : 'Vision context unavailable');
+          return;
+        }
+        setState((prev) => ({
+          ...prev,
+          isTracking: false,
+          isPermissionGranted: false,
+          error: err instanceof Error ? err.message : 'Camera failed to start',
+        }));
+      }
       return;
     }
 
@@ -900,6 +986,10 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     } catch (error) {
       isInitializingRef.current = false;
       hadErrorRef.current = true;
+      if (allowDemoVision) {
+        startDemoVisionSimulation(error instanceof Error ? error.message : 'Camera unavailable');
+        return;
+      }
       const isNotAllowed = error instanceof DOMException && error.name === 'NotAllowedError';
       const isGestureRequired = isNotAllowed || (error instanceof Error && /gesture|user.?interaction|permission/i.test(error.message));
       setState(prev => ({
@@ -910,7 +1000,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
         needsUserGesture: isGestureRequired,
       }));
     }
-  }, []);
+  }, [startDemoVisionSimulation, useContextPath, visionCtx]);
 
   // Sync rcEnabled and react to Remote Control enable/disable (must be after startTracking is defined)
   useEffect(() => {

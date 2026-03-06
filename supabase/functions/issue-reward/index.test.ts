@@ -47,27 +47,32 @@ function mockSupabase(overrides: {
     select: (_cols?: string) => chain,
     insert: () => Promise.resolve({ error: null }),
   };
+  const defaultRedeemRpc = () =>
+    Promise.resolve({
+      data: {
+        success: true,
+        amount: 5,
+        coin_type: "icoin",
+        new_balance: 100,
+        daily_remaining_icoin: 75,
+        daily_remaining_vicoin: 120,
+        daily_remaining_promo_views: 19,
+      },
+      error: null,
+    });
+
   return {
     auth: {
       getUser: overrides.getUser ?? (() =>
         Promise.resolve({ data: { user: VALID_USER }, error: null })),
     },
     from: (_table: string) => chain,
-    rpc:
-      overrides.redeemRpc ??
-      (() =>
-        Promise.resolve({
-          data: {
-            success: true,
-            amount: 5,
-            coin_type: "icoin",
-            new_balance: 100,
-            daily_remaining_icoin: 75,
-            daily_remaining_vicoin: 120,
-            daily_remaining_promo_views: 19,
-          },
-          error: null,
-        })),
+    rpc: (name: string) => {
+      if (name === "check_reward_rate_limit") {
+        return Promise.resolve({ data: [{ allowed: true }], error: null });
+      }
+      return (overrides.redeemRpc ?? defaultRedeemRpc)();
+    },
   } as unknown as SupabaseClientLike;
 }
 

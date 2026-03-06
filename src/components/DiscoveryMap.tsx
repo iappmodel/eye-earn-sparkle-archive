@@ -17,6 +17,7 @@ import { PromoCheckInFlow } from './PromoCheckInFlow';
 import { useNearbyPromotions } from '@/hooks/useNearbyPromotions';
 import { useDiscoveryPromotions } from '@/hooks/useDiscoveryPromotions';
 import { usePromoRoute, defaultRouteFilters } from '@/hooks/usePromoRoute';
+import { getMapboxEnvToken, isDemoMapFallbackEnabled, isSupabaseConfigured } from '@/lib/demoRuntime';
 import type { PromoRoute, RouteStop, TransportMode, RouteFilters } from '@/hooks/usePromoRoute';
 import {
   generateLocalPromotions,
@@ -74,6 +75,7 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [filter, setFilter] = useState<'all' | 'vicoin' | 'icoin'>('all');
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
+  const [mapTokenError, setMapTokenError] = useState<string | null>(null);
   const [showSearchHere, setShowSearchHere] = useState(false);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [globalPromos] = useState<Promotion[]>(() => generateGlobalPromotions());
@@ -437,16 +439,45 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
   // Fetch Mapbox token
   useEffect(() => {
     const fetchToken = async () => {
+      const fallbackEnabled = isDemoMapFallbackEnabled();
       try {
-        const { data, error } = await supabase.functions.invoke('get-mapbox-token');
-        if (error) throw error;
-        setMapboxToken(data?.token);
-      } catch (error) {
-        console.error('[DiscoveryMap] Token fetch error:', error);
-        const envToken = import.meta.env.VITE_MAPBOX_TOKEN;
+        const envToken = getMapboxEnvToken();
         if (envToken) {
           setMapboxToken(envToken);
+          setMapTokenError(null);
+          return;
         }
+
+        const { data, error } = await supabase.functions.invoke('get-mapbox-token');
+        if (error) throw error;
+        if (data?.token) {
+          setMapboxToken(data.token);
+          setMapTokenError(null);
+          return;
+        }
+        setMapboxToken(null);
+        setMapTokenError(
+          fallbackEnabled
+            ? 'Map token missing. Running iGO in demo fallback mode.'
+            : 'Map token missing. Configure VITE_MAPBOX_TOKEN (or get-mapbox-token edge function).'
+        );
+      } catch (error) {
+        console.error('[DiscoveryMap] Token fetch error:', error);
+        const envToken = getMapboxEnvToken();
+        if (envToken) {
+          setMapboxToken(envToken);
+          setMapTokenError(null);
+          return;
+        }
+        setMapboxToken(null);
+        const backendHint = isSupabaseConfigured()
+          ? 'Map token unavailable from backend.'
+          : 'Supabase is not configured, so map token cannot be fetched.';
+        setMapTokenError(
+          fallbackEnabled
+            ? `${backendHint} Running iGO in demo fallback mode.`
+            : `${backendHint} Configure VITE_MAPBOX_TOKEN to enable full map.`
+        );
       }
     };
     
@@ -706,6 +737,12 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         pitch: 45,
       });
       setShowSearchHere(false);
+      return;
+    }
+    if (demoMapFallback && userLocation) {
+      toast.info('iGO demo map mode', {
+        description: 'Mapbox token is missing, so this view is running in fallback mode.',
+      });
     }
   };
 
@@ -744,6 +781,11 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
     (mapFilters.categories.length > 0 ? 1 : 0) +
     (mapFilters.minReward > 0 ? 1 : 0) +
     (mapFilters.distance !== 10 ? 1 : 0);
+
+  const demoMapFallback = !mapboxToken && isDemoMapFallbackEnabled();
+  const showLoadingOverlay =
+    !userLocation ||
+    (backendLoading && !demoMapFallback);
 
   if (!isOpen) return null;
 
@@ -934,16 +976,79 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         </div>
       </div>
 
-      {/* Map Container */}
-      <div ref={mapContainer} className="absolute inset-0 z-0" />
+      {/* Map Container / Fallback */}
+      {mapboxToken ? (
+        <div ref={mapContainer} className="absolute inset-0 z-0" />
+      ) : demoMapFallback ? (
+        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.2),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(16,185,129,0.18),transparent_42%),radial-gradient(circle_at_50%_85%,rgba(139,92,246,0.2),transparent_40%),linear-gradient(180deg,#05060A,#0B1020)]">
+          <div className="absolute inset-0 backdrop-blur-[1px]" />
+          <div className="absolute top-28 left-4 right-4 rounded-2xl border border-white/10 bg-background/75 backdrop-blur-md p-3 z-10">
+            <div className="flex items-start gap-2">
+              <WifiOff className="w-4 h-4 text-amber-400 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium">iGO demo map mode</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {mapTokenError ?? 'Map token unavailable. Showing nearby promotions in fallback mode.'}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="absolute top-52 left-4 right-4 bottom-6 overflow-y-auto z-10 space-y-2 pr-1">
+            {(filter === 'all' ? promotions : promotions.filter((p) => p.reward_type === filter || p.reward_type === 'both'))
+              .slice(0, 20)
+              .map((promo) => (
+                <button
+                  key={`fallback-${promo.id}`}
+                  onClick={() => setSelectedPromo(promo)}
+                  className="w-full text-left rounded-xl border border-white/10 bg-background/80 backdrop-blur-sm p-3 hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-sm truncate">{promo.business_name}</p>
+                    <span className="text-xs font-semibold text-primary">+{promo.reward_amount}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                    {promo.required_action || promo.description || 'Complete this promotion to earn rewards.'}
+                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[11px] text-muted-foreground truncate">
+                      {promo.address || 'Address unavailable'}
+                    </span>
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {promo.reward_type}
+                    </span>
+                  </div>
+                </button>
+              ))}
+          </div>
+        </div>
+      ) : (
+        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_20%,rgba(59,130,246,0.12),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(16,185,129,0.10),transparent_42%),linear-gradient(180deg,#05060A,#0B1020)]">
+          <div className="absolute inset-0 backdrop-blur-[1px]" />
+          <div className="absolute top-1/2 left-1/2 w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-amber-400/30 bg-black/55 backdrop-blur-md p-4 z-10">
+            <div className="flex items-start gap-2">
+              <WifiOff className="w-4 h-4 text-amber-300 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-amber-200">Real map mode requires a valid token</p>
+                <p className="text-xs text-slate-300 mt-1">
+                  {mapTokenError ?? 'Set VITE_MAPBOX_TOKEN or provide get-mapbox-token from Supabase.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading Overlay */}
-      {(!mapboxToken || !userLocation || backendLoading) && (
+      {showLoadingOverlay && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="text-center">
             <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
             <p className="text-muted-foreground">
-              {!mapboxToken ? 'Loading map...' : !userLocation ? 'Getting location...' : 'Fetching promos...'}
+              {!userLocation
+                ? 'Getting location...'
+                : !mapboxToken
+                  ? 'Map setup required'
+                  : 'Fetching promos...'}
             </p>
           </div>
         </div>

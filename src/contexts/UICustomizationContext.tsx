@@ -94,13 +94,13 @@ const defaultButtonLayout: ButtonPosition[] = [
 ];
 
 const defaultThemeSettings: ThemeSettings = {
-  preset: 'cyberpunk',
+  preset: 'midnight',
   buttonShape: 'rounded',
-  glowIntensity: 'intense',
+  glowIntensity: 'medium',
   colors: {
-    primary: '270 95% 65%',
-    accent: '320 90% 60%',
-    glow: '270 95% 65%',
+    primary: '210 96% 62%',
+    accent: '42 96% 56%',
+    glow: '195 96% 62%',
   },
 };
 
@@ -184,7 +184,7 @@ const defaultState: UICustomizationState = {
   themeSettings: defaultThemeSettings,
   advancedSettings: defaultAdvancedSettings,
   pageLayout: defaultPageLayout,
-  colorMode: 'system',
+  colorMode: 'dark',
   customPresets: [],
   recentPresetIds: [],
 };

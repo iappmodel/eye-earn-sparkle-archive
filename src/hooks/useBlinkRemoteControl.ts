@@ -3,6 +3,7 @@ import { useGazeDirection, GazeDirection } from './useGazeDirection';
 import { useVisionEngine } from './useVisionEngine';
 import { useVision, USE_VISION_CONTEXT } from '@/contexts/VisionContext';
 import { logger } from '@/lib/logger';
+import { getCameraRuntimeIssue, isDemoVisionSimulationEnabled } from '@/lib/demoRuntime';
 import { fetchProfileCalibration, saveProfileCalibration } from '@/services/calibration.service';
 import { securityService } from '@/services/security.service';
 
@@ -390,6 +391,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const navigationCooldownRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const demoVisionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const smoothedPositionRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   const autoCalibrationHistoryRef = useRef<{ gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[]>([]);
   const lastAutoAdjustmentRef = useRef<number>(0);
@@ -857,8 +859,62 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
 
   const contextReleaseRef = useRef<(() => void) | null>(null);
 
+  const stopDemoCamera = useCallback(() => {
+    if (demoVisionIntervalRef.current) {
+      clearInterval(demoVisionIntervalRef.current);
+      demoVisionIntervalRef.current = null;
+    }
+  }, []);
+
+  const startDemoCamera = useCallback(
+    (reason: string) => {
+      stopDemoCamera();
+      setState((prev) => ({ ...prev, isCameraActive: true }));
+      logger.warn('[RemoteControl] Camera unavailable, running demo vision simulation:', reason);
+      const seed = Math.random() * Math.PI;
+      demoVisionIntervalRef.current = setInterval(() => {
+        const t = Date.now() / 1000 + seed;
+        const rawX = 0.5 + Math.sin(t * 0.9) * 0.03;
+        const rawY = 0.5 + Math.cos(t * 0.8) * 0.02;
+        const calibrated = applyCalibration(rawX, rawY, calibration);
+        processGazePosition(rawX, rawY);
+        try {
+          window.dispatchEvent(
+            new CustomEvent('visionEngineSample', {
+              detail: {
+                hasFace: true,
+                eyeEAR: 0.26,
+                eyeOpenness: 0.9,
+                gazePosition: { x: rawX, y: rawY },
+                calibratedGazePosition: calibrated,
+                headYaw: Math.sin(t * 0.7) * 4,
+                headPitch: Math.cos(t * 0.6) * 3,
+                needsUserGesture: false,
+                source: 'demo',
+              },
+            })
+          );
+        } catch {
+          // ignore
+        }
+      }, 120);
+    },
+    [calibration, processGazePosition, stopDemoCamera]
+  );
+
   // Start camera for gaze tracking
   const startCamera = useCallback(async () => {
+    const runtimeIssue = getCameraRuntimeIssue();
+    if (runtimeIssue) {
+      if (isDemoVisionSimulationEnabled()) {
+        startDemoCamera(runtimeIssue);
+      } else {
+        logger.error('[RemoteControl] Camera blocked:', runtimeIssue);
+        setState((prev) => ({ ...prev, isCameraActive: false }));
+      }
+      return;
+    }
+
     if (useContextPath && visionCtx) {
       if (contextReleaseRef.current) return; // already requested
       contextReleaseRef.current = visionCtx.requestCamera();
@@ -890,9 +946,13 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       
       logger.log('[RemoteControl] Camera started');
     } catch (error) {
+      if (isDemoVisionSimulationEnabled()) {
+        startDemoCamera(error instanceof Error ? error.message : 'Camera error');
+        return;
+      }
       logger.error('[RemoteControl] Camera error:', error);
     }
-  }, [useContextPath, visionCtx]);
+  }, [startDemoCamera, useContextPath, visionCtx]);
 
   // Some mobile browsers (notably iOS Safari) require getUserMedia to be initiated
   // directly from a user gesture. These events are dispatched from click/tap handlers.
@@ -913,6 +973,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
 
   // Stop camera
   const stopCamera = useCallback(() => {
+    stopDemoCamera();
     if (useContextPath && visionCtx) {
       if (contextReleaseRef.current) {
         contextReleaseRef.current();
@@ -934,7 +995,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     }
     
     setState(prev => ({ ...prev, isCameraActive: false }));
-  }, [useContextPath, visionCtx]);
+  }, [stopDemoCamera, useContextPath, visionCtx]);
 
   useEffect(() => {
     const handler = (e: Event) => {

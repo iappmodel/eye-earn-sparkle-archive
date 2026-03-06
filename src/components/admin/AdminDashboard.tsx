@@ -33,6 +33,7 @@ import AdminOverview from './AdminOverview';
 import ContentOverview from './ContentOverview';
 import FeatureFlagsPanel from './FeatureFlagsPanel';
 import WalletReconciliationPanel from './WalletReconciliationPanel';
+import { CheckoutFunnelCard } from '@/features/merchantCheckout/CheckoutFunnelCard';
 
 const ADMIN_TAB_STORAGE_KEY = 'admin_dashboard_tab';
 
@@ -382,6 +383,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               <Activity className="w-4 h-4" />
               <span className="hidden sm:inline">Analytics</span>
             </TabsTrigger>
+            <TabsTrigger value="checkout" className="flex items-center gap-2 data-[state=active]:bg-background">
+              <TrendingUp className="w-4 h-4" />
+              <span className="hidden sm:inline">Checkout</span>
+            </TabsTrigger>
             {isAdmin && (
               <>
                 <TabsTrigger value="wallet" className="flex items-center gap-2 data-[state=active]:bg-background">
@@ -428,6 +433,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
           <TabsContent value="analytics" className="mt-4">
             <AnalyticsPanel />
+          </TabsContent>
+
+          <TabsContent value="checkout" className="mt-4">
+            <CheckoutFunnelCard />
           </TabsContent>
 
           {isAdmin && (

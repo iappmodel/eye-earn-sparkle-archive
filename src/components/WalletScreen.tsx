@@ -29,12 +29,14 @@ import {
   Plus,
   Copy,
   ArrowUpDown,
+  BarChart3,
 } from 'lucide-react';
 import { SwipeDismissOverlay } from './SwipeDismissOverlay';
 import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import { useWallet } from '@/hooks/useWallet';
 import { useReferral } from '@/hooks/useReferral';
 import { usePayout } from '@/hooks/usePayout';
@@ -61,6 +63,7 @@ import { toast } from 'sonner';
 import { PromoEarningsSection } from './PromoEarningsSection';
 import { PaymentMethodManager } from './PaymentMethodManager';
 import { WalletReadyToPayCard } from '@/features/merchantCheckout/WalletReadyToPayCard';
+import { CheckoutFunnelCard } from '@/features/merchantCheckout/CheckoutFunnelCard';
 import { MerchantCheckoutSheet } from '@/features/merchantCheckout/MerchantCheckoutSheet';
 
 interface DailyLimits {
@@ -82,9 +85,20 @@ interface WalletScreenProps {
   onDiscover?: () => void;
   /** Optional: tab to select when wallet opens (e.g. 'subscription' when returning from Stripe). */
   initialTab?: WalletTab;
+  /** Demo controls: settlement outcome to show in checkout receipt timeline. */
+  demoCheckoutOutcome?: 'completed' | 'pending' | 'reversed';
+  /** Optional guided-tour command from parent scenario walkthrough. */
+  tourCommand?: WalletTourCommand | null;
+  onTourCommandHandled?: (id: string) => void;
 }
 
-type WalletTab = 'overview' | 'transactions' | 'subscription' | 'payout';
+export interface WalletTourCommand {
+  id: string;
+  action: 'open_overview' | 'open_payout' | 'open_checkout';
+  scenarioId?: string;
+}
+
+type WalletTab = 'overview' | 'transactions' | 'subscription' | 'payout' | 'checkout';
 
 const TX_TYPE_OPTIONS: { value: WalletTransaction['type'] | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -197,8 +211,12 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   icoins: icoinsProp,
   onDiscover,
   initialTab,
+  demoCheckoutOutcome = 'completed',
+  tourCommand = null,
+  onTourCommandHandled,
 }) => {
   const { user, profile } = useAuth();
+  const { canAccessAdmin } = useUserRole();
   const {
     vicoins: vicoinsFromHook,
     icoins: icoinsFromHook,
@@ -233,6 +251,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [merchantCheckoutOpen, setMerchantCheckoutOpen] = useState(false);
   const [merchantCheckoutLaunchMode, setMerchantCheckoutLaunchMode] = useState<'scan' | 'link' | null>(null);
+  const [merchantCheckoutAutoScenarioId, setMerchantCheckoutAutoScenarioId] = useState<string | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -244,8 +263,34 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   }, [txSearch]);
 
   useEffect(() => {
-    if (isOpen && initialTab) setActiveTab(initialTab);
-  }, [isOpen, initialTab]);
+    if (!isOpen || !initialTab) return;
+    if (initialTab === 'checkout' && !canAccessAdmin) {
+      setActiveTab('overview');
+      return;
+    }
+    setActiveTab(initialTab);
+  }, [canAccessAdmin, isOpen, initialTab]);
+
+  useEffect(() => {
+    if (!canAccessAdmin && activeTab === 'checkout') {
+      setActiveTab('overview');
+    }
+  }, [canAccessAdmin, activeTab]);
+
+  useEffect(() => {
+    if (!isOpen || !tourCommand) return;
+    if (tourCommand.action === 'open_overview') {
+      setActiveTab('overview');
+    } else if (tourCommand.action === 'open_payout') {
+      setActiveTab('payout');
+    } else if (tourCommand.action === 'open_checkout') {
+      setActiveTab('overview');
+      setMerchantCheckoutAutoScenarioId(tourCommand.scenarioId ?? null);
+      setMerchantCheckoutLaunchMode('link');
+      setMerchantCheckoutOpen(true);
+    }
+    onTourCommandHandled?.(tourCommand.id);
+  }, [isOpen, onTourCommandHandled, tourCommand]);
 
   const txFilters = useMemo(() => {
     const f: {
@@ -331,7 +376,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
       const inList = payoutPaymentMethodId && paymentMethods.some((pm) => pm.id === payoutPaymentMethodId);
       if (!inList) setPayoutPaymentMethodId(firstId);
     }
-  }, [paymentMethods]);
+  }, [paymentMethods, payoutPaymentMethodId]);
 
   const payoutMin = payoutCoinType === 'vicoin' ? MIN_PAYOUT_VICOIN : MIN_PAYOUT_ICOIN;
   const payoutMax = payoutCoinType === 'vicoin' ? MAX_PAYOUT_VICOIN : MAX_PAYOUT_ICOIN;
@@ -395,7 +440,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     if (isOpen && user?.id) {
       loadWalletData();
     }
-  }, [isOpen, user?.id]);
+  }, [isOpen, user?.id, loadWalletData]);
 
   useEffect(() => {
     const handler = () => {
@@ -560,6 +605,11 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     { id: 'transactions' as const, label: 'History', icon: RefreshCw },
     { id: 'subscription' as const, label: 'Plans', icon: Crown },
     { id: 'payout' as const, label: 'Payout', icon: CreditCard },
+    ...(canAccessAdmin
+      ? [
+          { id: 'checkout' as const, label: 'Checkout', icon: BarChart3 },
+        ]
+      : []),
   ];
 
   return (
@@ -968,6 +1018,19 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Checkout Analytics Tab (admin/moderator only) */}
+            {activeTab === 'checkout' && canAccessAdmin && (
+              <div className="space-y-4">
+                <div className="neu-inset rounded-2xl p-4">
+                  <p className="text-sm font-medium">Checkout Analytics</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Monitor completion rate, abandonment, and merchant/category funnel performance.
+                  </p>
+                </div>
+                <CheckoutFunnelCard />
               </div>
             )}
 
@@ -1587,10 +1650,13 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
         onClose={() => {
           setMerchantCheckoutOpen(false);
           setMerchantCheckoutLaunchMode(null);
+          setMerchantCheckoutAutoScenarioId(null);
         }}
         icoins={icoins}
         vicoins={vicoins}
         launchMode={merchantCheckoutLaunchMode}
+        autoStartScenarioId={merchantCheckoutAutoScenarioId}
+        demoSettlementOutcome={demoCheckoutOutcome}
       />
 
       {/* Transaction detail sheet */}

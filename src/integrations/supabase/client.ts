@@ -2,9 +2,21 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { memoryStorage } from './memoryStorage';
+import { isDemoMode } from '@/lib/appMode';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const envUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const envKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+const hasConfiguredSupabase = Boolean(envUrl && envKey);
+
+const SUPABASE_URL = envUrl || 'https://demo.local';
+const SUPABASE_PUBLISHABLE_KEY = envKey || 'demo-anon-key';
+
+if (!hasConfiguredSupabase && !isDemoMode && typeof window !== 'undefined') {
+  console.warn(
+    '[Supabase] Missing VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY. ' +
+      'Running with a placeholder client; network features will be unavailable.'
+  );
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

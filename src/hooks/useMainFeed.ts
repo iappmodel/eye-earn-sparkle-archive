@@ -4,10 +4,10 @@
  * Retries up to 3 times with exponential backoff on fetch errors.
  * Falls back to curated mock data when all retries fail or the database is empty.
  */
-import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MAIN_FEED_STATUS } from '@/constants/contentStatus';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import { isValidFollowTarget } from '@/services/follow.service';
 
 export interface MainFeedCreator {
@@ -301,6 +301,9 @@ function mapPromotionToFeedItem(promo: {
 /** Fetch a single feed item by ID from user_content or promotions. */
 export async function fetchContentById(id: string): Promise<MainFeedItem | null> {
   if (!id) return null;
+  if (isDemoMode) {
+    return FALLBACK_FEED.find((item) => item.id === id) ?? FALLBACK_FEED[0] ?? null;
+  }
 
   const { data: contentRow, error: contentError } = await supabase
     .from('user_content')
@@ -365,6 +368,10 @@ export function useContentById(contentId: string | null) {
 }
 
 async function loadMainFeed(): Promise<MainFeedItem[]> {
+  if (isDemoMode) {
+    return FALLBACK_FEED;
+  }
+
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

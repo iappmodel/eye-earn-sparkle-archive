@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import type { ConversationSummary } from '@/services/conversation.service';
 
 // Mock conversations for when not logged in or as fallback
@@ -58,6 +59,14 @@ export function useConversations(userId: string | undefined, isActive: boolean) 
   const [error, setError] = useState<string | null>(null);
 
   const loadConversations = useCallback(async () => {
+    if (isDemoMode) {
+      setConversations(MOCK_CONVERSATIONS);
+      setLoading(false);
+      setTotalUnread(MOCK_CONVERSATIONS.reduce((s, c) => s + c.unread_count, 0));
+      setError(null);
+      return;
+    }
+
     if (!userId) {
       setConversations(MOCK_CONVERSATIONS);
       setLoading(false);
@@ -201,7 +210,7 @@ export function useConversations(userId: string | undefined, isActive: boolean) 
 
   // Real-time subscription
   useEffect(() => {
-    if (!isActive || !userId) return;
+    if (!isActive || !userId || isDemoMode) return;
 
     const channel = supabase
       .channel('conversations-updates')

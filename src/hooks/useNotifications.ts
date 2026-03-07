@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { isDemoMode } from '@/lib/appMode';
 import { toast } from 'sonner';
 import { notificationSoundService } from '@/services/notificationSound.service';
 
@@ -31,6 +32,45 @@ export interface NotificationPreferences {
 
 const PAGE_SIZE = 30;
 const DEFAULT_TYPE = undefined as NotificationType | undefined;
+
+function getDemoNotifications(userId: string): Notification[] {
+  const now = Date.now();
+  return [
+    {
+      id: 'demo-notification-1',
+      user_id: userId,
+      type: 'earnings',
+      title: 'Promo reward received',
+      body: 'You earned +50 Vicoins from Coffee Spot.',
+      data: {},
+      seen: false,
+      read_at: null,
+      created_at: new Date(now - 1000 * 60 * 8).toISOString(),
+    },
+    {
+      id: 'demo-notification-2',
+      user_id: userId,
+      type: 'promotion',
+      title: 'Nearby offer unlocked',
+      body: '3 promotions are available within 0.5 miles.',
+      data: {},
+      seen: false,
+      read_at: null,
+      created_at: new Date(now - 1000 * 60 * 25).toISOString(),
+    },
+    {
+      id: 'demo-notification-3',
+      user_id: userId,
+      type: 'system',
+      title: 'Investor demo mode active',
+      body: 'All external services are running in local simulation.',
+      data: {},
+      seen: true,
+      read_at: new Date(now - 1000 * 60 * 40).toISOString(),
+      created_at: new Date(now - 1000 * 60 * 45).toISOString(),
+    },
+  ];
+}
 
 /** Check if current time is within quiet hours (times in HH:mm or HH:mm:ss). */
 function isWithinQuietHours(
@@ -89,6 +129,20 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
     async (typeFilter?: NotificationType | null, append = false) => {
       if (!user) return;
 
+      if (isDemoMode) {
+        const all = getDemoNotifications(user.id);
+        const filtered = typeFilter ? all.filter((n) => n.type === typeFilter) : all;
+        const from = append ? notifications.length : 0;
+        const page = filtered.slice(from, from + pageSize);
+        setHasMore(from + page.length < filtered.length);
+        if (append) setNotifications((prev) => [...prev, ...page]);
+        else setNotifications(page);
+        setUnreadCount((append ? [...notifications, ...page] : page).filter((n) => !n.seen).length);
+        setIsLoading(false);
+        setIsLoadingMore(false);
+        return;
+      }
+
       const from = append ? notifications.length : 0;
       let query = supabase
         .from('notifications')
@@ -139,6 +193,20 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
   const fetchPreferences = useCallback(async () => {
     if (!user) return;
 
+    if (isDemoMode) {
+      setPreferences({
+        id: 'demo-notification-prefs',
+        user_id: user.id,
+        push_enabled: true,
+        email_enabled: false,
+        in_app_enabled: true,
+        categories: ['engagement', 'promotion', 'system', 'earnings'],
+        quiet_hours_start: null,
+        quiet_hours_end: null,
+      });
+      return;
+    }
+
     const { data, error } = await supabase
       .from('notification_preferences')
       .select('*')
@@ -167,6 +235,14 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
 
   // Mark notification as seen
   const markAsSeen = useCallback(async (notificationId: string) => {
+    if (isDemoMode) {
+      setNotifications(prev =>
+        prev.map(n => (n.id === notificationId ? { ...n, seen: true, read_at: new Date().toISOString() } : n))
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+      return;
+    }
+
     const { error } = await supabase
       .from('notifications')
       .update({ seen: true, read_at: new Date().toISOString() })
@@ -184,6 +260,12 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
   const markAllAsSeen = useCallback(async () => {
     if (!user) return;
 
+    if (isDemoMode) {
+      setNotifications(prev => prev.map(n => ({ ...n, seen: true, read_at: new Date().toISOString() })));
+      setUnreadCount(0);
+      return;
+    }
+
     const { error } = await supabase
       .from('notifications')
       .update({ seen: true, read_at: new Date().toISOString() })
@@ -198,6 +280,16 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
 
   // Delete single notification
   const deleteNotification = useCallback(async (notificationId: string) => {
+    if (isDemoMode) {
+      setNotifications(prev => {
+        const n = prev.find(x => x.id === notificationId);
+        const wasUnread = n && !n.seen;
+        if (wasUnread) setUnreadCount(c => Math.max(0, c - 1));
+        return prev.filter(x => x.id !== notificationId);
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from('notifications')
       .delete()
@@ -219,6 +311,12 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
   const deleteAllNotifications = useCallback(async () => {
     if (!user) return;
 
+    if (isDemoMode) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
     const { error } = await supabase
       .from('notifications')
       .delete()
@@ -236,6 +334,11 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
   const updatePreferences = useCallback(
     async (updates: Partial<NotificationPreferences>) => {
       if (!user || !preferences) return false;
+
+      if (isDemoMode) {
+        setPreferences(prev => (prev ? { ...prev, ...updates } : null));
+        return true;
+      }
 
       const { error } = await supabase
         .from('notification_preferences')
@@ -285,7 +388,7 @@ export const useNotifications = (config: UseNotificationsConfig = {}) => {
 
   // Real-time subscription
   useEffect(() => {
-    if (!user) return;
+    if (!user || isDemoMode) return;
 
     const channel = supabase
       .channel('notifications-realtime')

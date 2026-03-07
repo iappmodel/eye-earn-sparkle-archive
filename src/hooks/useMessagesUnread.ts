@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import { getTotalUnreadCount } from '@/services/conversation.service';
 
 /**
@@ -12,6 +13,10 @@ export function useMessagesUnread(userId: string | undefined): number {
   const fetchCount = useCallback(async () => {
     if (!userId) {
       setCount(0);
+      return;
+    }
+    if (isDemoMode) {
+      setCount(3);
       return;
     }
     try {
@@ -27,7 +32,7 @@ export function useMessagesUnread(userId: string | undefined): number {
   }, [fetchCount]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || isDemoMode) return;
 
     const channel = supabase
       .channel('unread-count')

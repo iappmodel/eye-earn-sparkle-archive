@@ -4,7 +4,9 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import { getMapboxEnvToken } from '@/lib/demoRuntime';
+import { generateLocalPromotions } from '@/constants/mockPromotions';
 
 export interface NearbyPromoForRoute {
   id: string;
@@ -65,6 +67,10 @@ export function useRouteBuilderFromFeed(open: boolean) {
       setMapboxToken(envToken);
       return;
     }
+    if (isDemoMode) {
+      setMapboxToken(null);
+      return;
+    }
     let cancelled = false;
     supabase.functions
       .invoke('get-mapbox-token')
@@ -82,6 +88,23 @@ export function useRouteBuilderFromFeed(open: boolean) {
       const radiusKm = opts?.radiusKm ?? 16;
       const limit = opts?.limit ?? 100;
       const minReward = opts?.minReward ?? 0;
+
+      if (isDemoMode) {
+        const mock = generateLocalPromotions(userLocation.lat, userLocation.lng, radiusKm, minReward)
+          .slice(0, limit)
+          .map((p): NearbyPromoForRoute => ({
+            id: p.id,
+            business_name: p.business_name,
+            latitude: p.latitude,
+            longitude: p.longitude,
+            address: p.address,
+            category: p.category,
+            reward_type: p.reward_type,
+            reward_amount: p.reward_amount,
+            required_action: p.required_action,
+          }));
+        return mock;
+      }
 
       const { data, error } = await supabase.functions.invoke('get-nearby-promotions', {
         body: {

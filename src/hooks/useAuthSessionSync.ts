@@ -15,9 +15,14 @@ export function useAuthSessionSync(
   setSession: SetSession,
   setUser: SetUser,
   setIsRecoverySession: SetIsRecoverySession,
-  setLoading: SetLoading
+  setLoading: SetLoading,
+  enabled = true
 ) {
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -32,5 +37,5 @@ export function useAuthSessionSync(
     });
 
     return () => subscription.unsubscribe();
-  }, [setSession, setUser, setIsRecoverySession, setLoading]);
+  }, [enabled, setSession, setUser, setIsRecoverySession, setLoading]);
 }

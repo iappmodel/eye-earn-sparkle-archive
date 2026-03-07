@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import type { MapFilters } from '@/components/MapFilterSheet';
 import { generateLocalPromotions } from '@/constants/mockPromotions';
 
@@ -97,6 +98,30 @@ export function useDiscoveryPromotions({
       const minReward = filters?.minReward ?? 0;
       const categories = filters?.categories?.length ? filters.categories : undefined;
       const rewardType = rewardFilter === 'all' ? undefined : rewardFilter;
+
+      if (isDemoMode) {
+        const mockList = generateLocalPromotions(lat, lng, radiusKm, minReward);
+        const withDistance = mockList.map((p) => ({
+          ...p,
+          distance: Math.round(haversineKm(lat, lng, p.latitude, p.longitude) * 100) / 100,
+        }));
+        let filtered = withDistance;
+        if (rewardFilter !== 'all') {
+          filtered = filtered.filter((p) => p.reward_type === rewardFilter || p.reward_type === 'both');
+        }
+        if (categories?.length) {
+          filtered = filtered.filter((p) => p.category && categories.includes(p.category));
+        }
+        filtered.sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+        const limited = filtered.slice(0, limit);
+        setPromotions(limited as DiscoveryPromotion[]);
+        setTotal(limited.length);
+        setFromBackend(false);
+        setLastFetchedAt(Date.now());
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
 
       const cacheKey = `${lat.toFixed(4)}_${lng.toFixed(4)}_${radiusKm}_${minReward}_${categories?.join(',') ?? ''}_${rewardType ?? 'all'}_${sortBy}`;
       if (

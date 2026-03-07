@@ -7,9 +7,11 @@ import { subscriptionService, type SubscriptionStatus } from '@/services/subscri
  */
 export function useSubscriptionLoader(
   user: User | null,
-  setSubscription: (s: SubscriptionStatus | null) => void
+  setSubscription: (s: SubscriptionStatus | null) => void,
+  enabled = true
 ) {
   useEffect(() => {
+    if (!enabled) return;
     if (!user) {
       setSubscription(null);
       return;
@@ -30,5 +32,5 @@ export function useSubscriptionLoader(
     return () => {
       cancelled = true;
     };
-  }, [user?.id, setSubscription]);
+  }, [enabled, user?.id, setSubscription]);
 }

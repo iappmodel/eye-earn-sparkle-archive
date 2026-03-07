@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isDemoMode } from '@/lib/appMode';
 import { usePromoEarnings } from '@/hooks/usePromoEarnings';
 import { useCheckInStatus } from '@/hooks/useCheckInStatus';
 import { useAuth } from '@/contexts/AuthContext';
@@ -103,7 +104,7 @@ export const PromoCheckInFlow: React.FC<PromoCheckInFlowProps> = ({
   const sheetRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef<number>(0);
 
-  const isDemo = !isUuid(promotion.id);
+  const isDemo = isDemoMode || !isUuid(promotion.id);
   const hasLocation = promotion.latitude != null && promotion.longitude != null && !isNaN(promotion.latitude) && !isNaN(promotion.longitude);
 
   const earnings = usePromoEarnings({ promotionId: promotion.id, streakDays });
@@ -142,7 +143,7 @@ export const PromoCheckInFlow: React.FC<PromoCheckInFlowProps> = ({
   // Record check-in in DB when we have UUID and optional coords (best-effort)
   const recordCheckIn = useCallback(
     async (userLat: number, userLng: number) => {
-      if (!user || !isUuid(promotion.id)) return;
+      if (!user || !isUuid(promotion.id) || isDemoMode) return;
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;

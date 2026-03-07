@@ -37,9 +37,11 @@ import {
   ArrowRight,
   Camera,
   CheckCircle2,
+  Clock3,
   CreditCard,
   ImageUp,
   Info,
+  Lock,
   Loader2,
   Link2,
   QrCode,
@@ -153,6 +155,29 @@ function getCheckoutScreenLabel(screen: CheckoutScreenId) {
   }
 }
 
+const STEP_TIME_SECONDS: Record<CheckoutScreenId, number> = {
+  ENTER_AMOUNT: 6,
+  PAYMENT_DETAILS: 10,
+  REVIEW_PAYMENT: 5,
+  AUTHENTICATE: 4,
+  RECEIPT: 3,
+  POST_PAY_TIP: 8,
+};
+
+function estimateRemainingSeconds(flow: ActiveFlowState) {
+  return flow.plan.screens
+    .slice(flow.screenIndex)
+    .reduce((sum, screen) => sum + (STEP_TIME_SECONDS[screen] ?? 5), 0);
+}
+
+function formatRemainingTimeLabel(seconds: number) {
+  if (seconds >= 60) {
+    const mins = Math.ceil(seconds / 60);
+    return `~${mins} min left`;
+  }
+  return `~${Math.max(1, seconds)} sec left`;
+}
+
 function getPaymentSourceLabel(flow: ActiveFlowState) {
   return flow.draft.paymentSourceSelection === 'AUTO_CONVERT' ? 'Vicoins + auto-convert' : 'Icoins';
 }
@@ -232,6 +257,7 @@ export function MerchantCheckoutSheet({
   const [onboardingSelection, setOnboardingSelection] = useState(prefs.labelLanguage);
   const draftSyncSeqRef = useRef(0);
   const activeFlowRef = useRef<ActiveFlowState | null>(null);
+  const manualEntryInputRef = useRef<HTMLInputElement | null>(null);
   const qrFileInputRef = useRef<HTMLInputElement | null>(null);
   const qrCameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const qrCameraStreamRef = useRef<MediaStream | null>(null);
@@ -594,6 +620,11 @@ export function MerchantCheckoutSheet({
   const handlePickQrImage = () => {
     qrFileInputRef.current?.click();
   };
+
+  const focusPasteFallbackInput = useCallback(() => {
+    manualEntryInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    manualEntryInputRef.current?.focus();
+  }, []);
 
   const scanQrFromLiveVideo = useCallback(async () => {
     const video = qrCameraVideoRef.current;
@@ -968,24 +999,7 @@ export function MerchantCheckoutSheet({
               currentTipPromptLayout={currentTipPromptLayout}
               canSeeDemoScenarios={canSeeDemoScenarios}
               onBack={activeFlow.screenIndex > 0 ? goToPreviousScreen : resetFlow}
-              onOpenSettings={() => setShowSettingsPanel((v) => !v)}
-              showSettings={showSettingsPanel}
             />
-
-            {showSettingsPanel && (
-              <CheckoutPreferencesPanel
-                category={activeFlow.scenario.merchant.category}
-                labelLanguage={prefs.labelLanguage}
-                tipPromptLayoutGlobal={prefs.tipPromptLayoutGlobal}
-                tipPromptLayoutByCategory={prefs.tipPromptLayoutByCategory}
-                autoConvertPreferenceEnabled={prefs.autoConvertPreferenceEnabled}
-                onLabelLanguageChange={prefs.setLabelLanguage}
-                onTipPromptLayoutGlobalChange={prefs.setTipPromptLayoutGlobal}
-                onTipPromptLayoutCategoryChange={prefs.setTipPromptLayoutForCategory}
-                onTipPromptLayoutCategoryClear={prefs.clearTipPromptLayoutForCategory}
-                onAutoConvertPreferenceChange={prefs.setAutoConvertPreferenceEnabled}
-              />
-            )}
 
             {manualEntryError && (
               <div role="alert" aria-live="assertive" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -1226,6 +1240,11 @@ export function MerchantCheckoutSheet({
                   QR scanning is not available in this browser. Paste the checkout link or raw QR payload below.
                 </p>
               )}
+              {(qrCameraError || !qrScanningSupported) && (
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={focusPasteFallbackInput}>
+                  Paste link instead
+                </Button>
+              )}
             </div>
 
             <div className="rounded-2xl border border-border/60 p-4 space-y-3">
@@ -1238,6 +1257,7 @@ export function MerchantCheckoutSheet({
               </p>
               <div className="flex gap-2">
                 <Input
+                  ref={manualEntryInputRef}
                   value={manualEntryInput}
                   onChange={(e) => setManualEntryInput(e.target.value)}
                   placeholder="Paste checkout URL, QR payload, or request link"
@@ -1247,8 +1267,8 @@ export function MerchantCheckoutSheet({
                   {isServiceBusy ? 'Opening…' : 'Open'}
                 </Button>
               </div>
-            {manualEntryError && <p role="alert" aria-live="assertive" className="text-xs text-destructive">{manualEntryError}</p>}
-            {serviceError && <p role="alert" aria-live="assertive" className="text-xs text-destructive">{serviceError}</p>}
+              {manualEntryError && <p role="alert" aria-live="assertive" className="text-xs text-destructive">{manualEntryError}</p>}
+              {serviceError && <p role="alert" aria-live="assertive" className="text-xs text-destructive">{serviceError}</p>}
             </div>
           </div>
         )}
@@ -1298,10 +1318,9 @@ function CheckoutFlowHeader(props: {
   currentTipPromptLayout: TipPromptLayout;
   canSeeDemoScenarios: boolean;
   onBack: () => void;
-  onOpenSettings: () => void;
-  showSettings: boolean;
 }) {
   const { flow } = props;
+  const remainingSeconds = estimateRemainingSeconds(flow);
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -1309,24 +1328,48 @@ function CheckoutFlowHeader(props: {
           <ArrowLeft className="w-4 h-4" />
           {flow.screenIndex === 0 ? (props.canSeeDemoScenarios ? 'All scenarios' : 'Checkout Home') : 'Back'}
         </Button>
-        <Button variant="outline" size="sm" onClick={props.onOpenSettings}>
-          {props.showSettings ? 'Hide Settings' : 'Checkout Settings'}
-        </Button>
+        <Badge variant="outline" className="rounded-full gap-1">
+          <Lock className="w-3 h-3" />
+          Preferences locked
+        </Badge>
       </div>
       <div className="rounded-2xl border border-border/70 p-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-semibold">{flow.scenario.merchant.name}</p>
             <p className="text-xs text-muted-foreground mt-1">{flow.scenario.title}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Step {flow.screenIndex + 1} of {flow.plan.screens.length}: {getCheckoutScreenLabel(flow.currentScreen)}
-              </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Step {flow.screenIndex + 1} of {flow.plan.screens.length}: {getCheckoutScreenLabel(flow.currentScreen)}
+            </p>
           </div>
           <div className="flex flex-col items-end gap-1">
             <Badge variant="outline">{flow.plan.policyProfile.profileType}</Badge>
             <span className="text-[11px] text-muted-foreground">
               Tip prompt: {getTipLayoutDisplayLabel(props.currentTipPromptLayout)}
             </span>
+          </div>
+        </div>
+        <div className="mt-3 rounded-xl border border-border/60 bg-muted/30 p-2.5">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>Progress</span>
+            <span className="inline-flex items-center gap-1">
+              <Clock3 className="w-3 h-3" />
+              {formatRemainingTimeLabel(remainingSeconds)}
+            </span>
+          </div>
+          <div className="mt-2 flex items-center gap-1">
+            {flow.plan.screens.map((screen, index) => (
+              <span
+                key={`${screen}-${index}`}
+                className={cn(
+                  'h-1.5 rounded-full flex-1',
+                  index < flow.screenIndex && 'bg-primary/60',
+                  index === flow.screenIndex && 'bg-primary',
+                  index > flow.screenIndex && 'bg-muted'
+                )}
+                aria-hidden="true"
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -1714,6 +1757,25 @@ function AuthenticateScreen(props: {
           <p className="font-medium text-sm">Use PIN instead</p>
           <p className="text-xs text-muted-foreground">Fallback path for accessibility or biometric issues.</p>
         </button>
+      </div>
+      <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Trust & details</p>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            {props.flow.scenario.merchant.verified ? 'Verified merchant' : 'Merchant'}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
+            <CreditCard className="w-3.5 h-3.5" />
+            {props.flow.quote?.conversionFeeMinor
+              ? `Fee ${formatCurrencyMinor(props.flow.quote.conversionFeeMinor, props.flow.scenario.entry.currencyCode)}`
+              : 'No conversion fee'}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1">
+            <Lock className="w-3.5 h-3.5" />
+            {props.flow.simulatedAuthMethod === 'PIN' ? 'PIN auth' : 'Biometric auth'}
+          </span>
+        </div>
       </div>
       <div className="rounded-xl border border-border/60 bg-muted/30 p-3 text-sm text-muted-foreground">
         One tap confirms checkout action, but authentication is still required to complete payment.

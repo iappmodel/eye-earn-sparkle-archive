@@ -1,6 +1,8 @@
 // Payout Service – request withdrawals and list payout history.
 // Handles retries for transient errors and user-friendly error messages.
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
+import { addDemoBalance, getDemoBalances, pushDemoTransaction } from '@/lib/demoState';
 
 export type PayoutMethod = 'paypal' | 'bank' | 'crypto';
 
@@ -107,7 +109,89 @@ export interface PaymentMethodRow {
   updated_at: string;
 }
 
+const DEMO_PAYOUT_HISTORY_KEY = 'i_demo_payout_history_v1';
+
+function getDemoPayoutHistory(): PayoutRequestRow[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(DEMO_PAYOUT_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PayoutRequestRow[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoPayoutHistory(next: PayoutRequestRow[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(DEMO_PAYOUT_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore localStorage quota failures in private mode.
+  }
+}
+
+function createDemoPayoutId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `demo-payout-${uuid}`;
+}
+
 async function requestPayoutOnce(params: RequestPayoutParams): Promise<RequestPayoutResult> {
+  if (isDemoMode) {
+    const { amount, coinType, method } = params;
+    const balances = getDemoBalances();
+    const current = coinType === 'vicoin' ? balances.vicoins : balances.icoins;
+    if (current < amount) {
+      return { success: false, error: getPayoutErrorMessage('Insufficient balance') };
+    }
+
+    const { fee, netAmount } = getPayoutFee(amount);
+    addDemoBalance(coinType, -amount);
+    const tx = pushDemoTransaction({
+      type: 'withdrawn',
+      amount,
+      coinType,
+      description: `Demo payout (${method})`,
+      referenceId: null,
+    });
+
+    const now = new Date().toISOString();
+    const payoutRow: PayoutRequestRow = {
+      id: createDemoPayoutId(),
+      user_id: 'demo-user',
+      payment_method_id: params.paymentMethodId ?? null,
+      amount,
+      coin_type: coinType,
+      status: 'pending',
+      fee,
+      net_amount: netAmount,
+      reference_id: tx.id,
+      failure_reason: null,
+      processed_at: null,
+      created_at: now,
+      updated_at: now,
+    };
+    const history = [payoutRow, ...getDemoPayoutHistory()].slice(0, 200);
+    saveDemoPayoutHistory(history);
+
+    const nextBalances = getDemoBalances();
+    return {
+      success: true,
+      payout_request_id: payoutRow.id,
+      transaction_id: tx.id,
+      amount,
+      coin_type: coinType,
+      method,
+      fee,
+      net_amount: netAmount,
+      status: 'pending',
+      reference_id: tx.id,
+      estimated_arrival: '1-2 business days',
+      new_balance: coinType === 'vicoin' ? nextBalances.vicoins : nextBalances.icoins,
+    };
+  }
+
   const { amount, coinType, method, paymentMethodId, payoutDetails } = params;
   const { data, error } = await supabase.functions.invoke('request-payout', {
     body: {
@@ -193,6 +277,10 @@ class PayoutService {
   }
 
   async getPayoutRequests(limit = 20): Promise<PayoutRequestRow[]> {
+    if (isDemoMode) {
+      return getDemoPayoutHistory().slice(0, limit);
+    }
+
     const {
       data: { user },
       error: authError,
@@ -214,6 +302,34 @@ class PayoutService {
   }
 
   async getPaymentMethods(): Promise<PaymentMethodRow[]> {
+    if (isDemoMode) {
+      const now = new Date().toISOString();
+      return [
+        {
+          id: 'demo-paypal',
+          user_id: 'demo-user',
+          method_type: 'paypal',
+          is_default: true,
+          nickname: 'PayPal (Demo)',
+          details: { email: 'investor.demo@iview.local' },
+          verified: true,
+          created_at: now,
+          updated_at: now,
+        },
+        {
+          id: 'demo-bank',
+          user_id: 'demo-user',
+          method_type: 'bank',
+          is_default: false,
+          nickname: 'Bank **** 9021 (Demo)',
+          details: { account_last4: '9021', bank_name: 'Demo National Bank' },
+          verified: true,
+          created_at: now,
+          updated_at: now,
+        },
+      ];
+    }
+
     const {
       data: { user },
       error: authError,

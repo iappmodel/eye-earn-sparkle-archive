@@ -6,8 +6,13 @@ import type { Profile } from '@/types/auth';
 /**
  * Loads the current user's profile when user changes.
  */
-export function useProfileLoader(user: User | null, setProfile: (p: Profile | null) => void) {
+export function useProfileLoader(
+  user: User | null,
+  setProfile: (p: Profile | null) => void,
+  enabled = true
+) {
   useEffect(() => {
+    if (!enabled) return;
     if (!user) {
       setProfile(null);
       return;
@@ -31,5 +36,5 @@ export function useProfileLoader(user: User | null, setProfile: (p: Profile | nu
     return () => {
       cancelled = true;
     };
-  }, [user?.id, setProfile]);
+  }, [enabled, user?.id, setProfile]);
 }

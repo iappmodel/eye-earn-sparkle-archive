@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { isDemoMode } from '@/lib/appMode';
+import { generateLocalPromotions } from '@/constants/mockPromotions';
 import { useToast } from '@/hooks/use-toast';
 import { notificationSoundService } from '@/services/notificationSound.service';
 
@@ -57,6 +59,31 @@ export function useNearbyPromotions(enabled: boolean = true) {
     if (!user?.id) return;
 
     try {
+      if (isDemoMode) {
+        const mockPromotions = generateLocalPromotions(latitude, longitude, 2, HIGH_VALUE_THRESHOLD).slice(0, 8);
+        const nearby: NearbyPromotion[] = mockPromotions.map((promo) => ({
+          id: promo.id,
+          business_name: promo.business_name,
+          reward_amount: promo.reward_amount,
+          reward_type: promo.reward_type,
+          category: promo.category ?? null,
+          distance: calculateDistance(latitude, longitude, promo.latitude, promo.longitude),
+          latitude: promo.latitude,
+          longitude: promo.longitude,
+        }));
+        setNearbyPromotions(nearby);
+        const now = Date.now();
+        const routeCooldownMs = ROUTE_SUGGESTION_COOLDOWN * 60 * 1000;
+        if (nearby.length >= ROUTE_CLUSTER_THRESHOLD && now - lastRouteSuggestionRef.current > routeCooldownMs) {
+          lastRouteSuggestionRef.current = now;
+          setRouteSuggestion({
+            promotions: nearby,
+            center: { lat: latitude, lng: longitude },
+          });
+        }
+        return;
+      }
+
       const { data: promotions, error } = await supabase
         .from('promotions')
         .select('*')

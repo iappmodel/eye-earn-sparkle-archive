@@ -8,6 +8,7 @@ import { X, MapPin, CheckCircle2, Loader2, AlertCircle, Coins, Navigation2 } fro
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCheckInStatus } from '@/hooks/useCheckInStatus';
 import { notificationSoundService } from '@/services/notificationSound.service';
@@ -66,6 +67,19 @@ export const QuickCheckInSheet: React.FC<QuickCheckInSheetProps> = ({
 
     setPhase('locating');
     setErrorMessage('');
+
+    if (isDemoMode) {
+      setPhase('verifying');
+      await new Promise((resolve) => setTimeout(resolve, 550));
+      setPhase('success');
+      setShowConfetti(true);
+      setRewardMessage('You earned 15 vicoin for a simulated quick check-in.');
+      notificationSoundService.playReward();
+      if (navigator.vibrate) navigator.vibrate([20, 50, 20]);
+      onSuccess?.();
+      setTimeout(() => setShowConfetti(false), 3000);
+      return;
+    }
 
     try {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {

@@ -1,5 +1,7 @@
 // Subscription service for managing user subscriptions (Stripe + Supabase)
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
+import { getDemoSubscriptionTier, setDemoSubscriptionTier } from '@/lib/demoState';
 
 export interface SubscriptionStatus {
   subscribed: boolean;
@@ -116,12 +118,31 @@ function mapResponseToStatus(data: Record<string, unknown>): SubscriptionStatus 
   };
 }
 
+function getDemoStatus(tierOverride?: SubscriptionTierKey): SubscriptionStatus {
+  const tier = tierOverride ?? getDemoSubscriptionTier();
+  const config = SUBSCRIPTION_TIERS[tier];
+  const subscribed = tier !== 'free';
+  return {
+    subscribed,
+    tier,
+    tier_name: config.name,
+    subscription_end: subscribed ? new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString() : null,
+    reward_multiplier: config.reward_multiplier,
+    trial_end: null,
+    cancel_at_period_end: false,
+    current_period_start: subscribed ? new Date().toISOString() : null,
+  };
+}
+
 class SubscriptionService {
   /**
    * Read subscription status from Supabase cache (subscription_status table).
    * Use for fast UI; call checkSubscription() to refresh from Stripe.
    */
   async getCachedStatus(): Promise<SubscriptionStatus | null> {
+    if (isDemoMode) {
+      return getDemoStatus();
+    }
     try {
       const { data: session } = await supabase.auth.getSession();
       if (!session?.session?.user?.id) return null;
@@ -155,6 +176,9 @@ class SubscriptionService {
    * Check subscription against Stripe (and sync subscription_status). Preferred source of truth.
    */
   async checkSubscription(): Promise<SubscriptionStatus> {
+    if (isDemoMode) {
+      return getDemoStatus();
+    }
     try {
       const { data, error } = await supabase.functions.invoke('check-subscription');
 
@@ -174,6 +198,14 @@ class SubscriptionService {
    * Create a Stripe Checkout session for the given tier. Opens in new tab; user returns with ?subscription=success.
    */
   async createCheckout(tier: 'pro' | 'creator'): Promise<{ url?: string; error?: string }> {
+    if (isDemoMode) {
+      setDemoSubscriptionTier(tier);
+      const url =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}${window.location.pathname}?subscription=success&demo=1&tier=${tier}`
+          : undefined;
+      return { url };
+    }
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: { tier },
@@ -195,6 +227,13 @@ class SubscriptionService {
    * Open Stripe Customer Portal (manage subscription, payment methods, invoices). Opens in new tab.
    */
   async openCustomerPortal(): Promise<{ url?: string; error?: string }> {
+    if (isDemoMode) {
+      const url =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}${window.location.pathname}?subscription=success&demo=1&portal=1`
+          : undefined;
+      return { url };
+    }
     try {
       const { data, error } = await supabase.functions.invoke('customer-portal');
 

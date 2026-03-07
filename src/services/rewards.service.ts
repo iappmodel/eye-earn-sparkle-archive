@@ -1,5 +1,13 @@
 // Rewards Service for Managing User Earnings & Transactions
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
+import {
+  addDemoBalance,
+  getDemoBalances,
+  getDemoTransactions,
+  pushDemoTransaction,
+  type DemoWalletTransaction,
+} from '@/lib/demoState';
 import { logger } from '@/lib/logger';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { Reward, Campaign } from '@/types/app.types';
@@ -148,6 +156,67 @@ interface DailyLimits {
   promo_limit: number;
 }
 
+function mapDemoTransaction(tx: DemoWalletTransaction): WalletTransaction {
+  return {
+    id: tx.id,
+    type: tx.type,
+    amount: tx.amount,
+    coinType: tx.coinType,
+    description: tx.description,
+    timestamp: new Date(tx.timestamp),
+    referenceId: tx.referenceId,
+  };
+}
+
+function getDemoWalletTransactionsSorted(): WalletTransaction[] {
+  return getDemoTransactions()
+    .map(mapDemoTransaction)
+    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+}
+
+function buildDemoTransactionSummary(
+  transactions: WalletTransaction[],
+  dateFrom: Date,
+  dateTo: Date
+): TransactionPeriodSummary {
+  const summary: TransactionPeriodSummary = {
+    earnedVicoin: 0,
+    earnedIcoin: 0,
+    spentVicoin: 0,
+    spentIcoin: 0,
+    receivedVicoin: 0,
+    receivedIcoin: 0,
+    sentVicoin: 0,
+    sentIcoin: 0,
+    withdrawnVicoin: 0,
+    withdrawnIcoin: 0,
+    count: 0,
+  };
+
+  for (const tx of transactions) {
+    if (tx.timestamp < dateFrom || tx.timestamp > dateTo) continue;
+    summary.count += 1;
+    if (tx.type === 'earned') {
+      if (tx.coinType === 'vicoin') summary.earnedVicoin += tx.amount;
+      else summary.earnedIcoin += tx.amount;
+    } else if (tx.type === 'spent') {
+      if (tx.coinType === 'vicoin') summary.spentVicoin += tx.amount;
+      else summary.spentIcoin += tx.amount;
+    } else if (tx.type === 'received') {
+      if (tx.coinType === 'vicoin') summary.receivedVicoin += tx.amount;
+      else summary.receivedIcoin += tx.amount;
+    } else if (tx.type === 'sent') {
+      if (tx.coinType === 'vicoin') summary.sentVicoin += tx.amount;
+      else summary.sentIcoin += tx.amount;
+    } else if (tx.type === 'withdrawn') {
+      if (tx.coinType === 'vicoin') summary.withdrawnVicoin += tx.amount;
+      else summary.withdrawnIcoin += tx.amount;
+    }
+  }
+
+  return summary;
+}
+
 class RewardsService {
   // Issue a reward to the user with optional retry on transient failures
   async issueReward(
@@ -155,6 +224,31 @@ class RewardsService {
     contentId: string,
     options?: IssueRewardOptions
   ): Promise<IssueRewardResponse> {
+    if (isDemoMode) {
+      const promoReward = rewardType === 'promo_view';
+      const coinType: CoinType = promoReward ? 'icoin' : 'vicoin';
+      const amount = promoReward ? 1 : 10;
+      const balances = addDemoBalance(coinType, amount);
+      pushDemoTransaction({
+        type: 'earned',
+        amount,
+        coinType,
+        description: promoReward ? 'Demo promo reward' : `Demo reward: ${rewardType}`,
+        referenceId: contentId || options?.attentionSessionId || null,
+      });
+      return {
+        success: true,
+        amount,
+        coinType,
+        newBalance: coinType === 'vicoin' ? balances.vicoins : balances.icoins,
+        dailyRemaining: {
+          icoin: 100,
+          vicoin: 50,
+          promo_views: 20,
+        },
+      };
+    }
+
     const attempt = async (attemptNum: number): Promise<IssueRewardResponse> => {
       try {
         if (attemptNum > 0) {
@@ -281,6 +375,83 @@ class RewardsService {
     direction: TransferCoinsDirection,
     amount: number
   ): Promise<TransferCoinsResponse | TransferCoinsErrorResponse> {
+    if (isDemoMode) {
+      const balances = getDemoBalances();
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return { success: false, error: 'Amount must be greater than 0' };
+      }
+
+      if (direction === 'icoin_to_vicoin') {
+        if (amount < 100 || amount > 100000 || amount % 10 !== 0) {
+          return { success: false, error: 'Icoin amount must be 100-100000 and divisible by 10' };
+        }
+        if (balances.icoins < amount) {
+          return { success: false, error: 'Insufficient balance', code: 'INSUFFICIENT_BALANCE' };
+        }
+        const received = amount / 10;
+        addDemoBalance('icoin', -amount);
+        addDemoBalance('vicoin', received);
+        pushDemoTransaction({
+          type: 'spent',
+          amount,
+          coinType: 'icoin',
+          description: 'Demo conversion to Vicoins',
+          referenceId: null,
+        });
+        pushDemoTransaction({
+          type: 'received',
+          amount: received,
+          coinType: 'vicoin',
+          description: 'Demo conversion from Icoins',
+          referenceId: null,
+        });
+        const next = getDemoBalances();
+        return {
+          success: true,
+          direction,
+          source_spent: amount,
+          target_received: received,
+          new_icoin_balance: next.icoins,
+          new_vicoin_balance: next.vicoins,
+          exchange_rate: 10,
+        };
+      }
+
+      if (amount < 1 || amount > 10000) {
+        return { success: false, error: 'Vicoin amount must be 1-10000' };
+      }
+      if (balances.vicoins < amount) {
+        return { success: false, error: 'Insufficient balance', code: 'INSUFFICIENT_BALANCE' };
+      }
+      const received = amount * 10;
+      addDemoBalance('vicoin', -amount);
+      addDemoBalance('icoin', received);
+      pushDemoTransaction({
+        type: 'spent',
+        amount,
+        coinType: 'vicoin',
+        description: 'Demo conversion to Icoins',
+        referenceId: null,
+      });
+      pushDemoTransaction({
+        type: 'received',
+        amount: received,
+        coinType: 'icoin',
+        description: 'Demo conversion from Vicoins',
+        referenceId: null,
+      });
+      const next = getDemoBalances();
+      return {
+        success: true,
+        direction,
+        source_spent: amount,
+        target_received: received,
+        new_icoin_balance: next.icoins,
+        new_vicoin_balance: next.vicoins,
+        exchange_rate: 0.1,
+      };
+    }
+
     try {
       const { data, error } = await supabase.functions.invoke('transfer-coins', {
         body: { direction, amount },
@@ -350,6 +521,10 @@ class RewardsService {
     userId: string,
     transactionId: string
   ): Promise<WalletTransaction | null> {
+    if (isDemoMode) {
+      const tx = getDemoWalletTransactionsSorted().find((item) => item.id === transactionId);
+      return tx ?? null;
+    }
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -385,6 +560,54 @@ class RewardsService {
       sortBy = 'created_at',
       sortOrder = 'desc',
     } = options;
+
+    if (isDemoMode) {
+      let list = getDemoWalletTransactionsSorted();
+
+      if (filters.type) {
+        const types = Array.isArray(filters.type) ? filters.type : [filters.type];
+        list = list.filter((tx) => types.includes(tx.type));
+      }
+      if (filters.coinType) {
+        list = list.filter((tx) => tx.coinType === filters.coinType);
+      }
+      if (filters.dateFrom) {
+        list = list.filter((tx) => tx.timestamp >= filters.dateFrom!);
+      }
+      if (filters.dateTo) {
+        const to = new Date(filters.dateTo);
+        to.setHours(23, 59, 59, 999);
+        list = list.filter((tx) => tx.timestamp <= to);
+      }
+      if (filters.amountMin != null && !Number.isNaN(filters.amountMin)) {
+        list = list.filter((tx) => tx.amount >= Number(filters.amountMin));
+      }
+      if (filters.amountMax != null && !Number.isNaN(filters.amountMax)) {
+        list = list.filter((tx) => tx.amount <= Number(filters.amountMax));
+      }
+      if (filters.search?.trim()) {
+        const term = filters.search.trim().toLowerCase();
+        list = list.filter((tx) => tx.description.toLowerCase().includes(term));
+      }
+
+      list.sort((a, b) => {
+        if (sortBy === 'amount') {
+          return sortOrder === 'asc' ? a.amount - b.amount : b.amount - a.amount;
+        }
+        return sortOrder === 'asc'
+          ? a.timestamp.getTime() - b.timestamp.getTime()
+          : b.timestamp.getTime() - a.timestamp.getTime();
+      });
+
+      const totalCount = list.length;
+      const transactions = list.slice(offset, offset + limit);
+      return {
+        transactions,
+        totalCount,
+        hasMore: offset + transactions.length < totalCount,
+        nextOffset: offset + limit,
+      };
+    }
 
     try {
       let query = supabase
@@ -471,6 +694,10 @@ class RewardsService {
     dateFrom: Date,
     dateTo: Date
   ): Promise<TransactionPeriodSummary> {
+    if (isDemoMode) {
+      return buildDemoTransactionSummary(getDemoWalletTransactionsSorted(), dateFrom, dateTo);
+    }
+
     const summary: TransactionPeriodSummary = {
       earnedVicoin: 0,
       earnedIcoin: 0,
@@ -536,6 +763,13 @@ class RewardsService {
     onInsert: (tx: WalletTransaction) => void,
     onError?: (err: Error) => void
   ): RealtimeChannel {
+    if (isDemoMode) {
+      // Demo mode has local-only data. Return a no-op channel-compatible object.
+      return {
+        unsubscribe: () => Promise.resolve('ok'),
+      } as unknown as RealtimeChannel;
+    }
+
     const channel = supabase
       .channel(`transactions:${userId}`)
       .on(
@@ -568,6 +802,26 @@ class RewardsService {
 
   // Get daily limits status
   async getDailyLimits(userId: string): Promise<DailyLimits | null> {
+    if (isDemoMode) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayTransactions = getDemoWalletTransactionsSorted().filter((tx) => tx.timestamp >= today);
+      const earnedIcoin = todayTransactions
+        .filter((tx) => tx.type === 'earned' && tx.coinType === 'icoin')
+        .reduce((sum, tx) => sum + tx.amount, 0);
+      const earnedVicoin = todayTransactions
+        .filter((tx) => tx.type === 'earned' && tx.coinType === 'vicoin')
+        .reduce((sum, tx) => sum + tx.amount, 0);
+      return {
+        icoin_earned: earnedIcoin,
+        vicoin_earned: earnedVicoin,
+        promo_views: todayTransactions.filter((tx) => /promo/i.test(tx.description)).length,
+        icoin_limit: 100,
+        vicoin_limit: 50,
+        promo_limit: 20,
+      };
+    }
+
     try {
       const today = new Date().toISOString().split('T')[0];
       
@@ -600,6 +854,9 @@ class RewardsService {
     longitude: number,
     radiusKm = 10
   ): Promise<Campaign[]> {
+    if (isDemoMode) {
+      return [];
+    }
     try {
       const { data, error } = await supabase.functions.invoke('get-nearby-promotions', {
         body: { latitude, longitude, radiusKm },
@@ -647,6 +904,23 @@ class RewardsService {
     coinType: CoinType,
     method: 'bank' | 'crypto' | 'paypal'
   ): Promise<{ success: boolean; transactionId?: string; error?: string }> {
+    if (isDemoMode) {
+      const balances = getDemoBalances();
+      const current = coinType === 'vicoin' ? balances.vicoins : balances.icoins;
+      if (current < amount) {
+        return { success: false, error: 'Insufficient balance' };
+      }
+      addDemoBalance(coinType, -amount);
+      const tx = pushDemoTransaction({
+        type: 'withdrawn',
+        amount,
+        coinType,
+        description: `Demo withdrawal (${method})`,
+        referenceId: null,
+      });
+      return { success: true, transactionId: tx.id };
+    }
+
     try {
       const { data, error } = await supabase.functions.invoke('request-payout', {
         body: { amount, coinType, method },
@@ -669,6 +943,23 @@ class RewardsService {
     total_earned: number;
     total_withdrawn: number;
   }> {
+    if (isDemoMode) {
+      const balances = getDemoBalances();
+      const tx = getDemoWalletTransactionsSorted();
+      const totalEarned = tx.filter((item) => item.type === 'earned').reduce((sum, item) => sum + item.amount, 0);
+      const totalWithdrawn = tx
+        .filter((item) => item.type === 'withdrawn')
+        .reduce((sum, item) => sum + item.amount, 0);
+      return {
+        vicoin: balances.vicoins,
+        icoin: balances.icoins,
+        pending_vicoin: 0,
+        pending_icoin: 0,
+        total_earned: totalEarned,
+        total_withdrawn: totalWithdrawn,
+      };
+    }
+
     try {
       // Get from profile directly
       const { data: profile, error: profileError } = await supabase
@@ -736,6 +1027,57 @@ class RewardsService {
     items: PromoEarningsItem[];
     periodComparison?: { change: number; trend: 'up' | 'down' | 'same' };
   }> {
+    if (isDemoMode) {
+      const all = getDemoWalletTransactionsSorted();
+      const now = new Date();
+      const startDate = options?.startDate ?? new Date(now.getTime() - 1000 * 60 * 60 * 24 * 30);
+      const endDate = options?.endDate ?? now;
+      const limit = options?.limit ?? 100;
+      const filtered = all
+        .filter((tx) => tx.type === 'earned' && tx.timestamp >= startDate && tx.timestamp <= endDate)
+        .slice(0, limit);
+
+      const items: PromoEarningsItem[] = filtered.map((tx) => ({
+        id: tx.id,
+        source: /task/i.test(tx.description) ? 'task_complete' : 'promo_view',
+        amount: tx.amount,
+        coinType: tx.coinType,
+        label: tx.description,
+        timestamp: tx.timestamp,
+        promotionId: tx.referenceId ?? undefined,
+      }));
+
+      const totalVicoin = items.filter((i) => i.coinType === 'vicoin').reduce((sum, i) => sum + i.amount, 0);
+      const totalIcoin = items.filter((i) => i.coinType === 'icoin').reduce((sum, i) => sum + i.amount, 0);
+
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(todayStart);
+      weekStart.setDate(weekStart.getDate() - 6);
+      const monthStart = new Date(todayStart);
+      monthStart.setMonth(monthStart.getMonth() - 1);
+
+      const sumSince = (start: Date) =>
+        items.filter((i) => i.timestamp >= start).reduce((sum, i) => sum + i.amount, 0);
+
+      return {
+        totalVicoin,
+        totalIcoin,
+        totalCoins: totalVicoin + totalIcoin,
+        bySource: {
+          checkin: 0,
+          promoView: items.filter((i) => i.source === 'promo_view').reduce((sum, i) => sum + i.amount, 0),
+          taskComplete: items.filter((i) => i.source === 'task_complete').reduce((sum, i) => sum + i.amount, 0),
+        },
+        byPeriod: {
+          today: sumSince(todayStart),
+          week: sumSince(weekStart),
+          month: sumSince(monthStart),
+        },
+        locations: [],
+        items,
+      };
+    }
+
     try {
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

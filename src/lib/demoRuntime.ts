@@ -1,4 +1,5 @@
-const DEMO_CONTROLS_KEY = 'i_demo_controls_v2';
+import { isDemoMode } from '@/lib/appMode';
+import { DEMO_CONTROLS_KEY } from '@/lib/demoState';
 
 type StoredDemoControls = {
   simulateVisionInput?: boolean;
@@ -29,15 +30,17 @@ function readDemoControls(): StoredDemoControls {
 }
 
 export function isDemoVisionSimulationEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return isDemoMode;
   const controls = readDemoControls();
-  return controls.simulateVisionInput ?? false;
+  if (typeof controls.simulateVisionInput === 'boolean') return controls.simulateVisionInput;
+  return isDemoMode;
 }
 
 export function isDemoMapFallbackEnabled(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return isDemoMode;
   const controls = readDemoControls();
-  return controls.simulateMapFallback ?? false;
+  if (typeof controls.simulateMapFallback === 'boolean') return controls.simulateMapFallback;
+  return isDemoMode;
 }
 
 export function getCameraRuntimeIssue(): string | null {

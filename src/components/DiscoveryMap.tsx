@@ -6,6 +6,7 @@ import { X, Navigation, RefreshCw, MapPin, Coins, Search, Filter, Heart, Externa
 import { NeuButton } from './NeuButton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { isDemoMode } from '@/lib/appMode';
 import { MapSearchBar } from './MapSearchBar';
 import { MapFilterSheet, defaultMapFilters, type MapFilters } from './MapFilterSheet';
 import { FavoriteLocations, useFavoriteLocation } from './FavoriteLocations';
@@ -445,6 +446,11 @@ export const DiscoveryMap: React.FC<DiscoveryMapProps> = ({ isOpen, onClose, pro
         if (envToken) {
           setMapboxToken(envToken);
           setMapTokenError(null);
+          return;
+        }
+        if (isDemoMode) {
+          setMapboxToken(null);
+          setMapTokenError('Demo mode active: using iGO fallback map renderer.');
           return;
         }
 

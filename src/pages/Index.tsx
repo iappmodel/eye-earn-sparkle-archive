@@ -60,6 +60,14 @@ import { TipSheet } from '@/components/TipSheet';
 import { DemoScenarioSelector, type DemoScenarioId } from '@/components/demo/DemoScenarioSelector';
 import { DemoControlsSheet, type DemoControlsState } from '@/components/demo/DemoControlsSheet';
 import { GuidedInvestorTour, type GuidedTourAction } from '@/components/demo/GuidedInvestorTour';
+import { isDemoMode } from '@/lib/appMode';
+import {
+  DEMO_SCENARIO_SEEN_KEY,
+  DEMO_CONTROLS_KEY,
+  DEMO_BALANCES_KEY,
+  defaultDemoBalances,
+  type DemoBalances,
+} from '@/lib/demoState';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Route as RouteIcon, Bookmark, Settings2 } from 'lucide-react';
@@ -105,27 +113,13 @@ const ScreenIndicatorsAutoHide: React.FC<{
 
 type HorizontalScreen = 'friends' | 'main' | 'promos';
 
-const DEMO_SCENARIO_SEEN_KEY = 'i_demo_scenario_seen_v1';
-const DEMO_CONTROLS_KEY = 'i_demo_controls_v2';
-const DEMO_BALANCES_KEY = 'i_demo_balances_v1';
-
 const defaultDemoControls: DemoControlsState = {
   forceLandscapePlayback: false,
   rewardMode: 'auto',
   verificationDelayMs: 2000,
   checkoutOutcome: 'completed',
-  simulateVisionInput: false,
-  simulateMapFallback: false,
-};
-
-interface DemoBalances {
-  vicoins: number;
-  icoins: number;
-}
-
-const defaultDemoBalances: DemoBalances = {
-  vicoins: 3200,
-  icoins: 28,
+  simulateVisionInput: isDemoMode,
+  simulateMapFallback: isDemoMode,
 };
 
 const getStoredDemoControls = (): DemoControlsState => {
@@ -235,8 +229,9 @@ const Index = () => {
   const [tipSheetSource, setTipSheetSource] = useState<'button' | 'gesture' | 'remote'>('button');
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [showCreatorTools, setShowCreatorTools] = useState(false);
-  const demoModeEnabled = true;
+  const demoModeEnabled = isDemoMode;
   const [showScenarioSelector, setShowScenarioSelector] = useState(() => {
+    if (!isDemoMode) return false;
     try {
       return localStorage.getItem(DEMO_SCENARIO_SEEN_KEY) !== 'true';
     } catch {
@@ -333,8 +328,8 @@ const Index = () => {
   // Active direction for CrossNavigation indicator
   const [activeDirection, setActiveDirection] = useState<'up' | 'down' | 'left' | 'right' | null>(null);
 
-  const vicoins = profile?.vicoin_balance ?? demoBalances.vicoins;
-  const icoins = profile?.icoin_balance ?? demoBalances.icoins;
+  const vicoins = demoModeEnabled ? demoBalances.vicoins : (profile?.vicoin_balance ?? 0);
+  const icoins = demoModeEnabled ? demoBalances.icoins : (profile?.icoin_balance ?? 0);
   
   // Check if current media is promo content
   const feedItems = mainFeed.items;

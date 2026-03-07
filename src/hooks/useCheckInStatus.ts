@@ -4,6 +4,7 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { isDemoMode } from '@/lib/appMode';
 import { useAuth } from '@/contexts/AuthContext';
 
 const COOLDOWN_HOURS = 24;
@@ -30,6 +31,17 @@ export function useCheckInStatus(promotionId: string | null, options?: { enabled
   const refetch = useCallback(async () => {
     if (!user?.id || !enabled) {
       setState((s) => ({ ...s, isLoading: false }));
+      return;
+    }
+
+    if (isDemoMode) {
+      setState({
+        canCheckIn: true,
+        lastCheckIn: null,
+        nextAvailableAt: null,
+        isLoading: false,
+        error: null,
+      });
       return;
     }
 

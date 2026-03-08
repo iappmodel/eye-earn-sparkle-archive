@@ -3,6 +3,10 @@ import { registerSW } from "virtual:pwa-register";
 import App from "./App.tsx";
 import "./index.css";
 
+if (!document.documentElement.classList.contains("theme-lunar")) {
+  document.documentElement.classList.add("theme-lunar");
+}
+
 const rootEl = document.getElementById("root");
 if (!rootEl) {
   document.body.innerHTML = "<div style='padding:1rem;font-family:system-ui;'><p>App root element missing.</p><button onclick='location.reload()'>Reload</button></div>";
@@ -10,7 +14,7 @@ if (!rootEl) {
   try {
     createRoot(rootEl).render(<App />);
     try {
-      (window as any).__iviewMarkMounted?.();
+      (window as Window & { __iviewMarkMounted?: () => void }).__iviewMarkMounted?.();
     } catch {
       // ignore
     }

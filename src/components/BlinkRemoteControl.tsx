@@ -20,6 +20,7 @@ import {
   setBlinkCommand,
   GLOBAL_BLINK_COMMAND_ID,
   RemoteControlSettings,
+  RemoteControlProfile,
   GazeCommand,
   GhostButton,
   CALIBRATION_TARGETS,
@@ -27,6 +28,7 @@ import {
   type CalibrationData,
 } from '@/hooks/useBlinkRemoteControl';
 import { useAuth } from '@/contexts/AuthContext';
+import { USE_VISION_CONTEXT } from '@/contexts/VisionContext';
 import { GazeDirection } from '@/hooks/useGazeDirection';
 import { 
   useGestureCombos, 
@@ -105,6 +107,28 @@ const DIRECTION_LABELS: Record<GazeDirection, string> = {
   down: 'Look Down',
   center: 'Center',
 };
+
+const CONTROL_PROFILE_OPTIONS: Array<{
+  value: RemoteControlProfile;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'adaptive',
+    label: 'Adaptive',
+    description: 'Balanced defaults that auto-tune for your current calibration quality.',
+  },
+  {
+    value: 'precision',
+    label: 'Precision',
+    description: 'Steadier pointer, longer confirmation hold, best for accurate targeting.',
+  },
+  {
+    value: 'speed',
+    label: 'Speed',
+    description: 'Fast response and shorter dwell for quick hands-free navigation.',
+  },
+];
 
 /** Solve 3x3 linear system Mx = v via Gaussian elimination. Returns null if singular. */
 function solve3x3(
@@ -259,6 +283,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showFacialExpression, setShowFacialExpression] = useState(false);
   const [showSlowBlinkTraining, setShowSlowBlinkTraining] = useState(false);
   const [showVoiceCalibration, setShowVoiceCalibration] = useState(false);
+  const showLegacyAdvanced = import.meta.env.DEV;
   const [blinkCalibrationResult, setBlinkCalibrationResult] = useState<CalibrationResult | null>(null);
   const [eyeMovementResult, setEyeMovementResult] = useState<EyeMovementResult | null>(null);
   const [slowBlinkResult, setSlowBlinkResult] = useState<SlowBlinkResult | null>(null);
@@ -431,6 +456,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     settings,
     gazeCommands,
     calibration,
+    autoCalibrationSampleCount,
     visionHasFace,
     eyeOpenness,
     ghostButtons,
@@ -448,9 +474,11 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     cancelCalibration,
     resetCalibration,
     updateSettings,
+    applyControlProfile,
     updateGazeCommand,
     toggleAutoCalibration,
     recordInteractionForAutoCalibration,
+    optimizeCalibrationNow,
     pauseCamera,
     resumeCamera,
     persistCalibration,
@@ -484,7 +512,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const lastDirectionStepAtRef = useRef(0);
 
   const isCalibrationOpen =
-    showUnifiedCalibration ||
+    (showUnifiedCalibration && USE_VISION_CONTEXT) ||
     showBlinkCalibration ||
     showEyeMovement ||
     showFacialExpression ||
@@ -1391,6 +1419,34 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 />
               </div>
 
+              {/* Control profile */}
+              <div className="space-y-3 p-4 rounded-lg border border-border">
+                <div>
+                  <h4 className="font-medium">Control Profile</h4>
+                  <p className="text-sm text-muted-foreground">Apply a pre-tuned runtime profile for responsiveness and stability.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {CONTROL_PROFILE_OPTIONS.map((option) => {
+                    const active = (settings.controlProfile ?? 'adaptive') === option.value;
+                    return (
+                      <Button
+                        key={option.value}
+                        variant={active ? 'default' : 'outline'}
+                        size="sm"
+                        className={cn('h-auto py-2 px-3 flex-col items-start text-left whitespace-normal')}
+                        onClick={() => {
+                          applyControlProfile(option.value);
+                          haptics.light();
+                        }}
+                      >
+                        <span className="font-medium text-sm">{option.label}</span>
+                        <span className="text-[11px] opacity-80">{option.description}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Sensitivity */}
               <div className="space-y-2 p-4 rounded-lg border border-border">
                 <div className="flex items-center justify-between">
@@ -1641,7 +1697,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 <p className="text-sm text-muted-foreground">
                   {calibration.isCalibrated 
                     ? `Last calibrated: ${new Date(calibration.calibratedAt).toLocaleDateString()} · Quality ${Math.round(calibration.profileQuality * 100)}%`
-                    : 'Run a single quick flow for gaze, gesture, and remote control calibration.'
+                    : 'Run the quick adaptive flow. It auto-calibrates gaze and eye controls in one pass.'
                   }
                 </p>
                 <div className="flex gap-2">
@@ -1656,16 +1712,18 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     <Target className="w-4 h-4 mr-2" />
                     {calibration.isCalibrated ? 'Quick Recalibrate' : 'Start Quick Calibration'}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setShowSettings(false);
-                      setShowBlinkCalibration(true);
-                    }}
-                  >
-                    Advanced
-                  </Button>
+                  {showLegacyAdvanced && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowSettings(false);
+                        setShowBlinkCalibration(true);
+                      }}
+                    >
+                      Legacy Advanced
+                    </Button>
+                  )}
                   {calibration.isCalibrated && (
                     <Button
                       variant="ghost"
@@ -1679,6 +1737,31 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     </Button>
                   )}
                 </div>
+                {calibration.autoCalibrationEnabled && (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background/60 px-3 py-2">
+                    <div>
+                      <p className="text-xs font-medium">Adaptive optimizer</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Uses recent taps to tighten calibration. Samples: {autoCalibrationSampleCount}
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={autoCalibrationSampleCount < 3}
+                      onClick={() => {
+                        const updated = optimizeCalibrationNow();
+                        if (updated) {
+                          haptics.success();
+                        } else {
+                          haptics.light();
+                        }
+                      }}
+                    >
+                      Optimize Now
+                    </Button>
+                  </div>
+                )}
                 
                 {/* Auto-calibration toggle */}
                 <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
@@ -1778,10 +1861,14 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           setShowUnifiedCalibration(false);
           haptics.success();
         }}
-        onOpenAdvanced={() => {
-          setShowUnifiedCalibration(false);
-          setShowBlinkCalibration(true);
-        }}
+        onOpenAdvanced={
+          showLegacyAdvanced
+            ? () => {
+                setShowUnifiedCalibration(false);
+                setShowBlinkCalibration(true);
+              }
+            : undefined
+        }
       />
 
       {/* Eye Blink Calibration - Step 1 */}

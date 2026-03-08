@@ -16,7 +16,11 @@ import { useVisionStream } from '@/contexts/VisionStreamContext';
 import { loadRemoteControlSettings } from '@/hooks/useBlinkRemoteControl';
 import { logger } from '@/lib/logger';
 import { analyzeSkinToneFrame } from '@/lib/skinToneFallback';
-import { loadVisionCalibration } from '@/lib/visionCalibration/profile';
+import {
+  detectVisionDeviceClass,
+  getVisionRuntimePreset,
+  loadVisionCalibration,
+} from '@/lib/visionCalibration/profile';
 import type { VisionState } from '@/hooks/useVisionEngine';
 
 const VISION_FALLBACK_MS = 5000;
@@ -71,6 +75,10 @@ export function VisionProvider({ children }: VisionProviderProps) {
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
   const [settings, setSettings] = useState(loadRemoteControlSettings);
   const [calibration, setCalibration] = useState(loadVisionCalibration);
+  const runtimePreset = useMemo(
+    () => getVisionRuntimePreset(calibration.deviceClass ?? detectVisionDeviceClass()),
+    [calibration.deviceClass]
+  );
   const [streamSample, setStreamSample] = useState<{
     hasFace: boolean;
     eyeEAR?: number;
@@ -260,9 +268,20 @@ export function VisionProvider({ children }: VisionProviderProps) {
     patternTimeout: settings.blinkPatternTimeout ?? 600,
     mirrorX: settings.mirrorX ?? true,
     invertY: settings.invertY ?? true,
-    gazeScale: settings.gazeReach ?? 1.6,
-    gazeSmoothing: 0.25,
+    gazeScale: settings.gazeReach ?? runtimePreset.gazeScale,
+    gazeSmoothing: runtimePreset.gazeSmoothing,
     enableHandTracking: true,
+    blinkConfig: {
+      baselineSampleCount: runtimePreset.blinkBaselineSampleCount,
+      minEarForBaseline: runtimePreset.blinkMinEarForBaseline,
+      closeRatio: runtimePreset.blinkCloseRatio,
+      maxCloseEAR: runtimePreset.blinkMaxCloseEAR,
+      reopenRatio: runtimePreset.blinkReopenRatio,
+      minBlinkDurationMs: runtimePreset.blinkMinDurationMs,
+      maxBlinkDurationMs: runtimePreset.blinkMaxDurationMs,
+      blinkCooldownMs: runtimePreset.blinkCooldownMs,
+      minClosedFramesForBlink: runtimePreset.blinkMinClosedFrames,
+    },
     fusionConfig: {
       livenessMinScore: calibration.livenessMinScore,
       handPinchMinConfidence: calibration.handPinchMinConfidence,

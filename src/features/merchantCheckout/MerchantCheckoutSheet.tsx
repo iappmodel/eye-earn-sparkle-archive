@@ -31,6 +31,8 @@ import type {
 } from './types';
 import { useMerchantCheckoutPreferences } from '@/hooks/useMerchantCheckoutPreferences';
 import { useUserRole } from '@/hooks/useUserRole';
+import { DemoModeBadge } from '@/components/demo/DemoModeBadge';
+import { isDemoMode } from '@/lib/appMode';
 import { merchantCheckoutService } from '@/services/merchantCheckout.service';
 import {
   ArrowLeft,
@@ -974,9 +976,10 @@ export function MerchantCheckoutSheet({
     <Sheet open={open} onOpenChange={(next) => !next && handleClose()}>
       <SheetContent side="bottom" className="h-[92vh] rounded-t-3xl px-4 sm:px-6 overflow-y-auto">
         <SheetHeader className="pr-10 pb-2">
-          <SheetTitle className="flex items-center gap-2">
+          <SheetTitle className="flex items-center gap-2 flex-wrap">
             <Wallet className="w-5 h-5" />
             Merchant Checkout
+            {isDemoMode && <DemoModeBadge />}
           </SheetTitle>
           <SheetDescription>
             V1 frontend implementation: unified merchant checkout shell with local resolver, tips, and preference controls.
@@ -1111,20 +1114,21 @@ export function MerchantCheckoutSheet({
                   ['ONLINE_CHECKOUT_LINK', 'Online Link'],
                   ['MERCHANT_REQUEST_LINK', 'Request Link'],
                 ] as const).map(([value, label]) => (
-                  <button
+                  <Button
                     key={value}
                     type="button"
+                    variant="outline"
                     onClick={() => setEntryFilter((curr) => (curr === value ? null : value))}
-                  aria-pressed={entryFilter === value}
-                  className={cn(
-                    'rounded-xl border px-3 py-2 text-sm text-left transition-colors min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-                    entryFilter === value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border/70 hover:bg-muted/40'
+                    aria-pressed={entryFilter === value}
+                    className={cn(
+                      'h-auto min-h-11 justify-start rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                      entryFilter === value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border/70 hover:bg-muted/40'
                     )}
                   >
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -1148,11 +1152,12 @@ export function MerchantCheckoutSheet({
               <>
                 <div className="space-y-3">
                   {scenarios.map((scenario) => (
-                    <button
+                    <Button
                       key={scenario.id}
                       type="button"
+                      variant="outline"
                       onClick={() => void startScenario(scenario)}
-                      className="w-full rounded-2xl border border-border/70 p-4 text-left hover:bg-muted/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      className="h-auto w-full justify-start rounded-2xl border border-border/70 p-4 text-left transition-colors hover:bg-muted/40"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1166,7 +1171,7 @@ export function MerchantCheckoutSheet({
                         </div>
                         <ArrowRight className="w-4 h-4 shrink-0 mt-1 text-muted-foreground" />
                       </div>
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
@@ -1426,19 +1431,21 @@ function CheckoutPreferencesPanel(props: {
         <Label className="text-xs uppercase tracking-wide text-muted-foreground">Tip prompt layout (global)</Label>
         <div className="grid grid-cols-3 gap-2">
           {(['AUTO', 'BOTTOM_SHEET', 'FULL_SCREEN'] as const).map((layout) => (
-            <button
+            <Button
               key={layout}
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => props.onTipPromptLayoutGlobalChange(layout)}
               className={cn(
-                'rounded-xl border px-3 py-2 text-xs font-medium',
+                'h-auto rounded-xl px-3 py-2 text-xs font-medium',
                 props.tipPromptLayoutGlobal === layout
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border/60'
               )}
             >
               {getTipLayoutDisplayLabel(layout)}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -1457,19 +1464,21 @@ function CheckoutPreferencesPanel(props: {
           </div>
           <div className="grid grid-cols-3 gap-2">
             {(['AUTO', 'BOTTOM_SHEET', 'FULL_SCREEN'] as const).map((layout) => (
-              <button
+              <Button
                 key={layout}
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => props.onTipPromptLayoutCategoryChange(props.category!, layout)}
                 className={cn(
-                  'rounded-xl border px-3 py-2 text-xs font-medium',
+                  'h-auto rounded-xl px-3 py-2 text-xs font-medium',
                   props.tipPromptLayoutByCategory[props.category!] === layout
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border/60'
                 )}
               >
                 {getTipLayoutDisplayLabel(layout)}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -1560,12 +1569,13 @@ function PaymentDetailsScreen(props: {
       <div className="rounded-xl border border-border/60 p-3 space-y-3">
         <p className="text-sm font-medium">Pay with</p>
         <div className="grid grid-cols-1 gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => props.onSelectPaymentSource('ICOINS')}
             aria-pressed={flow.draft.paymentSourceSelection === 'ICOINS'}
             className={cn(
-              'rounded-xl border p-3 text-left min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+              'h-auto min-h-11 justify-start rounded-xl border p-3 text-left transition-colors',
               flow.draft.paymentSourceSelection === 'ICOINS' ? 'border-primary bg-primary/5' : 'border-border/60'
             )}
           >
@@ -1573,18 +1583,19 @@ function PaymentDetailsScreen(props: {
               <div>
                 <p className="font-medium text-sm">Icoins (spendable money)</p>
                 <p className="text-xs text-muted-foreground">Uses your available Icoin balance first.</p>
+                </div>
+                <CreditCard className="w-4 h-4 text-muted-foreground" />
               </div>
-              <CreditCard className="w-4 h-4 text-muted-foreground" />
-            </div>
-          </button>
+          </Button>
 
           {flow.plan.paymentSourcePlan.autoConvert.offered && (
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => props.onSelectPaymentSource('AUTO_CONVERT')}
               aria-pressed={flow.draft.paymentSourceSelection === 'AUTO_CONVERT'}
               className={cn(
-                'rounded-xl border p-3 text-left min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                'h-auto min-h-11 justify-start rounded-xl border p-3 text-left transition-colors',
                 flow.draft.paymentSourceSelection === 'AUTO_CONVERT'
                   ? 'border-primary bg-primary/5'
                   : 'border-border/60'
@@ -1594,10 +1605,10 @@ function PaymentDetailsScreen(props: {
                 <div>
                   <p className="font-medium text-sm">Vicoins (platform credits) + auto-convert</p>
                   <p className="text-xs text-muted-foreground">One tap confirms conversion math before auth.</p>
+                  </div>
+                  <Wallet className="w-4 h-4 text-muted-foreground" />
                 </div>
-                <Wallet className="w-4 h-4 text-muted-foreground" />
-              </div>
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1733,30 +1744,32 @@ function AuthenticateScreen(props: {
       </div>
 
       <div className="grid grid-cols-1 gap-2">
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={props.onChooseFaceId}
           aria-pressed={props.flow.simulatedAuthMethod === 'FACE_ID'}
           className={cn(
-            'rounded-xl border p-3 text-left min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+            'h-auto min-h-11 justify-start rounded-xl border p-3 text-left transition-colors',
             props.flow.simulatedAuthMethod === 'FACE_ID' ? 'border-primary bg-primary/5' : 'border-border/60'
           )}
         >
           <p className="font-medium text-sm">Face ID / Touch ID</p>
           <p className="text-xs text-muted-foreground">Fast biometric confirmation (simulated in this demo).</p>
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
           onClick={props.onChoosePin}
           aria-pressed={props.flow.simulatedAuthMethod === 'PIN'}
           className={cn(
-            'rounded-xl border p-3 text-left min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+            'h-auto min-h-11 justify-start rounded-xl border p-3 text-left transition-colors',
             props.flow.simulatedAuthMethod === 'PIN' ? 'border-primary bg-primary/5' : 'border-border/60'
           )}
         >
           <p className="font-medium text-sm">Use PIN instead</p>
           <p className="text-xs text-muted-foreground">Fallback path for accessibility or biometric issues.</p>
-        </button>
+        </Button>
       </div>
       <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
         <p className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Trust & details</p>
@@ -2091,18 +2104,19 @@ function TipOptionButton(props: {
   helper?: string;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       onClick={props.onClick}
       aria-pressed={props.selected}
       className={cn(
-        'rounded-xl border p-2 text-left transition-colors min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        'h-auto min-h-11 justify-start rounded-xl border p-2 text-left transition-colors',
         props.selected ? 'border-primary bg-primary/10 text-primary' : 'border-border/60'
       )}
     >
       <p className="text-sm font-medium">{props.label}</p>
       {props.helper ? <p className="text-[11px] text-muted-foreground mt-0.5">{props.helper}</p> : null}
-    </button>
+    </Button>
   );
 }
 

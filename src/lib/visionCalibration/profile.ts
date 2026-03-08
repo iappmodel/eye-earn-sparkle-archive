@@ -1,3 +1,7 @@
+import {
+  normalizeResidualModel,
+  type VisionResidualModel,
+} from '@/lib/visionCalibration/residualModel';
 export type AffineParams = [number, number, number, number, number, number];
 
 export interface GestureThresholds {
@@ -8,6 +12,23 @@ export interface GestureThresholds {
 }
 
 export type VisionDeviceClass = 'iphone' | 'android' | 'desktop';
+
+export interface VisionRuntimePreset {
+  gazeScale: number;
+  gazeSmoothing: number;
+  pointerResponse: number;
+  gazeHoldTime: number;
+  edgeThreshold: number;
+  blinkBaselineSampleCount: number;
+  blinkMinEarForBaseline: number;
+  blinkCloseRatio: number;
+  blinkMaxCloseEAR: number;
+  blinkReopenRatio: number;
+  blinkMinDurationMs: number;
+  blinkMaxDurationMs: number;
+  blinkCooldownMs: number;
+  blinkMinClosedFrames: number;
+}
 
 export interface VisionCalibrationProfile {
   offsetX: number;
@@ -29,6 +50,7 @@ export interface VisionCalibrationProfile {
   handOpenPalmMinConfidence: number; // 0-1
   headYawCommandThreshold: number; // degrees
   nodRangeThreshold: number; // degrees
+  residualModel?: VisionResidualModel;
   deviceClass?: VisionDeviceClass;
   gestureThresholds?: GestureThresholds;
 }
@@ -93,6 +115,57 @@ const DEVICE_PRESETS: Record<
   },
 };
 
+const DEVICE_RUNTIME_PRESETS: Record<VisionDeviceClass, VisionRuntimePreset> = {
+  iphone: {
+    gazeScale: 1.55,
+    gazeSmoothing: 0.2,
+    pointerResponse: 0.35,
+    gazeHoldTime: 720,
+    edgeThreshold: 0.33,
+    blinkBaselineSampleCount: 7,
+    blinkMinEarForBaseline: 0.11,
+    blinkCloseRatio: 0.72,
+    blinkMaxCloseEAR: 0.22,
+    blinkReopenRatio: 0.85,
+    blinkMinDurationMs: 45,
+    blinkMaxDurationMs: 780,
+    blinkCooldownMs: 130,
+    blinkMinClosedFrames: 1,
+  },
+  android: {
+    gazeScale: 1.5,
+    gazeSmoothing: 0.28,
+    pointerResponse: 0.3,
+    gazeHoldTime: 820,
+    edgeThreshold: 0.36,
+    blinkBaselineSampleCount: 8,
+    blinkMinEarForBaseline: 0.1,
+    blinkCloseRatio: 0.74,
+    blinkMaxCloseEAR: 0.21,
+    blinkReopenRatio: 0.86,
+    blinkMinDurationMs: 55,
+    blinkMaxDurationMs: 900,
+    blinkCooldownMs: 150,
+    blinkMinClosedFrames: 2,
+  },
+  desktop: {
+    gazeScale: 1.7,
+    gazeSmoothing: 0.24,
+    pointerResponse: 0.34,
+    gazeHoldTime: 760,
+    edgeThreshold: 0.34,
+    blinkBaselineSampleCount: 9,
+    blinkMinEarForBaseline: 0.12,
+    blinkCloseRatio: 0.73,
+    blinkMaxCloseEAR: 0.22,
+    blinkReopenRatio: 0.86,
+    blinkMinDurationMs: 50,
+    blinkMaxDurationMs: 850,
+    blinkCooldownMs: 140,
+    blinkMinClosedFrames: 1,
+  },
+};
+
 const isVisionDeviceClass = (value: unknown): value is VisionDeviceClass =>
   value === 'iphone' || value === 'android' || value === 'desktop';
 
@@ -119,6 +192,12 @@ export const getVisionDevicePreset = (
   | 'nodRangeThreshold'
 > => {
   return DEVICE_PRESETS[deviceClass];
+};
+
+export const getVisionRuntimePreset = (
+  deviceClass: VisionDeviceClass = detectVisionDeviceClass()
+): VisionRuntimePreset => {
+  return DEVICE_RUNTIME_PRESETS[deviceClass];
 };
 
 export const getDefaultVisionCalibration = (
@@ -196,6 +275,7 @@ export const normalizeVisionCalibration = (value: unknown): VisionCalibrationPro
     handOpenPalmMinConfidence: clamp01(num(value.handOpenPalmMinConfidence, base.handOpenPalmMinConfidence)),
     headYawCommandThreshold: Math.max(6, num(value.headYawCommandThreshold, base.headYawCommandThreshold)),
     nodRangeThreshold: Math.max(6, num(value.nodRangeThreshold, base.nodRangeThreshold)),
+    residualModel: normalizeResidualModel(value.residualModel),
     deviceClass: inputDeviceClass ?? base.deviceClass,
     gestureThresholds,
   };

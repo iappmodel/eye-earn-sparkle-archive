@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { logger } from '@/lib/logger';
+import { detectVisionDeviceClass, getVisionRuntimePreset } from '@/lib/visionCalibration/profile';
 
 export interface NormalizedLandmark {
   x: number;
@@ -100,7 +101,7 @@ interface UseVisionEngineOptions {
   mirrorX?: boolean;
   invertY?: boolean;
   gazeScale?: number;
-  /** Gaze smoothing 0–1 (default 0). Higher = smoother, less jitter on low-end devices. */
+  /** Gaze smoothing 0–1 (defaults to per-device preset). Higher = smoother, less jitter on low-end devices. */
   gazeSmoothing?: number;
   /** If true, this instance takes priority as the driver (e.g. calibration). */
   driverPriority?: boolean;
@@ -497,8 +498,8 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     patternTimeout = 600,
     mirrorX = false,
     invertY = false,
-    gazeScale = 1.6,
-    gazeSmoothing = 0,
+    gazeScale,
+    gazeSmoothing,
     driverPriority = false,
     visionBackend = 'face_mesh',
     useWorker = true,
@@ -511,13 +512,29 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     onRightWink,
   } = options;
 
+  const deviceRuntimePreset = useMemo(
+    () => getVisionRuntimePreset(detectVisionDeviceClass()),
+    []
+  );
+  const resolvedGazeScale = gazeScale ?? deviceRuntimePreset.gazeScale;
+  const resolvedGazeSmoothing = gazeSmoothing ?? deviceRuntimePreset.gazeSmoothing;
+
   const blinkConfigResolved = useMemo<Required<BlinkDetectionConfig>>(
     () => ({
       ...DEFAULT_BLINK_CONFIG,
+      baselineSampleCount: deviceRuntimePreset.blinkBaselineSampleCount,
+      minEarForBaseline: deviceRuntimePreset.blinkMinEarForBaseline,
+      closeRatio: deviceRuntimePreset.blinkCloseRatio,
+      maxCloseEAR: deviceRuntimePreset.blinkMaxCloseEAR,
+      reopenRatio: deviceRuntimePreset.blinkReopenRatio,
+      minBlinkDurationMs: deviceRuntimePreset.blinkMinDurationMs,
+      maxBlinkDurationMs: deviceRuntimePreset.blinkMaxDurationMs,
+      blinkCooldownMs: deviceRuntimePreset.blinkCooldownMs,
+      minClosedFramesForBlink: deviceRuntimePreset.blinkMinClosedFrames,
       ...blinkConfigOpt,
       ...(blinkConfigOpt?.calibrationMode ? CALIBRATION_BLINK_OVERRIDES : {}),
     }),
-    [blinkConfigOpt]
+    [blinkConfigOpt, deviceRuntimePreset]
   );
 
   const [state, setState] = useState<VisionState>({
@@ -554,7 +571,14 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const instanceIdRef = useRef<number>(++sharedInstanceSeq);
   const enabledRef = useRef(enabled);
-  const optionsRef = useRef({ mirrorX, invertY, gazeScale, gazeSmoothing, handDetectionInterval, enableHandTracking });
+  const optionsRef = useRef({
+    mirrorX,
+    invertY,
+    gazeScale: resolvedGazeScale,
+    gazeSmoothing: resolvedGazeSmoothing,
+    handDetectionInterval,
+    enableHandTracking,
+  });
   const patternTimeoutMsRef = useRef(patternTimeout);
   const driverPriorityRef = useRef(driverPriority);
   const visionBackendRef = useRef(visionBackend);
@@ -630,8 +654,15 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
   }, [enabled]);
 
   useEffect(() => {
-    optionsRef.current = { mirrorX, invertY, gazeScale, gazeSmoothing, handDetectionInterval, enableHandTracking };
-  }, [mirrorX, invertY, gazeScale, gazeSmoothing, handDetectionInterval, enableHandTracking]);
+    optionsRef.current = {
+      mirrorX,
+      invertY,
+      gazeScale: resolvedGazeScale,
+      gazeSmoothing: resolvedGazeSmoothing,
+      handDetectionInterval,
+      enableHandTracking,
+    };
+  }, [mirrorX, invertY, resolvedGazeScale, resolvedGazeSmoothing, handDetectionInterval, enableHandTracking]);
 
   useEffect(() => {
     patternTimeoutMsRef.current = patternTimeout;

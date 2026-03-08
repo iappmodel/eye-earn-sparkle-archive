@@ -38,7 +38,7 @@ const defaultState: AccessibilityState = {
   reducedMotion: false,
   highContrast: false,
   voiceControlEnabled: false,
-  themePack: 'default',
+  themePack: 'lunar',
   fontSize: 1,
   gestureNavEnabled: true,
   hapticFeedback: true,
@@ -59,7 +59,12 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
     const saved = localStorage.getItem('visuai-accessibility');
     if (saved) {
       try {
-        return { ...defaultState, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved) as Partial<AccessibilityState>;
+        return {
+          ...defaultState,
+          ...parsed,
+          themePack: parsed.themePack === 'default' ? 'lunar' : (parsed.themePack ?? defaultState.themePack),
+        };
       } catch {
         return defaultState;
       }
@@ -103,9 +108,10 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
 
   // Apply theme pack class
   useEffect(() => {
+    const resolvedTheme = state.themePack === 'default' ? 'lunar' : state.themePack;
     const themes = ['theme-default', 'theme-lunar', 'theme-aura', 'theme-glass', 'theme-night', 'theme-focus', 'theme-energy', 'theme-nature'];
     themes.forEach(t => document.documentElement.classList.remove(t));
-    document.documentElement.classList.add(`theme-${state.themePack}`);
+    document.documentElement.classList.add(`theme-${resolvedTheme}`);
   }, [state.themePack]);
 
   // Apply font size
@@ -135,7 +141,7 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const setThemePack = useCallback((theme: ThemePack) => {
-    setState(s => ({ ...s, themePack: theme }));
+    setState(s => ({ ...s, themePack: theme === 'default' ? 'lunar' : theme }));
   }, []);
 
   const setFontSize = useCallback((size: number) => {

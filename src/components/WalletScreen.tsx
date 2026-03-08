@@ -108,9 +108,17 @@ type WalletTab = 'overview' | 'transactions' | 'subscription' | 'payout' | 'chec
 const TX_TYPE_OPTIONS: { value: WalletTransaction['type'] | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'earned', label: 'Earned' },
-  { value: 'received', label: 'Received' },
-  { value: 'spent', label: 'Spent' },
+  { value: 'received', label: 'Converted' },
+  { value: 'spent', label: 'Paid' },
   { value: 'sent', label: 'Sent' },
+  { value: 'withdrawn', label: 'Withdrawn' },
+];
+
+const ACTIVITY_FILTER_CHIPS: { value: WalletTransaction['type'] | 'all'; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'earned', label: 'Earned' },
+  { value: 'received', label: 'Converted' },
+  { value: 'spent', label: 'Paid' },
   { value: 'withdrawn', label: 'Withdrawn' },
 ];
 
@@ -161,6 +169,18 @@ const DATE_GROUP_LABELS: Record<DateGroupKey, string> = {
   thisWeek: 'This week',
   older: 'Older',
 };
+
+function humanReadableStatusReason(reason?: string | null): string {
+  const map: Record<string, string> = {
+    verification: 'Verification in progress',
+    cooldown: 'Cooldown period',
+    processing_window: 'Processing window',
+    compliance_review: 'Compliance review',
+    fraud_review: 'Fraud review',
+    retry_available: 'Retry available',
+  };
+  return reason ? (map[reason] ?? reason.replace(/_/g, ' ')) : 'Processing';
+}
 
 function groupTransactionsByDate(transactions: WalletTransaction[]): { group: DateGroupKey; label: string; items: WalletTransaction[] }[] {
   const map = new Map<DateGroupKey, WalletTransaction[]>();
@@ -1280,6 +1300,24 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     className="w-full bg-transparent py-2.5 pl-10 pr-3 text-sm"
                   />
                 </div>
+                {/* Activity filter chips - spec: All, Earned, Converted, Paid, Withdrawn */}
+                <div className="flex flex-wrap gap-2 pb-3">
+                  {ACTIVITY_FILTER_CHIPS.map((chip) => (
+                    <button
+                      key={chip.value}
+                      type="button"
+                      onClick={() => setTxTypeFilter(chip.value)}
+                      className={cn(
+                        'min-h-[40px] min-w-[44px] px-3 rounded-xl text-sm font-medium transition-colors',
+                        txTypeFilter === chip.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'border border-white/10 bg-slate-900/70 text-slate-300 hover:bg-slate-800/80'
+                      )}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
                 {/* Filters row */}
                 <div className="flex flex-wrap items-center gap-2">
                   <Select value={txTypeFilter} onValueChange={(value) => setTxTypeFilter(value as WalletTransaction['type'] | 'all')}>
@@ -1982,7 +2020,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     </p>
                     <div className="grid grid-cols-1 gap-1 text-xs text-slate-300">
                       <p>
-                        Reason: {selectedTransaction.statusReason ? selectedTransaction.statusReason.replace(/_/g, ' ') : 'processing window'}
+                        Reason: {humanReadableStatusReason(selectedTransaction.statusReason)}
                       </p>
                       <p>
                         Next step: {selectedTransaction.nextStep ?? 'No action required while checks complete.'}

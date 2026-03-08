@@ -1293,6 +1293,11 @@ const Index = () => {
                       isLandscapeViewport={isLandscapeViewport}
                       onComplete={handleMediaComplete}
                       onSkip={handleSkip}
+                      onEarlyExit={() => {
+                        toast.info('No reward earned', {
+                          description: 'Full watch required for this campaign.',
+                        });
+                      }}
                       isActive={!isTransitioning && isAtCenter}
                     />
                   </div>

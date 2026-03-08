@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Settings2, Wallet, Globe, Play, Landmark } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Settings2, Wallet, Globe, Play, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type DemoScenarioId = 'us-earner' | 'brazil-shopper' | 'wallet-explorer';
@@ -40,12 +40,15 @@ interface DemoScenarioSelectorProps {
   isOpen: boolean;
   onStartScenario: (scenarioId: DemoScenarioId) => void;
   onOpenDemoControls: () => void;
+  /** Optional: go back to Hero Entry */
+  onBack?: () => void;
 }
 
 export const DemoScenarioSelector: React.FC<DemoScenarioSelectorProps> = ({
   isOpen,
   onStartScenario,
   onOpenDemoControls,
+  onBack,
 }) => {
   if (!isOpen) return null;
 
@@ -53,12 +56,24 @@ export const DemoScenarioSelector: React.FC<DemoScenarioSelectorProps> = ({
     <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
       <section className="w-full max-w-4xl rounded-3xl border border-white/10 bg-slate-950/90 p-5 sm:p-7 shadow-[0_20px_80px_rgba(0,0,0,0.45)]">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-          <div>
-            <p className="text-xs tracking-[0.2em] uppercase text-sky-300/90">Demo Mode</p>
+          <div className="flex items-start gap-3">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="min-h-[44px] min-w-[44px] rounded-xl border border-white/10 bg-slate-900/80 flex items-center justify-center text-slate-200 hover:bg-slate-800/80 transition-colors"
+                aria-label="Back to demo entry"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <div>
+              <p className="text-xs tracking-[0.2em] uppercase text-sky-300/90">Demo Mode</p>
             <h2 className="text-2xl sm:text-3xl font-semibold text-slate-100 mt-1">Investor Scenario Selector</h2>
             <p className="text-sm text-slate-300/80 mt-1">
               High-fidelity prototype. Real camera/map mode is supported when HTTPS + envs are configured.
             </p>
+            </div>
           </div>
           <button
             type="button"

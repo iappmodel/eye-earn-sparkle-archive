@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGazeDirection, GazeDirection } from './useGazeDirection';
 import { useVisionEngine } from './useVisionEngine';
 import { useVision, USE_VISION_CONTEXT } from '@/contexts/VisionContext';
@@ -7,7 +7,15 @@ import { getCameraRuntimeIssue, isDemoVisionSimulationEnabled } from '@/lib/demo
 import { fetchProfileCalibration, saveProfileCalibration } from '@/services/calibration.service';
 import { securityService } from '@/services/security.service';
 import {
+  applyResidualCompensation,
+  blendResidualModels,
+  fitResidualModel,
+  type ResidualTrainingSample,
+} from '@/lib/visionCalibration/residualModel';
+import {
+  detectVisionDeviceClass,
   getDefaultVisionCalibration,
+  getVisionRuntimePreset,
   loadVisionCalibration,
   mergeVisionCalibration,
   normalizeVisionCalibration,
@@ -39,6 +47,7 @@ export const GLOBAL_BLINK_COMMAND_ID = '__global__';
 
 export type BlinkAction = 'click' | 'longPress' | 'toggle' | 'none';
 export type GazeNavigationAction = 'nextVideo' | 'prevVideo' | 'friendsFeed' | 'promoFeed' | 'none';
+export type RemoteControlProfile = 'adaptive' | 'precision' | 'speed';
 
 export interface BlinkCommand {
   buttonId: string;
@@ -57,11 +66,12 @@ export type { AffineParams };
 export type CalibrationData = VisionCalibrationProfile;
 
 export interface AutoCalibrationState {
-  clickHistory: { gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[];
+  clickHistory: AutoCalibrationSample[];
   lastAdjustment: number;
 }
 
 export interface RemoteControlSettings {
+  settingsVersion?: number;
   enabled: boolean;
   sensitivity: number; // 1-10
   gazeHoldTime: number; // ms to confirm target (ghost mode activation)
@@ -80,6 +90,8 @@ export interface RemoteControlSettings {
   visionBackend?: 'face_mesh' | 'face_landmarker';
   /** Gaze source: mediapipe (default), gazecloud (higher accuracy, server-side), webgazer (fallback) */
   gazeBackend?: 'mediapipe' | 'gazecloud' | 'webgazer';
+  /** Runtime tuning profile for gaze response + selection speed */
+  controlProfile?: RemoteControlProfile;
 }
 
 export interface GhostButton {
@@ -126,6 +138,7 @@ interface UseBlinkRemoteControlOptions {
 }
 
 const DEFAULT_SETTINGS: RemoteControlSettings = {
+  settingsVersion: 2,
   enabled: false,
   sensitivity: 5,
   gazeHoldTime: 800,
@@ -138,9 +151,33 @@ const DEFAULT_SETTINGS: RemoteControlSettings = {
   invertY: true,
   tiltEnabled: false,
   tiltSensitivity: 5,
+  controlProfile: 'adaptive',
+};
+
+const getDefaultRemoteControlSettings = (
+  deviceClass = detectVisionDeviceClass()
+): RemoteControlSettings => {
+  const preset = getVisionRuntimePreset(deviceClass);
+  return {
+    ...DEFAULT_SETTINGS,
+    gazeHoldTime: preset.gazeHoldTime,
+    edgeThreshold: preset.edgeThreshold,
+    gazeReach: preset.gazeScale,
+  };
 };
 
 const AUTO_CALIBRATION_STORAGE_KEY = 'app_remote_control_auto_calibration';
+const AUTO_CALIBRATION_MAX_SAMPLES = 30;
+const AUTO_CALIBRATION_WINDOW_MS = 8 * 60 * 1000;
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+type AutoCalibrationSample = {
+  gazeX: number;
+  gazeY: number;
+  targetX: number;
+  targetY: number;
+  timestamp: number;
+};
 
 const DEFAULT_GAZE_COMMANDS: GazeCommand[] = [
   { direction: 'left', action: 'friendsFeed', enabled: true },
@@ -192,16 +229,39 @@ export const saveGazeCommands = (commands: GazeCommand[]) => {
 };
 
 export const loadRemoteControlSettings = (): RemoteControlSettings => {
+  const calibration = loadVisionCalibration();
+  const deviceClass = calibration.deviceClass ?? detectVisionDeviceClass();
+  const defaults = getDefaultRemoteControlSettings(deviceClass);
   try {
     const saved = localStorage.getItem(REMOTE_CONTROL_SETTINGS_KEY);
-    return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+    if (!saved) return defaults;
+    const parsed = JSON.parse(saved);
+    if (!parsed || typeof parsed !== 'object') return defaults;
+
+    const merged: RemoteControlSettings = { ...defaults, ...parsed };
+    const legacyDefaultTriplet =
+      typeof parsed.gazeReach === 'number' &&
+      typeof parsed.gazeHoldTime === 'number' &&
+      typeof parsed.edgeThreshold === 'number' &&
+      parsed.gazeReach === 1.6 &&
+      parsed.gazeHoldTime === 800 &&
+      parsed.edgeThreshold === 0.35;
+
+    if (parsed.settingsVersion !== 2 && legacyDefaultTriplet) {
+      merged.gazeReach = defaults.gazeReach;
+      merged.gazeHoldTime = defaults.gazeHoldTime;
+      merged.edgeThreshold = defaults.edgeThreshold;
+    }
+
+    merged.settingsVersion = 2;
+    return merged;
   } catch {
-    return DEFAULT_SETTINGS;
+    return defaults;
   }
 };
 
 export const saveRemoteControlSettings = (settings: RemoteControlSettings) => {
-  localStorage.setItem(REMOTE_CONTROL_SETTINGS_KEY, JSON.stringify(settings));
+  localStorage.setItem(REMOTE_CONTROL_SETTINGS_KEY, JSON.stringify({ ...settings, settingsVersion: 2 }));
   window.dispatchEvent(new CustomEvent('remoteControlSettingsChanged'));
 };
 
@@ -262,7 +322,7 @@ function fitAffineFromPoints(
 }
 
 /** Apply calibration to raw gaze (0-1) → calibrated (0-1). Uses affine when available. */
-export function applyCalibration(
+function applyBaseCalibration(
   rawX: number,
   rawY: number,
   calibration: CalibrationData
@@ -280,6 +340,15 @@ export function applyCalibration(
     x: Math.max(0, Math.min(1, calibratedX)),
     y: Math.max(0, Math.min(1, calibratedY)),
   };
+}
+
+export function applyCalibration(
+  rawX: number,
+  rawY: number,
+  calibration: CalibrationData
+): { x: number; y: number } {
+  const base = applyBaseCalibration(rawX, rawY, calibration);
+  return applyResidualCompensation(base.x, base.y, calibration.residualModel);
 }
 
 export const getBlinkCommand = (buttonId: string): BlinkCommand => {
@@ -352,6 +421,11 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const [settings, setSettings] = useState<RemoteControlSettings>(loadRemoteControlSettings);
   const [gazeCommands, setGazeCommands] = useState<GazeCommand[]>(loadGazeCommands);
   const [calibration, setCalibration] = useState<CalibrationData>(loadCalibrationData);
+  const runtimePreset = useMemo(
+    () => getVisionRuntimePreset(calibration.deviceClass ?? detectVisionDeviceClass()),
+    [calibration.deviceClass]
+  );
+  const [autoCalibrationSampleCount, setAutoCalibrationSampleCount] = useState(0);
   const remoteLoadedRef = useRef(false);
   const lastSyncedRef = useRef<string>('');
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -370,7 +444,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   const streamRef = useRef<MediaStream | null>(null);
   const demoVisionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const smoothedPositionRef = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-  const autoCalibrationHistoryRef = useRef<{ gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[]>([]);
+  const autoCalibrationHistoryRef = useRef<AutoCalibrationSample[]>([]);
   const lastAutoAdjustmentRef = useRef<number>(0);
   
   useEffect(() => {
@@ -395,6 +469,46 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     };
     window.addEventListener('calibrationMode', handler as EventListener);
     return () => window.removeEventListener('calibrationMode', handler as EventListener);
+  }, []);
+
+  const setAutoCalibrationHistory = useCallback((samples: AutoCalibrationSample[]) => {
+    autoCalibrationHistoryRef.current = samples;
+    setAutoCalibrationSampleCount(samples.length);
+    try {
+      localStorage.setItem(AUTO_CALIBRATION_STORAGE_KEY, JSON.stringify(samples));
+    } catch {
+      // ignore storage failures
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUTO_CALIBRATION_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      const now = Date.now();
+      const normalized = parsed
+        .filter((entry) => (
+          entry &&
+          typeof entry === 'object' &&
+          typeof entry.gazeX === 'number' &&
+          typeof entry.gazeY === 'number' &&
+          typeof entry.targetX === 'number' &&
+          typeof entry.targetY === 'number' &&
+          typeof entry.timestamp === 'number'
+        ))
+        .filter((entry) => now - entry.timestamp < AUTO_CALIBRATION_WINDOW_MS)
+        .slice(-AUTO_CALIBRATION_MAX_SAMPLES) as AutoCalibrationSample[];
+
+      if (normalized.length > 0) {
+        autoCalibrationHistoryRef.current = normalized;
+        setAutoCalibrationSampleCount(normalized.length);
+      }
+    } catch {
+      // ignore malformed history payloads
+    }
   }, []);
 
   
@@ -550,8 +664,19 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     mirrorX: settings.mirrorX,
     invertY: settings.invertY,
     gazeScale: settings.gazeReach,
-    gazeSmoothing: 0.25,
+    gazeSmoothing: runtimePreset.gazeSmoothing,
     enableHandTracking: true,
+    blinkConfig: {
+      baselineSampleCount: runtimePreset.blinkBaselineSampleCount,
+      minEarForBaseline: runtimePreset.blinkMinEarForBaseline,
+      closeRatio: runtimePreset.blinkCloseRatio,
+      maxCloseEAR: runtimePreset.blinkMaxCloseEAR,
+      reopenRatio: runtimePreset.blinkReopenRatio,
+      minBlinkDurationMs: runtimePreset.blinkMinDurationMs,
+      maxBlinkDurationMs: runtimePreset.blinkMaxDurationMs,
+      blinkCooldownMs: runtimePreset.blinkCooldownMs,
+      minClosedFramesForBlink: runtimePreset.blinkMinClosedFrames,
+    },
     fusionConfig: {
       livenessMinScore: calibration.livenessMinScore,
       handPinchMinConfidence: calibration.handPinchMinConfidence,
@@ -707,11 +832,25 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     const screenX = calibratedX * window.innerWidth * sensitivity + (window.innerWidth * (1 - sensitivity) / 2);
     const screenY = calibratedY * window.innerHeight * sensitivity + (window.innerHeight * (1 - sensitivity) / 2);
     
-    // Smooth the position
-    const smoothing = 0.3;
+    // Adaptive smoothing: precision profile is steadier, speed profile is more responsive.
+    const profile = settings.controlProfile ?? 'adaptive';
+    const smoothing = profile === 'precision'
+      ? 0.22
+      : profile === 'speed'
+        ? 0.42
+        : calibration.profileQuality < 0.45
+          ? 0.38
+          : calibration.profileQuality < 0.7
+            ? 0.32
+            : 0.28;
+    const tunedSmoothing = clamp(
+      smoothing * (runtimePreset.pointerResponse / 0.32),
+      0.18,
+      0.5
+    );
     smoothedPositionRef.current = {
-      x: smoothedPositionRef.current.x * (1 - smoothing) + screenX * smoothing,
-      y: smoothedPositionRef.current.y * (1 - smoothing) + screenY * smoothing,
+      x: smoothedPositionRef.current.x * (1 - tunedSmoothing) + screenX * tunedSmoothing,
+      y: smoothedPositionRef.current.y * (1 - tunedSmoothing) + screenY * tunedSmoothing,
     };
     
     const clampedX = Math.max(0, Math.min(window.innerWidth, smoothedPositionRef.current.x));
@@ -734,7 +873,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     }
     
     return { x: clampedX, y: clampedY };
-  }, [calibration, settings.sensitivity, updateGazeDir]);
+  }, [calibration, runtimePreset.pointerResponse, settings.controlProfile, settings.sensitivity, updateGazeDir]);
 
   // Landmark-based gesture triggers for targets
   useEffect(() => {
@@ -1344,9 +1483,9 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
 
   const resetCalibration = useCallback(() => {
     persistCalibration(getDefaultVisionCalibration(calibration.deviceClass));
-    autoCalibrationHistoryRef.current = [];
+    setAutoCalibrationHistory([]);
     setState(prev => ({ ...prev, lastAction: 'Calibration reset' }));
-  }, [calibration.deviceClass, persistCalibration]);
+  }, [calibration.deviceClass, persistCalibration, setAutoCalibrationHistory]);
 
   // Toggle auto-calibration
   const toggleAutoCalibration = useCallback(() => {
@@ -1358,74 +1497,170 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     logger.log('[RemoteControl] Auto-calibration:', !calibration.autoCalibrationEnabled ? 'enabled' : 'disabled');
   }, [calibration, persistCalibration]);
 
-  // Record interaction for auto-calibration
-  const recordInteractionForAutoCalibration = useCallback((targetX: number, targetY: number) => {
-    if (!calibration.autoCalibrationEnabled || !state.gazePosition) return;
-    
-    const now = Date.now();
-    
-    // Add to history
-    autoCalibrationHistoryRef.current.push({
-      gazeX: state.gazePosition.x / window.innerWidth,
-      gazeY: state.gazePosition.y / window.innerHeight,
-      targetX: targetX / window.innerWidth,
-      targetY: targetY / window.innerHeight,
-      timestamp: now,
-    });
-    
-    // Keep only last 20 interactions within 5 minutes
-    const fiveMinutesAgo = now - 5 * 60 * 1000;
-    autoCalibrationHistoryRef.current = autoCalibrationHistoryRef.current
-      .filter(p => p.timestamp > fiveMinutesAgo)
-      .slice(-20);
-    
-    // Only adjust every 10 seconds with at least 5 data points
-    if (now - lastAutoAdjustmentRef.current < 10000 || autoCalibrationHistoryRef.current.length < 5) {
-      return;
-    }
-    
-    const history = autoCalibrationHistoryRef.current;
-    
-    // Calculate average offset error
-    const avgGazeX = history.reduce((a, p) => a + p.gazeX, 0) / history.length;
-    const avgGazeY = history.reduce((a, p) => a + p.gazeY, 0) / history.length;
-    const avgTargetX = history.reduce((a, p) => a + p.targetX, 0) / history.length;
-    const avgTargetY = history.reduce((a, p) => a + p.targetY, 0) / history.length;
-    
+  const applyAutoCalibrationFromHistory = useCallback((
+    history: AutoCalibrationSample[],
+    now: number,
+    force = false
+  ): boolean => {
+    const adjustments = calibration.autoAdjustments ?? 0;
+    const warmup = adjustments < 3;
+    const minSamples = force ? 3 : (warmup ? 3 : 5);
+    const minIntervalMs = warmup ? 2500 : 10000;
+
+    if (history.length < minSamples) return false;
+    if (!force && now - lastAutoAdjustmentRef.current < minIntervalMs) return false;
+
+    const avgGazeX = history.reduce((acc, point) => acc + point.gazeX, 0) / history.length;
+    const avgGazeY = history.reduce((acc, point) => acc + point.gazeY, 0) / history.length;
+    const avgTargetX = history.reduce((acc, point) => acc + point.targetX, 0) / history.length;
+    const avgTargetY = history.reduce((acc, point) => acc + point.targetY, 0) / history.length;
+
     const errorX = avgTargetX - avgGazeX;
     const errorY = avgTargetY - avgGazeY;
-    
-    // Only adjust if error is significant (> 5%)
-    if (Math.abs(errorX) < 0.05 && Math.abs(errorY) < 0.05) {
-      return;
+    const radialError = Math.hypot(errorX, errorY);
+    const minError = warmup ? 0.025 : 0.05;
+    if (radialError < minError) return false;
+
+    const adjustmentFactor = warmup ? 0.45 : adjustments < 8 ? 0.3 : 0.18;
+    const qualityFromError = clamp(1 - radialError / 0.35, 0, 1);
+
+    let nextCalibration: CalibrationData = calibration.affineParams && calibration.affineParams.length === 6
+      ? {
+          ...calibration,
+          affineParams: [
+            calibration.affineParams[0],
+            calibration.affineParams[1],
+            clamp(calibration.affineParams[2] + errorX * adjustmentFactor, -1, 1),
+            calibration.affineParams[3],
+            calibration.affineParams[4],
+            clamp(calibration.affineParams[5] + errorY * adjustmentFactor, -1, 1),
+          ],
+          autoAdjustments: adjustments + 1,
+          profileQuality: clamp(calibration.profileQuality * 0.72 + qualityFromError * 0.28, 0, 1),
+          calibratedAt: now,
+        }
+      : {
+          ...calibration,
+          offsetX: clamp(calibration.offsetX + errorX * adjustmentFactor, -0.45, 0.45),
+          offsetY: clamp(calibration.offsetY + errorY * adjustmentFactor, -0.45, 0.45),
+          autoAdjustments: adjustments + 1,
+          profileQuality: clamp(calibration.profileQuality * 0.72 + qualityFromError * 0.28, 0, 1),
+          calibratedAt: now,
+        };
+
+    const residualSamples: ResidualTrainingSample[] = history.map((point) => {
+      const basePoint = applyBaseCalibration(point.gazeX, point.gazeY, nextCalibration);
+      const distance = Math.hypot(basePoint.x - point.targetX, basePoint.y - point.targetY);
+      const weight = clamp(1.2 - distance * 1.6, 0.2, 1.2);
+      return {
+        inputX: basePoint.x,
+        inputY: basePoint.y,
+        targetX: point.targetX,
+        targetY: point.targetY,
+        weight,
+      };
+    });
+    const fittedResidual = fitResidualModel(residualSamples, {
+      lambda: warmup ? 0.08 : 0.05,
+      minSamples: force ? 3 : (warmup ? 3 : 5),
+      now,
+    });
+    if (fittedResidual) {
+      nextCalibration = {
+        ...nextCalibration,
+        residualModel: blendResidualModels(
+          calibration.residualModel,
+          fittedResidual,
+          force ? 0.55 : (warmup ? 0.35 : 0.22)
+        ),
+      };
     }
-    
-    // Apply gradual adjustment (20% of error)
-    const adjustmentFactor = 0.2;
-    const newCalibration: CalibrationData = {
-      ...calibration,
-      offsetX: calibration.offsetX + errorX * adjustmentFactor,
-      offsetY: calibration.offsetY + errorY * adjustmentFactor,
-      autoAdjustments: calibration.autoAdjustments + 1,
-    };
-    
+
     logger.log('[RemoteControl] Auto-calibration adjustment:', {
+      mode: force ? 'manual' : 'automatic',
+      warmup,
+      sampleCount: history.length,
       errorX: errorX.toFixed(3),
       errorY: errorY.toFixed(3),
-      newOffsetX: newCalibration.offsetX.toFixed(3),
-      newOffsetY: newCalibration.offsetY.toFixed(3),
+      radialError: radialError.toFixed(3),
+      residualModel: Boolean(nextCalibration.residualModel),
+      profileQuality: nextCalibration.profileQuality.toFixed(3),
     });
-    
-    persistCalibration(newCalibration);
+
+    persistCalibration(nextCalibration);
     lastAutoAdjustmentRef.current = now;
-  }, [calibration, state.gazePosition, persistCalibration]);
+    return true;
+  }, [calibration, persistCalibration]);
+
+  // Record interaction for auto-calibration
+  const recordInteractionForAutoCalibration = useCallback((targetX: number, targetY: number) => {
+    const activeGaze = state.rawGazePosition ?? state.gazePosition;
+    if (!calibration.autoCalibrationEnabled || !activeGaze) return;
+
+    const now = Date.now();
+    const nextSample: AutoCalibrationSample = {
+      gazeX: clamp(activeGaze.x / window.innerWidth, 0, 1),
+      gazeY: clamp(activeGaze.y / window.innerHeight, 0, 1),
+      targetX: clamp(targetX / window.innerWidth, 0, 1),
+      targetY: clamp(targetY / window.innerHeight, 0, 1),
+      timestamp: now,
+    };
+
+    const refreshed = [...autoCalibrationHistoryRef.current, nextSample]
+      .filter((point) => now - point.timestamp < AUTO_CALIBRATION_WINDOW_MS)
+      .slice(-AUTO_CALIBRATION_MAX_SAMPLES);
+
+    setAutoCalibrationHistory(refreshed);
+    applyAutoCalibrationFromHistory(refreshed, now);
+  }, [applyAutoCalibrationFromHistory, calibration.autoCalibrationEnabled, setAutoCalibrationHistory, state.gazePosition, state.rawGazePosition]);
+
+  const optimizeCalibrationNow = useCallback(() => {
+    const now = Date.now();
+    return applyAutoCalibrationFromHistory(autoCalibrationHistoryRef.current, now, true);
+  }, [applyAutoCalibrationFromHistory]);
   
   // Update settings
   const updateSettings = useCallback((newSettings: Partial<RemoteControlSettings>) => {
-    const updated = { ...settings, ...newSettings };
-    setSettings(updated);
-    saveRemoteControlSettings(updated);
-  }, [settings]);
+    setSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      saveRemoteControlSettings(updated);
+      return updated;
+    });
+  }, []);
+
+  const applyControlProfile = useCallback((profile: RemoteControlProfile) => {
+    const lowQuality = calibration.profileQuality < 0.55;
+    const baseHold = runtimePreset.gazeHoldTime;
+    const baseEdge = runtimePreset.edgeThreshold;
+    const presets: Record<RemoteControlProfile, Partial<RemoteControlSettings>> = {
+      adaptive: {
+        sensitivity: lowQuality ? 4 : 5,
+        gazeHoldTime: Math.round(baseHold + (lowQuality ? 170 : 90)),
+        edgeThreshold: clamp(baseEdge + (lowQuality ? -0.03 : 0), 0.24, 0.45),
+        blinkPatternTimeout: 650,
+        ghostOpacity: 0.4,
+      },
+      precision: {
+        sensitivity: 4,
+        gazeHoldTime: Math.round(baseHold + 260),
+        edgeThreshold: clamp(baseEdge - 0.06, 0.22, 0.4),
+        blinkPatternTimeout: 750,
+        ghostOpacity: 0.45,
+      },
+      speed: {
+        sensitivity: 7,
+        gazeHoldTime: Math.round(clamp(baseHold - 190, 420, 760)),
+        edgeThreshold: clamp(baseEdge + 0.06, 0.28, 0.5),
+        blinkPatternTimeout: 500,
+        ghostOpacity: 0.35,
+      },
+    };
+
+    updateSettings({
+      ...presets[profile],
+      controlProfile: profile,
+    });
+  }, [calibration.profileQuality, runtimePreset.edgeThreshold, runtimePreset.gazeHoldTime, updateSettings]);
 
   // Update gaze command
   const updateGazeCommand = useCallback((direction: GazeDirection, action: GazeNavigationAction, enabled: boolean) => {
@@ -1485,6 +1720,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     settings,
     gazeCommands,
     calibration,
+    autoCalibrationSampleCount,
     visionHasFace: vision.hasFace,
     eyeOpenness: vision.eyeOpenness,
     blinkCount: vision.blinkCount,
@@ -1506,9 +1742,11 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     cancelCalibration,
     resetCalibration,
     updateSettings,
+    applyControlProfile,
     updateGazeCommand,
     toggleAutoCalibration,
     recordInteractionForAutoCalibration,
+    optimizeCalibrationNow,
     pauseCamera,
     resumeCamera,
     persistCalibration,

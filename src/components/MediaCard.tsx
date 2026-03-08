@@ -29,6 +29,8 @@ interface MediaCardProps {
   onComplete?: (attentionValidated: boolean, attentionScore?: number, watchDuration?: number, attentionSessionId?: string) => void;
   onProgress?: (progress: number) => void;
   onSkip?: () => void;
+  /** Called when user exits promo before completion (swipe away, etc.) */
+  onEarlyExit?: () => void;
   isActive?: boolean;
   contentId?: string;
   /** Optional demo flag to prefer landscape framing for video playback. */
@@ -46,6 +48,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   onComplete,
   onProgress,
   onSkip,
+  onEarlyExit,
   isActive = true,
   contentId,
   preferLandscapePlayback = false,
@@ -280,6 +283,18 @@ export const MediaCard: React.FC<MediaCardProps> = ({
       setShowRewardBadge(true);
     }
   }, [type, isActive, reward]);
+
+  // Early exit: user left promo before completion (unmount / navigate away)
+  const onEarlyExitRef = useRef(onEarlyExit);
+  onEarlyExitRef.current = onEarlyExit;
+  useEffect(() => {
+    if (type !== 'promo' || !reward) return;
+    return () => {
+      if (!hasCompleted.current && onEarlyExitRef.current) {
+        onEarlyExitRef.current();
+      }
+    };
+  }, [type, reward]);
 
   // Validate attention and complete
   const handlePromoComplete = useCallback(async () => {

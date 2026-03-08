@@ -1,14 +1,22 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Hand, Sparkles, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DemoModeBadge } from '@/components/demo/DemoModeBadge';
+import { isDemoMode } from '@/lib/appMode';
+import {
+  applyResidualCompensation,
+  fitResidualModel,
+  type ResidualTrainingSample,
+} from '@/lib/visionCalibration/residualModel';
 import {
   normalizeVisionCalibration,
   type AffineParams,
   type VisionCalibrationProfile,
+  type VisionDeviceClass,
 } from '@/lib/visionCalibration/profile';
 
-type StepId = 'setup' | 'gaze' | 'gestures' | 'summary';
+type StepId = 'ready' | 'track' | 'verify';
 
 interface GazeSample {
   targetX: number;
@@ -36,13 +44,17 @@ interface UnifiedVisionCalibrationWizardProps {
   onOpenAdvanced?: () => void;
 }
 
-const STEPS: StepId[] = ['setup', 'gaze', 'gestures', 'summary'];
+const STEPS: StepId[] = ['ready', 'track', 'verify'];
+const MIN_GAZE_SAMPLES = 3;
+const READY_LIVENESS_MIN = 0.25;
+const READY_JITTER_MAX = 0.05;
+
 const GAZE_POINTS = [
-  { x: 0.12, y: 0.16, label: 'Top Left' },
-  { x: 0.88, y: 0.16, label: 'Top Right' },
   { x: 0.5, y: 0.5, label: 'Center' },
-  { x: 0.18, y: 0.84, label: 'Bottom Left' },
-  { x: 0.82, y: 0.84, label: 'Bottom Right' },
+  { x: 0.16, y: 0.18, label: 'Top Left' },
+  { x: 0.84, y: 0.18, label: 'Top Right' },
+  { x: 0.2, y: 0.82, label: 'Bottom Left' },
+  { x: 0.8, y: 0.82, label: 'Bottom Right' },
 ];
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
@@ -105,6 +117,20 @@ const applyAffine = (params: AffineParams, x: number, y: number) => {
   };
 };
 
+const applyBaseCalibration = (
+  calibration: VisionCalibrationProfile,
+  rawX: number,
+  rawY: number
+) => {
+  if (calibration.affineParams && calibration.affineParams.length === 6) {
+    return applyAffine(calibration.affineParams, rawX, rawY);
+  }
+  return {
+    x: clamp01((rawX - 0.5) * calibration.scaleX + 0.5 + calibration.offsetX),
+    y: clamp01((rawY - 0.5) * calibration.scaleY + 0.5 + calibration.offsetY),
+  };
+};
+
 const buildCalibration = (
   existing: VisionCalibrationProfile,
   samples: GazeSample[],
@@ -137,24 +163,46 @@ const buildCalibration = (
     };
   }
 
+  const residualSamples: ResidualTrainingSample[] = samples.map((sample) => {
+    const base = applyBaseCalibration(next, sample.gazeX, sample.gazeY);
+    const distance = Math.hypot(base.x - sample.targetX, base.y - sample.targetY);
+    const weight = Math.max(0.2, Math.min(1.2, 1.2 - distance * 2));
+    return {
+      inputX: base.x,
+      inputY: base.y,
+      targetX: sample.targetX,
+      targetY: sample.targetY,
+      weight,
+    };
+  });
+  const residualModel = fitResidualModel(residualSamples, {
+    lambda: 0.05,
+    minSamples: existing.deviceClass === 'desktop' ? 8 : 6,
+  });
+  if (residualModel) {
+    next = {
+      ...next,
+      residualModel,
+    };
+  }
+
   const qualityError = samples.length
     ? samples.reduce((acc, sample) => {
-        const corrected = next.affineParams
-          ? applyAffine(next.affineParams, sample.gazeX, sample.gazeY)
-          : {
-              x: clamp01((sample.gazeX - 0.5) * next.scaleX + 0.5 + next.offsetX),
-              y: clamp01((sample.gazeY - 0.5) * next.scaleY + 0.5 + next.offsetY),
-            };
+        const base = applyBaseCalibration(next, sample.gazeX, sample.gazeY);
+        const corrected = applyResidualCompensation(base.x, base.y, next.residualModel);
         const err = Math.hypot(corrected.x - sample.targetX, corrected.y - sample.targetY);
         return acc + err;
       }, 0) / samples.length
     : 0.25;
 
-  const gestureScore =
-    Object.values(gestures).filter(Boolean).length / Object.values(gestures).length;
+  const mandatoryGestureScore =
+    Number(gestures.singleBlink) * 0.5 +
+    Number(gestures.handPinch) * 0.5;
+  const bonusGestureScore =
+    (Number(gestures.doubleBlink) + Number(gestures.headNod)) / 6;
 
-  const profileQuality = clamp01((1 - qualityError / 0.28) * 0.8 + gestureScore * 0.2);
-  const easierMode = gestureScore < 0.75;
+  const profileQuality = clamp01((1 - qualityError / 0.28) * 0.82 + mandatoryGestureScore * 0.14 + bonusGestureScore);
+  const easierMode = mandatoryGestureScore < 1;
 
   return normalizeVisionCalibration({
     ...next,
@@ -180,6 +228,22 @@ const buildCalibration = (
 
 const stepIndex = (step: StepId) => STEPS.indexOf(step) + 1;
 
+const stepLabel = (step: StepId) => {
+  if (step === 'ready') return 'Ready';
+  if (step === 'track') return 'Track';
+  return 'Verify';
+};
+
+const getAutoCapturePreset = (deviceClass?: VisionDeviceClass) => {
+  if (deviceClass === 'iphone') {
+    return { holdMs: 340, cooldownMs: 220, targetRadius: 0.115 };
+  }
+  if (deviceClass === 'android') {
+    return { holdMs: 420, cooldownMs: 260, targetRadius: 0.12 };
+  }
+  return { holdMs: 320, cooldownMs: 210, targetRadius: 0.1 };
+};
+
 export function UnifiedVisionCalibrationWizard({
   isOpen,
   onClose,
@@ -191,7 +255,7 @@ export function UnifiedVisionCalibrationWizard({
   onSave,
   onOpenAdvanced,
 }: UnifiedVisionCalibrationWizardProps) {
-  const [step, setStep] = useState<StepId>('setup');
+  const [step, setStep] = useState<StepId>('ready');
   const [samples, setSamples] = useState<GazeSample[]>([]);
   const [gestureChecks, setGestureChecks] = useState<GestureChecks>({
     singleBlink: false,
@@ -199,10 +263,30 @@ export function UnifiedVisionCalibrationWizard({
     handPinch: false,
     headNod: false,
   });
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [activeDistance, setActiveDistance] = useState<number | null>(null);
+  const [gazeSpread, setGazeSpread] = useState(1);
+
+  const holdStartRef = useRef<number | null>(null);
+  const holdBufferRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
+  const captureCooldownUntilRef = useRef(0);
+  const stabilityHistoryRef = useRef<Array<{ x: number; y: number; t: number }>>([]);
+
+  const activePoint = step === 'track' ? GAZE_POINTS[samples.length] : undefined;
+  const gestureDoneCount = Object.values(gestureChecks).filter(Boolean).length;
+  const hasLivenessReadiness = livenessStable || livenessScore >= READY_LIVENESS_MIN;
+  const hasSteadyCamera = hasFace && gazeSpread <= READY_JITTER_MAX;
+  const canStartTracking = hasFace && hasLivenessReadiness && hasSteadyCamera;
+  const canSave = samples.length >= MIN_GAZE_SAMPLES && gestureChecks.singleBlink && gestureChecks.handPinch;
+
+  const { holdMs, cooldownMs, targetRadius } = useMemo(
+    () => getAutoCapturePreset(calibration.deviceClass),
+    [calibration.deviceClass]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
-    setStep('setup');
+    setStep('ready');
     setSamples([]);
     setGestureChecks({
       singleBlink: false,
@@ -210,10 +294,116 @@ export function UnifiedVisionCalibrationWizard({
       handPinch: false,
       headNod: false,
     });
+    setHoldProgress(0);
+    setActiveDistance(null);
+    setGazeSpread(1);
+    holdStartRef.current = null;
+    holdBufferRef.current = [];
+    captureCooldownUntilRef.current = 0;
+    stabilityHistoryRef.current = [];
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || step !== 'gestures') return;
+    if (!isOpen || !rawGazePosition) return;
+    const now = performance.now();
+    const next = {
+      x: clamp01(rawGazePosition.x / window.innerWidth),
+      y: clamp01(rawGazePosition.y / window.innerHeight),
+      t: now,
+    };
+    stabilityHistoryRef.current = [...stabilityHistoryRef.current, next]
+      .filter((entry) => now - entry.t < 1000)
+      .slice(-16);
+
+    const history = stabilityHistoryRef.current;
+    if (history.length < 4) {
+      setGazeSpread(1);
+      return;
+    }
+
+    const centerX = history.reduce((acc, entry) => acc + entry.x, 0) / history.length;
+    const centerY = history.reduce((acc, entry) => acc + entry.y, 0) / history.length;
+    const spread = history.reduce((acc, entry) => (
+      acc + Math.hypot(entry.x - centerX, entry.y - centerY)
+    ), 0) / history.length;
+    setGazeSpread(spread);
+  }, [isOpen, rawGazePosition]);
+
+  useEffect(() => {
+    if (!isOpen || step !== 'track' || !activePoint) {
+      holdStartRef.current = null;
+      holdBufferRef.current = [];
+      setHoldProgress(0);
+      setActiveDistance(null);
+      return;
+    }
+
+    if (!rawGazePosition || !hasFace) {
+      holdStartRef.current = null;
+      holdBufferRef.current = [];
+      setHoldProgress(0);
+      setActiveDistance(null);
+      return;
+    }
+
+    const now = performance.now();
+    if (now < captureCooldownUntilRef.current) return;
+
+    const gazeX = clamp01(rawGazePosition.x / window.innerWidth);
+    const gazeY = clamp01(rawGazePosition.y / window.innerHeight);
+    const distance = Math.hypot(gazeX - activePoint.x, gazeY - activePoint.y);
+    setActiveDistance(distance);
+
+    if (distance > targetRadius) {
+      holdStartRef.current = null;
+      holdBufferRef.current = [];
+      setHoldProgress(0);
+      return;
+    }
+
+    if (holdStartRef.current == null) {
+      holdStartRef.current = now;
+      holdBufferRef.current = [];
+    }
+
+    holdBufferRef.current.push({ x: gazeX, y: gazeY, t: now });
+    holdBufferRef.current = holdBufferRef.current.filter((entry) => now - entry.t <= holdMs + 120);
+    const elapsed = now - (holdStartRef.current ?? now);
+    const progress = Math.min(1, elapsed / holdMs);
+    setHoldProgress(progress);
+
+    if (progress < 1) return;
+
+    const recent = holdBufferRef.current.slice(-6);
+    const avgX = recent.reduce((acc, item) => acc + item.x, 0) / recent.length;
+    const avgY = recent.reduce((acc, item) => acc + item.y, 0) / recent.length;
+
+    setSamples((prev) => [
+      ...prev,
+      {
+        targetX: activePoint.x,
+        targetY: activePoint.y,
+        gazeX: avgX,
+        gazeY: avgY,
+      },
+    ]);
+
+    holdStartRef.current = null;
+    holdBufferRef.current = [];
+    captureCooldownUntilRef.current = now + cooldownMs;
+    setHoldProgress(0);
+    setActiveDistance(null);
+  }, [activePoint, cooldownMs, hasFace, holdMs, isOpen, rawGazePosition, step, targetRadius]);
+
+  useEffect(() => {
+    if (!isOpen || step !== 'track') return;
+    if (samples.length < GAZE_POINTS.length) return;
+    const timeoutId = window.setTimeout(() => setStep('verify'), 180);
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, samples.length, step]);
+
+  useEffect(() => {
+    if (!isOpen || step !== 'verify') return;
     const onBlink = (event: Event) => {
       const detail = (event as CustomEvent<{ count?: number }>).detail;
       if (detail?.count === 1) {
@@ -240,17 +430,31 @@ export function UnifiedVisionCalibrationWizard({
     };
   }, [isOpen, step]);
 
-  const activePoint = GAZE_POINTS[samples.length];
-  const gestureDoneCount = Object.values(gestureChecks).filter(Boolean).length;
-  const canContinueSetup = hasFace && (livenessStable || livenessScore >= 0.25);
-  const canContinueGestures = gestureChecks.singleBlink && gestureChecks.handPinch;
-
   const previewCalibration = useMemo(
     () => buildCalibration(calibration, samples, gestureChecks),
-    [calibration, samples, gestureChecks]
+    [calibration, gestureChecks, samples]
   );
 
-  const capturePoint = () => {
+  const readyGuidance = !hasFace
+    ? 'Move your face into the frame and keep both eyes visible.'
+    : !hasLivenessReadiness
+      ? 'Increase front lighting and avoid backlight.'
+      : !hasSteadyCamera
+        ? 'Hold the device still for a second to lock tracking.'
+        : 'Ready. Start tracking now.';
+
+  const holdRemainingMs = Math.max(0, Math.ceil((1 - holdProgress) * holdMs));
+  const trackGuidance = !hasFace
+    ? 'Face lost. Re-center and keep looking at the target.'
+    : !activePoint
+      ? 'All gaze targets captured.'
+      : activeDistance == null
+        ? `Look at ${activePoint.label}.`
+        : activeDistance > targetRadius
+          ? `Move gaze to ${activePoint.label}.`
+          : `Hold for ${holdRemainingMs}ms to auto-capture.`;
+
+  const capturePointManually = () => {
     if (!rawGazePosition || !activePoint) return;
     const gazeX = clamp01(rawGazePosition.x / window.innerWidth);
     const gazeY = clamp01(rawGazePosition.y / window.innerHeight);
@@ -263,6 +467,11 @@ export function UnifiedVisionCalibrationWizard({
         gazeY,
       },
     ]);
+    holdStartRef.current = null;
+    holdBufferRef.current = [];
+    setHoldProgress(0);
+    setActiveDistance(null);
+    captureCooldownUntilRef.current = performance.now() + cooldownMs;
   };
 
   const handleSave = () => {
@@ -281,40 +490,65 @@ export function UnifiedVisionCalibrationWizard({
           <p className="text-sm text-muted-foreground">
             Step {stepIndex(step)} of {STEPS.length}
           </p>
+          {isDemoMode && <DemoModeBadge className="mt-2 w-fit" />}
         </DialogHeader>
 
-        {step === 'setup' && (
+        <div className="grid grid-cols-3 gap-2">
+          {STEPS.map((id) => {
+            const active = id === step;
+            const done = stepIndex(step) > stepIndex(id);
+            return (
+              <div
+                key={id}
+                className={`rounded-md border px-2 py-1 text-xs text-center ${
+                  active
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : done
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700'
+                      : 'border-border text-muted-foreground'
+                }`}
+              >
+                {stepLabel(id)}
+              </div>
+            );
+          })}
+        </div>
+
+        {step === 'ready' && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Keep your face centered and hold your phone steady for a few seconds.
-            </p>
-            <div className="rounded-lg border p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span>Face detected</span>
-                <span className={hasFace ? 'text-emerald-600' : 'text-amber-600'}>
-                  {hasFace ? 'Ready' : 'Not detected'}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Liveness score</span>
-                <span className={livenessStable ? 'text-emerald-600' : 'text-amber-600'}>
-                  {(livenessScore * 100).toFixed(0)}%
-                </span>
-              </div>
+            <p className="text-sm text-muted-foreground">{readyGuidance}</p>
+
+            <div className="rounded-lg border p-3 text-sm space-y-2">
+              <ReadinessItem
+                label="Face in frame"
+                value={hasFace ? 'Ready' : 'Not detected'}
+                ok={hasFace}
+              />
+              <ReadinessItem
+                label="Lighting / liveness"
+                value={`${(livenessScore * 100).toFixed(0)}%`}
+                ok={hasLivenessReadiness}
+              />
+              <ReadinessItem
+                label="Camera stability"
+                value={hasSteadyCamera ? 'Stable' : 'Hold still'}
+                ok={hasSteadyCamera}
+              />
             </div>
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button onClick={() => setStep('gaze')} disabled={!canContinueSetup}>
-                Continue
+              <Button onClick={() => setStep('track')} disabled={!canStartTracking}>
+                Start Tracking
               </Button>
             </div>
           </div>
         )}
 
-        {step === 'gaze' && (
+        {step === 'track' && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Look at each target, then press capture. This takes about 20 seconds.
+              {trackGuidance}
             </p>
             <div className="relative h-56 rounded-lg border bg-muted/30">
               {GAZE_POINTS.map((point, index) => {
@@ -324,80 +558,90 @@ export function UnifiedVisionCalibrationWizard({
                   <div
                     key={point.label}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border ${
-                      captured ? 'bg-emerald-500 border-emerald-500' : isCurrent ? 'bg-primary border-primary' : 'bg-background border-border'
+                      captured
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : isCurrent
+                          ? 'bg-primary border-primary animate-pulse'
+                          : 'bg-background border-border'
                     }`}
                     style={{
                       left: `${point.x * 100}%`,
                       top: `${point.y * 100}%`,
-                      width: isCurrent ? 18 : 14,
-                      height: isCurrent ? 18 : 14,
+                      width: isCurrent ? 20 : 14,
+                      height: isCurrent ? 20 : 14,
                     }}
                     title={point.label}
                   />
                 );
               })}
             </div>
-            <div className="text-xs text-muted-foreground">
-              Captured {samples.length}/{GAZE_POINTS.length}
-              {activePoint ? ` · Next: ${activePoint.label}` : ' · Gaze points complete'}
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">
+                Captured {samples.length}/{GAZE_POINTS.length}
+                {samples.length >= MIN_GAZE_SAMPLES ? ' · Minimum reached' : ` · Minimum ${MIN_GAZE_SAMPLES}`}
+              </div>
+              <div className="h-2 rounded bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{ width: `${Math.round(holdProgress * 100)}%` }}
+                />
+              </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setStep('setup')}>Back</Button>
-              {samples.length < GAZE_POINTS.length ? (
-                <Button onClick={capturePoint} disabled={!rawGazePosition || !hasFace}>
-                  <Target className="mr-2 h-4 w-4" />
-                  Capture Point
-                </Button>
-              ) : (
-                <Button onClick={() => setStep('gestures')}>Continue</Button>
-              )}
-            </div>
-          </div>
-        )}
 
-        {step === 'gestures' && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Trigger each gesture once to finish remote-control calibration.
-            </p>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <GestureItem done={gestureChecks.singleBlink} label="Single blink" />
-              <GestureItem done={gestureChecks.doubleBlink} label="Double blink" />
-              <GestureItem done={gestureChecks.handPinch} label="Hand pinch" />
-              <GestureItem done={gestureChecks.headNod} label="Head nod" />
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Completed {gestureDoneCount}/4 checks.
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setStep('gaze')}>Back</Button>
-              <Button onClick={() => setStep('summary')} disabled={!canContinueGestures}>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={() => setStep('ready')}>Back</Button>
+              {activePoint && (
+                <Button variant="outline" onClick={capturePointManually} disabled={!rawGazePosition || !hasFace}>
+                  <Target className="mr-2 h-4 w-4" />
+                  Capture Now
+                </Button>
+              )}
+              <Button
+                onClick={() => setStep('verify')}
+                disabled={samples.length < MIN_GAZE_SAMPLES}
+              >
                 Continue
               </Button>
             </div>
           </div>
         )}
 
-        {step === 'summary' && (
+        {step === 'verify' && (
           <div className="space-y-4">
-            <div className="rounded-lg border p-3 text-sm">
+            <p className="text-sm text-muted-foreground">
+              Quick verification: single blink and hand pinch are required.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <GestureItem done={gestureChecks.singleBlink} label="Single blink" required />
+              <GestureItem done={gestureChecks.handPinch} label="Hand pinch" required />
+              <GestureItem done={gestureChecks.doubleBlink} label="Double blink" />
+              <GestureItem done={gestureChecks.headNod} label="Head nod" />
+            </div>
+
+            <div className="rounded-lg border p-3 text-sm space-y-2">
               <div className="flex items-center justify-between">
-                <span>Calibration quality</span>
+                <span>Gaze points used</span>
+                <span className="font-medium">{samples.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Checks complete</span>
+                <span className="font-medium">{gestureDoneCount}/4</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Estimated quality</span>
                 <span className="font-medium">{Math.round(previewCalibration.profileQuality * 100)}%</span>
               </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span>Liveness threshold</span>
-                <span>{Math.round(previewCalibration.livenessMinScore * 100)}%</span>
-              </div>
             </div>
+
             <div className="flex flex-wrap justify-end gap-2">
               {onOpenAdvanced && (
                 <Button variant="outline" onClick={onOpenAdvanced}>
                   Advanced
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setStep('gestures')}>Back</Button>
-              <Button onClick={handleSave}>
+              <Button variant="outline" onClick={() => setStep('track')}>Back</Button>
+              <Button onClick={handleSave} disabled={!canSave}>
                 Save Calibration
               </Button>
             </div>
@@ -408,12 +652,32 @@ export function UnifiedVisionCalibrationWizard({
   );
 }
 
-function GestureItem({ done, label }: { done: boolean; label: string }) {
+function ReadinessItem({
+  label,
+  value,
+  ok,
+}: {
+  label: string;
+  value: string;
+  ok: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span>{label}</span>
+      <span className={ok ? 'text-emerald-600' : 'text-amber-600'}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function GestureItem({ done, label, required }: { done: boolean; label: string; required?: boolean }) {
   return (
     <div className={`rounded-md border p-2 ${done ? 'border-emerald-500 bg-emerald-500/10' : 'border-border'}`}>
       <div className="flex items-center gap-2">
         {done ? <Check className="h-4 w-4 text-emerald-600" /> : <Hand className="h-4 w-4 text-muted-foreground" />}
         <span>{label}</span>
+        {required && <span className="text-[10px] text-muted-foreground ml-auto">Required</span>}
       </div>
     </div>
   );

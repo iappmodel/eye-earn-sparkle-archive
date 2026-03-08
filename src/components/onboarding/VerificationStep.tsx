@@ -2,6 +2,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Clock, CheckCircle2, XCircle, RefreshCw, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DemoModeBadge } from '@/components/demo/DemoModeBadge';
+import { isDemoMode } from '@/lib/appMode';
 import { useLocalization } from '@/contexts/LocalizationContext';
 import { useAccessibility } from '@/contexts/AccessibilityContext';
 import { cn } from '@/lib/utils';
@@ -77,6 +79,12 @@ export const VerificationStep: React.FC<VerificationStepProps> = ({
       <p className="text-muted-foreground max-w-xs mb-8">
         {description}
       </p>
+
+      {isDemoMode && (
+        <div className="mb-6">
+          <DemoModeBadge />
+        </div>
+      )}
 
       {status === 'rejected' && rejectionReason && (
         <div className="w-full max-w-sm mb-6">

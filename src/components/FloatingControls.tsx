@@ -52,6 +52,7 @@ const AUTO_HIDE_DELAY_STORAGE_KEY = 'visuai-buttons-auto-hide-delay';
 const BUTTONS_HIDDEN_STORAGE_KEY = 'visuai-buttons-hidden';
 const BUTTONS_PINNED_STORAGE_KEY = 'visuai-buttons-pinned';
 const UI_EDIT_MODE_KEY = 'visuai-ui-edit-mode';
+const CONTROLS_HINT_SEEN_KEY = 'visuai-controls-hint-seen-v1';
 
 export const getButtonsPinned = (): boolean => {
   try {
@@ -616,6 +617,19 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   const didLongPress = useRef(false);
   const touchFired = useRef(false);
 
+  useEffect(() => {
+    try {
+      const seen = localStorage.getItem(CONTROLS_HINT_SEEN_KEY) === 'true';
+      if (seen) return;
+      localStorage.setItem(CONTROLS_HINT_SEEN_KEY, 'true');
+      toast.info('Controls hint', {
+        description: 'Long-press any button for 2s to move it. Long-press empty screen to reveal hidden controls.',
+      });
+    } catch {
+      // ignore storage access errors
+    }
+  }, []);
+
   const isGlassActive = useMemo(() => {
     return themePack === 'glass' || themeSettings?.preset === 'glass';
   }, [themePack, themeSettings?.preset]);
@@ -1029,21 +1043,50 @@ interface GestureDetectorProps {
   onTripleTap?: () => void;
   /** When provided, double-tap triggers this (e.g. like) instead of toggling visibility */
   onDoubleTap?: () => void;
+  /** Optional long-press (2s) gesture on empty screen */
+  onLongPress?: () => void;
 }
 
-export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ children, onTripleTap, onDoubleTap }) => {
+export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({
+  children,
+  onTripleTap,
+  onDoubleTap,
+  onLongPress,
+}) => {
   const tapTimesRef = useRef<number[]>([]);
   const tapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const isInteractiveTarget = useCallback((target: HTMLElement) => (
+    target.closest('button') ||
+    target.closest('a') ||
+    target.closest('input') ||
+    target.closest('[role="button"]') ||
+    target.closest('[data-draggable]')
+  ), []);
+
+  const revealControlsViaGesture = useCallback(() => {
+    if (onLongPress) {
+      onLongPress();
+      return;
+    }
+    setButtonsHidden(false);
+    window.dispatchEvent(new Event('storage'));
+    toast.info('Controls revealed', {
+      description: 'Long-press detected. Use 2s long-press on a button to reposition.',
+    });
+  }, [onLongPress]);
   
   const handleTap = useCallback((e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
-    if (
-      target.closest('button') ||
-      target.closest('a') ||
-      target.closest('input') ||
-      target.closest('[role="button"]') ||
-      target.closest('[data-draggable]')
-    ) {
+    if (isInteractiveTarget(target)) {
       return;
     }
     
@@ -1074,10 +1117,30 @@ export const DoubleTapGestureDetector: React.FC<GestureDetectorProps> = ({ child
     }, 100);
     
     e.preventDefault();
-  }, [onTripleTap, onDoubleTap]);
+  }, [isInteractiveTarget, onTripleTap, onDoubleTap]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    handleTap(e);
+    const target = e.target as HTMLElement;
+    if (isInteractiveTarget(target)) return;
+    clearLongPress();
+    longPressTimerRef.current = setTimeout(() => {
+      revealControlsViaGesture();
+    }, 2000);
+  }, [clearLongPress, handleTap, isInteractiveTarget, revealControlsViaGesture]);
+
+  const handlePointerUp = useCallback(() => {
+    clearLongPress();
+  }, [clearLongPress]);
 
   return (
-    <div onPointerDown={handleTap} className="contents">
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      className="contents"
+    >
       {children}
     </div>
   );

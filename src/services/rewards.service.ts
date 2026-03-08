@@ -4,9 +4,12 @@ import { isDemoMode } from '@/lib/appMode';
 import {
   addDemoBalance,
   getDemoBalances,
+  getDemoPendingBalances,
   getDemoTransactions,
   pushDemoTransaction,
   type DemoWalletTransaction,
+  type DemoStatusReason,
+  type DemoTransactionStatus,
 } from '@/lib/demoState';
 import { logger } from '@/lib/logger';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -31,6 +34,14 @@ export interface WalletTransaction {
   amount: number;
   coinType: 'vicoin' | 'icoin';
   description: string;
+  status: DemoTransactionStatus | 'failed';
+  statusReason?: DemoStatusReason;
+  statusDetail?: string;
+  nextStep?: string;
+  etaLabel?: string;
+  destinationLabel?: string;
+  feeAmount?: number;
+  transactionId: string;
   timestamp: Date;
   referenceId: string | null;
 }
@@ -163,6 +174,14 @@ function mapDemoTransaction(tx: DemoWalletTransaction): WalletTransaction {
     amount: tx.amount,
     coinType: tx.coinType,
     description: tx.description,
+    status: tx.status,
+    statusReason: tx.statusReason,
+    statusDetail: tx.statusDetail,
+    nextStep: tx.nextStep,
+    etaLabel: tx.etaLabel,
+    destinationLabel: tx.destinationLabel,
+    feeAmount: tx.feeAmount,
+    transactionId: tx.transactionId,
     timestamp: new Date(tx.timestamp),
     referenceId: tx.referenceId,
   };
@@ -509,6 +528,8 @@ class RewardsService {
       amount: tx.amount,
       coinType: tx.coin_type as 'vicoin' | 'icoin',
       description: tx.description,
+      status: 'completed',
+      transactionId: tx.reference_id ?? tx.id,
       timestamp: new Date(tx.created_at),
       referenceId: tx.reference_id ?? null,
     };
@@ -950,11 +971,12 @@ class RewardsService {
       const totalWithdrawn = tx
         .filter((item) => item.type === 'withdrawn')
         .reduce((sum, item) => sum + item.amount, 0);
+      const pending = getDemoPendingBalances();
       return {
         vicoin: balances.vicoins,
         icoin: balances.icoins,
-        pending_vicoin: 0,
-        pending_icoin: 0,
+        pending_vicoin: pending.pendingVicoin,
+        pending_icoin: pending.pendingIcoin,
         total_earned: totalEarned,
         total_withdrawn: totalWithdrawn,
       };

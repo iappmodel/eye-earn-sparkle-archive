@@ -32,10 +32,10 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { SwipeDismissOverlay } from './SwipeDismissOverlay';
-import { NeuButton } from './NeuButton';
 import { CoinDisplay } from './CoinDisplay';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocalization } from '@/contexts/LocalizationContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useWallet } from '@/hooks/useWallet';
 import { useReferral } from '@/hooks/useReferral';
@@ -57,6 +57,9 @@ import {
   type TransferCoinsDirection,
 } from '@/services/rewards.service';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { subscriptionService, SUBSCRIPTION_TIERS } from '@/services/subscription.service';
 import { Progress } from './ui/progress';
 import { toast } from 'sonner';
@@ -65,6 +68,8 @@ import { PaymentMethodManager } from './PaymentMethodManager';
 import { WalletReadyToPayCard } from '@/features/merchantCheckout/WalletReadyToPayCard';
 import { CheckoutFunnelCard } from '@/features/merchantCheckout/CheckoutFunnelCard';
 import { MerchantCheckoutSheet } from '@/features/merchantCheckout/MerchantCheckoutSheet';
+import { DemoModeBadge } from '@/components/demo/DemoModeBadge';
+import { isDemoMode } from '@/lib/appMode';
 
 interface DailyLimits {
   icoin_earned: number;
@@ -216,6 +221,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   onTourCommandHandled,
 }) => {
   const { user, profile } = useAuth();
+  const { locale } = useLocalization();
   const { canAccessAdmin } = useUserRole();
   const {
     vicoins: vicoinsFromHook,
@@ -338,6 +344,8 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
 
   const [selectedTransaction, setSelectedTransaction] = useState<WalletTransaction | null>(null);
   const [copiedField, setCopiedField] = useState<'id' | 'reference' | null>(null);
+  const [balanceSegment, setBalanceSegment] = useState<'available' | 'pending'>('available');
+  const convertSectionRef = useRef<HTMLDivElement | null>(null);
 
   const kycStatus = profile?.kyc_status ?? null;
   const kycVerified = kycStatus === 'verified' || kycStatus === 'approved';
@@ -592,6 +600,57 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     [transactions]
   );
 
+  const pendingIcoin = useMemo(() => {
+    if (summary?.pending_icoin != null) return summary.pending_icoin;
+    return transactions
+      .filter((tx) => (tx.status === 'pending' || tx.status === 'verification_required') && tx.coinType === 'icoin')
+      .filter((tx) => tx.type === 'earned' || tx.type === 'received')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [summary?.pending_icoin, transactions]);
+
+  const pendingVicoin = useMemo(() => {
+    if (summary?.pending_vicoin != null) return summary.pending_vicoin;
+    return transactions
+      .filter((tx) => (tx.status === 'pending' || tx.status === 'verification_required') && tx.coinType === 'vicoin')
+      .filter((tx) => tx.type === 'earned' || tx.type === 'received')
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  }, [summary?.pending_vicoin, transactions]);
+
+  const pendingValue = pendingIcoin + pendingVicoin / EXCHANGE_RATE;
+  const availableValue = icoins + vicoins / EXCHANGE_RATE;
+  const totalWalletValue = availableValue + pendingValue;
+  const recentActivity = useMemo(() => transactions.slice(0, 4), [transactions]);
+
+  const getTransactionStatusChip = useCallback((tx: WalletTransaction) => {
+    const status = tx.status ?? 'completed';
+    if (status === 'verification_required') {
+      return {
+        icon: <Clock className="w-3.5 h-3.5" />,
+        className: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+        label: 'Verification Required',
+      };
+    }
+    if (status === 'pending') {
+      return {
+        icon: <Clock className="w-3.5 h-3.5" />,
+        className: 'border-sky-500/40 bg-sky-500/10 text-sky-200',
+        label: 'Pending',
+      };
+    }
+    if (status === 'reversed' || status === 'failed') {
+      return {
+        icon: <XCircle className="w-3.5 h-3.5" />,
+        className: 'border-red-500/40 bg-red-500/10 text-red-300',
+        label: 'Reversed',
+      };
+    }
+    return {
+      icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+      className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+      label: 'Completed',
+    };
+  }, []);
+
   const handleCopyReferral = () => {
     if (!referralCode) {
       toast.info('Referral link is loading…');
@@ -620,28 +679,37 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h1 className="font-display text-2xl font-bold">Wallet</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-2xl font-bold">Wallet</h1>
+            {isDemoMode && <DemoModeBadge />}
+          </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               onClick={() => setBalanceMasked((m) => !m)}
-              className="p-2 rounded-xl neu-button"
+              className="h-10 w-10 rounded-xl"
               title={balanceMasked ? 'Show balance' : 'Hide balance'}
               aria-label={balanceMasked ? 'Show balance' : 'Hide balance'}
             >
               {balanceMasked ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="p-2 rounded-xl neu-button disabled:opacity-50"
+              className="h-10 w-10 rounded-xl disabled:opacity-50"
               title="Refresh"
               aria-label="Refresh wallet"
             >
               <RefreshCw className={cn('w-5 h-5', isRefreshing && 'animate-spin')} />
-            </button>
-            <NeuButton onClick={onClose} size="sm">
+            </Button>
+            <Button type="button" variant="outline" size="icon" onClick={onClose} className="h-10 w-10 rounded-xl">
               <X className="w-5 h-5" />
-            </NeuButton>
+            </Button>
           </div>
         </div>
         {lastUpdated && (
@@ -653,17 +721,19 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
         {/* Tab Navigation */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {tabs.map((tab) => (
-            <button
+            <Button
+              type="button"
+              variant={activeTab === tab.id ? 'default' : 'outline'}
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all',
-                activeTab === tab.id ? 'bg-primary text-primary-foreground' : 'neu-button'
+                'h-auto whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-all',
+                activeTab === tab.id ? 'bg-primary text-primary-foreground' : ''
               )}
             >
               <tab.icon className="w-4 h-4" />
               {tab.label}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -676,12 +746,160 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
             {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
+                <section className="rounded-3xl border border-white/10 bg-slate-950/70 p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.15em] text-slate-400">Total Balance</p>
+                    {isDemoMode && <DemoModeBadge className="text-[9px] px-2 py-0.5 min-h-[20px]" />}
+                  </div>
+                  <p className="mt-2 text-3xl font-display font-bold text-slate-100">
+                    {balanceMasked ? '••••' : totalWalletValue.toFixed(2)}
+                  </p>
+                  <div className="mt-4 inline-flex rounded-xl border border-white/10 bg-slate-900/70 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setBalanceSegment('available')}
+                      className={cn(
+                        'min-h-[44px] px-3 rounded-lg text-xs font-medium transition-colors',
+                        balanceSegment === 'available'
+                          ? 'bg-slate-100 text-slate-900'
+                          : 'text-slate-300 hover:bg-white/5'
+                      )}
+                    >
+                      Available {balanceMasked ? '••' : availableValue.toFixed(2)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBalanceSegment('pending')}
+                      className={cn(
+                        'min-h-[44px] px-3 rounded-lg text-xs font-medium transition-colors',
+                        balanceSegment === 'pending'
+                          ? 'bg-amber-300 text-slate-900'
+                          : 'text-slate-300 hover:bg-white/5'
+                      )}
+                    >
+                      Pending {balanceMasked ? '••' : pendingValue.toFixed(2)}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-300">Icoins</span>
+                        <span className="text-lg font-semibold text-slate-100">{balanceMasked ? '•••' : icoins.toFixed(2)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Spendable balance</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-slate-300">Vicoins</span>
+                        <span className="text-lg font-semibold text-slate-100">{balanceMasked ? '•••' : vicoins.toFixed(2)}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Platform rewards and boosts</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => setActiveTab('payout')}
+                      className="min-h-[52px] rounded-xl bg-slate-100 text-slate-900 hover:bg-white font-semibold"
+                    >
+                      Withdraw
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setActiveTab('overview');
+                        window.setTimeout(() => {
+                          convertSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 30);
+                      }}
+                      className="min-h-[52px] rounded-xl border-white/20 bg-slate-900/60 text-slate-100 hover:bg-slate-800/80 font-semibold"
+                    >
+                      Convert
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setMerchantCheckoutLaunchMode('link');
+                        setMerchantCheckoutAutoScenarioId(locale === 'pt' ? 'qr-dynamic-cafe' : 'online-retail-link');
+                        setMerchantCheckoutOpen(true);
+                      }}
+                      className="min-h-[52px] rounded-xl border-white/20 bg-slate-900/60 text-slate-100 hover:bg-slate-800/80 font-semibold"
+                    >
+                      Pay
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-3 text-xs text-slate-300 space-y-1">
+                    <p className="font-medium text-slate-100">Limits & Fees</p>
+                    <p>Withdraw min {locale === 'pt' ? 'R$ 10,00' : '$10.00'} · Instant fee 1.5% (demo)</p>
+                    <p>{locale === 'pt' ? 'Pix: instant (limites podem aplicar)' : 'ACH: 1-3 business days · Instant transfer available'}</p>
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-white/10 bg-slate-950/70 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-slate-100">Recent Activity</h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setActiveTab('transactions')}
+                      className="h-8 px-2 text-xs text-slate-300 hover:text-white"
+                    >
+                      See all
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {recentActivity.map((tx) => {
+                      const statusChip = getTransactionStatusChip(tx);
+                      return (
+                        <Button
+                          type="button"
+                          key={tx.id}
+                          variant="outline"
+                          onClick={() => setSelectedTransaction(tx)}
+                          className="w-full h-auto min-h-[44px] rounded-2xl border-white/10 bg-slate-900/70 px-3 py-3 justify-between"
+                        >
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-slate-100">{tx.description}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {typeof tx.timestamp === 'object' && 'toLocaleTimeString' in tx.timestamp
+                                ? tx.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className={cn(
+                              'text-sm font-semibold',
+                              tx.type === 'earned' || tx.type === 'received' ? 'text-emerald-300' : 'text-slate-100'
+                            )}>
+                              {tx.type === 'earned' || tx.type === 'received' ? '+' : '-'}
+                              {tx.amount.toFixed(2)}
+                            </p>
+                            <span className={cn(
+                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] mt-1',
+                              statusChip.className
+                            )}>
+                              {statusChip.icon}
+                              {statusChip.label}
+                            </span>
+                          </div>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </section>
+
                 {/* Balance hero – optional mask */}
                 <div className="grid grid-cols-2 gap-4">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => setBalanceMasked((m) => !m)}
-                    className="neu-card rounded-3xl p-5 text-left w-full"
+                    className="h-auto w-full justify-start rounded-3xl p-5 text-left"
                   >
                     <CoinDisplay
                       type="vicoin"
@@ -691,11 +909,12 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     {balanceMasked && (
                       <p className="text-xs text-muted-foreground mt-1">Tap to reveal</p>
                     )}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => setBalanceMasked((m) => !m)}
-                    className="neu-card rounded-3xl p-5 text-left w-full"
+                    className="h-auto w-full justify-start rounded-3xl p-5 text-left"
                   >
                     <CoinDisplay
                       type="icoin"
@@ -705,7 +924,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     {balanceMasked && (
                       <p className="text-xs text-muted-foreground mt-1">Tap to reveal</p>
                     )}
-                  </button>
+                  </Button>
                 </div>
 
                 <WalletReadyToPayCard
@@ -795,12 +1014,14 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                         </div>
                       </div>
                       {subscription.subscribed && (
-                        <button
+                        <Button
+                          type="button"
+                          variant="ghost"
                           onClick={handleManageSubscription}
-                          className="text-sm text-primary underline"
+                          className="h-auto p-0 text-sm text-primary underline"
                         >
                           Manage
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -845,7 +1066,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                 <PromoEarningsSection onDiscover={onDiscover} />
 
                 {/* Transfer Vicoin ↔ Icoin — bidirectional with presets and preview */}
-                <div className="neu-card rounded-2xl p-4">
+                <div ref={convertSectionRef} className="neu-card rounded-2xl p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <RefreshCw className="w-4 h-4 text-primary" />
                     <span className="text-sm font-medium">Transfer Vicoin ↔ Icoin</span>
@@ -856,38 +1077,40 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
 
                   {/* Direction tabs */}
                   <div className="flex rounded-xl overflow-hidden neu-inset p-0.5 mb-3">
-                    <button
+                    <Button
                       type="button"
+                      variant={transferDirection === 'icoin_to_vicoin' ? 'default' : 'ghost'}
                       onClick={() => {
                         setTransferDirection('icoin_to_vicoin');
                         setTransferAmount('');
                         setShowConvertConfirm(false);
                       }}
                       className={cn(
-                        'flex-1 py-2 text-sm font-medium rounded-lg transition-colors',
+                        'h-auto flex-1 rounded-lg py-2 text-sm font-medium transition-colors',
                         transferDirection === 'icoin_to_vicoin'
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:bg-muted/50'
                       )}
                     >
                       I → V
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant={transferDirection === 'vicoin_to_icoin' ? 'default' : 'ghost'}
                       onClick={() => {
                         setTransferDirection('vicoin_to_icoin');
                         setTransferAmount('');
                         setShowConvertConfirm(false);
                       }}
                       className={cn(
-                        'flex-1 py-2 text-sm font-medium rounded-lg transition-colors',
+                        'h-auto flex-1 rounded-lg py-2 text-sm font-medium transition-colors',
                         transferDirection === 'vicoin_to_icoin'
                           ? 'bg-primary text-primary-foreground'
                           : 'text-muted-foreground hover:bg-muted/50'
                       )}
                     >
                       V → I
-                    </button>
+                    </Button>
                   </div>
 
                   {/* Balances */}
@@ -906,20 +1129,24 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                       ? CONVERT_PRESETS_ICOIN
                       : CONVERT_PRESETS_VICOIN
                     ).map((preset) => (
-                      <button
+                      <Button
                         key={preset}
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() => setTransferAmount(String(preset))}
                         className={cn(
-                          'px-3 py-1.5 rounded-xl text-sm font-medium neu-button',
+                          'h-auto rounded-xl px-3 py-1.5 text-sm font-medium',
                           transferAmount === String(preset) && 'ring-2 ring-primary'
                         )}
                       >
                         {preset}
-                      </button>
+                      </Button>
                     ))}
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() =>
                         setTransferAmount(
                           String(
@@ -929,14 +1156,14 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                           )
                         )
                       }
-                      className="px-3 py-1.5 rounded-xl text-sm font-medium neu-button"
+                      className="h-auto rounded-xl px-3 py-1.5 text-sm font-medium"
                     >
                       Max
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="flex gap-2 flex-wrap items-center">
-                    <input
+                    <Input
                       type="number"
                       value={transferAmount}
                       onChange={(e) => setTransferAmount(e.target.value)}
@@ -945,12 +1172,13 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                           ? 'Enter Icoins (min 100, step 10)'
                           : 'Enter Vicoins (min 1)'
                       }
-                      className="flex-1 min-w-[120px] px-3 py-2 rounded-xl neu-inset text-sm bg-transparent"
+                      className="min-w-[120px] flex-1 bg-transparent text-sm"
                       min={transferDirection === 'icoin_to_vicoin' ? ICOIN_MIN : VICOIN_MIN}
                       step={transferDirection === 'icoin_to_vicoin' ? 10 : 1}
                     />
                     {!showConvertConfirm ? (
-                      <button
+                      <Button
+                        type="button"
                         onClick={openConvertConfirm}
                         disabled={
                           isTransferring ||
@@ -960,22 +1188,25 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                             parseInt(transferAmount, 10)
                           )
                         }
-                        className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50"
+                        className="h-auto rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
                       >
                         Convert
-                      </button>
+                      </Button>
                     ) : (
                       <div className="flex gap-2">
-                        <button
+                        <Button
+                          type="button"
+                          variant="outline"
                           onClick={() => setShowConvertConfirm(false)}
-                          className="px-3 py-2 rounded-xl neu-button text-sm"
+                          className="h-auto rounded-xl px-3 py-2 text-sm"
                         >
                           Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          type="button"
                           onClick={handleTransfer}
                           disabled={isTransferring}
-                          className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 flex items-center gap-1"
+                          className="h-auto rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
                         >
                           {isTransferring ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -983,7 +1214,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                             <Check className="w-4 h-4" />
                           )}
                           Confirm
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -1007,15 +1238,16 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                 <div className="neu-card rounded-2xl p-4">
                   <span className="text-sm font-medium block mb-3">Quick actions</span>
                   <div className="flex flex-wrap gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       onClick={handleCopyReferral}
                       disabled={!referralCode}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl neu-button text-sm disabled:opacity-50"
+                      className="h-auto rounded-xl px-4 py-2 text-sm disabled:opacity-50"
                     >
                       <Share2 className="w-4 h-4" />
                       {referralCode ? 'Share referral' : 'Loading…'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1040,89 +1272,97 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                 {/* Search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
+                  <Input
                     type="text"
                     value={txSearch}
                     onChange={(e) => setTxSearch(e.target.value)}
                     placeholder="Search transactions..."
-                    className="w-full pl-10 pr-3 py-2.5 rounded-xl neu-inset text-sm bg-transparent"
+                    className="w-full bg-transparent py-2.5 pl-10 pr-3 text-sm"
                   />
                 </div>
                 {/* Filters row */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={txTypeFilter}
-                    onChange={(e) => setTxTypeFilter(e.target.value as WalletTransaction['type'] | 'all')}
-                    className="px-3 py-2 rounded-xl neu-inset text-sm bg-transparent"
-                  >
-                    {TX_TYPE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={txCoinFilter}
-                    onChange={(e) => setTxCoinFilter(e.target.value as 'vicoin' | 'icoin' | 'all')}
-                    className="px-3 py-2 rounded-xl neu-inset text-sm bg-transparent"
-                  >
-                    <option value="all">All coins</option>
-                    <option value="vicoin">Vicoin</option>
-                    <option value="icoin">Icoin</option>
-                  </select>
-                  <select
-                    value={txDateRange}
-                    onChange={(e) => setTxDateRange(e.target.value as DateRangeKey)}
-                    className="px-3 py-2 rounded-xl neu-inset text-sm bg-transparent"
-                  >
-                    {DATE_RANGE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={txTypeFilter} onValueChange={(value) => setTxTypeFilter(value as WalletTransaction['type'] | 'all')}>
+                    <SelectTrigger className="h-10 min-w-[120px] rounded-xl bg-transparent text-sm">
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TX_TYPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={txCoinFilter} onValueChange={(value) => setTxCoinFilter(value as 'vicoin' | 'icoin' | 'all')}>
+                    <SelectTrigger className="h-10 min-w-[120px] rounded-xl bg-transparent text-sm">
+                      <SelectValue placeholder="Coin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All coins</SelectItem>
+                      <SelectItem value="vicoin">Vicoin</SelectItem>
+                      <SelectItem value="icoin">Icoin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={txDateRange} onValueChange={(value) => setTxDateRange(value as DateRangeKey)}>
+                    <SelectTrigger className="h-10 min-w-[130px] rounded-xl bg-transparent text-sm">
+                      <SelectValue placeholder="Date range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DATE_RANGE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <div className="flex items-center gap-1">
-                    <input
+                    <Input
                       type="number"
                       min={0}
                       placeholder="Min"
                       value={txAmountMin}
                       onChange={(e) => setTxAmountMin(e.target.value)}
-                      className="w-16 px-2 py-2 rounded-xl neu-inset text-sm bg-transparent"
+                      className="h-10 w-16 bg-transparent px-2 py-2 text-sm"
                     />
                     <span className="text-muted-foreground text-xs">–</span>
-                    <input
+                    <Input
                       type="number"
                       min={0}
                       placeholder="Max"
                       value={txAmountMax}
                       onChange={(e) => setTxAmountMax(e.target.value)}
-                      className="w-16 px-2 py-2 rounded-xl neu-inset text-sm bg-transparent"
+                      className="h-10 w-16 bg-transparent px-2 py-2 text-sm"
                     />
                   </div>
-                  <select
+                  <Select
                     value={`${txSortBy}-${txSortOrder}`}
-                    onChange={(e) => {
-                      const opt = TX_SORT_OPTIONS.find((o) => `${o.sortBy}-${o.sortOrder}` === e.target.value);
+                    onValueChange={(value) => {
+                      const opt = TX_SORT_OPTIONS.find((o) => `${o.sortBy}-${o.sortOrder}` === value);
                       if (opt) setSort(opt.sortBy, opt.sortOrder);
                     }}
-                    className="px-3 py-2 rounded-xl neu-inset text-sm bg-transparent"
                   >
-                    {TX_SORT_OPTIONS.map((opt, i) => (
-                      <option key={i} value={`${opt.sortBy}-${opt.sortOrder}`}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
+                    <SelectTrigger className="h-10 min-w-[150px] rounded-xl bg-transparent text-sm">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TX_SORT_OPTIONS.map((opt, i) => (
+                        <SelectItem key={i} value={`${opt.sortBy}-${opt.sortOrder}`}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={handleExportCsv}
                     disabled={isExporting || transactions.length === 0}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl neu-button text-sm ml-auto"
+                    className="ml-auto h-auto rounded-xl px-3 py-2 text-sm"
                   >
                     <Download className="w-4 h-4" />
                     Export CSV
-                  </button>
+                  </Button>
                 </div>
                 {/* Period summary when date range is set */}
                 {txPeriodSummary && txPeriodSummary.count > 0 && txDateRange !== 'all' && (
@@ -1206,11 +1446,12 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                         </h3>
                         <div className="space-y-2">
                           {items.map((tx) => (
-                            <button
+                            <Button
                               type="button"
+                              variant="outline"
                               key={tx.id}
                               onClick={() => setSelectedTransaction(tx)}
-                              className="w-full flex items-center gap-4 p-4 neu-inset rounded-2xl text-left hover:opacity-90 active:scale-[0.99] transition"
+                              className="h-auto w-full items-center justify-start gap-4 rounded-2xl p-4 text-left transition hover:opacity-90 active:scale-[0.99]"
                             >
                               <div className="w-10 h-10 rounded-full neu-button flex items-center justify-center shrink-0">
                                 {getTransactionIcon(tx.type)}
@@ -1226,6 +1467,13 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                                     ? tx.timestamp.toLocaleDateString()
                                     : new Date(tx.timestamp).toLocaleDateString()}
                                 </p>
+                                <span className={cn(
+                                  'mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]',
+                                  getTransactionStatusChip(tx).className
+                                )}>
+                                  {getTransactionStatusChip(tx).icon}
+                                  {getTransactionStatusChip(tx).label}
+                                </span>
                               </div>
                               <div
                                 className={cn(
@@ -1237,17 +1485,18 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                                 {tx.amount}
                                 <span className="text-xs ml-1">{tx.coinType === 'icoin' ? 'i' : 'v'}</span>
                               </div>
-                            </button>
+                            </Button>
                           ))}
                         </div>
                       </div>
                     ))}
                     {hasMoreTx && (
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
                         onClick={loadMoreTransactions}
                         disabled={txLoadingMore}
-                        className="w-full py-3 rounded-2xl neu-button text-sm font-medium flex items-center justify-center gap-2"
+                        className="h-auto w-full rounded-2xl py-3 text-sm font-medium"
                       >
                         {txLoadingMore ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -1257,7 +1506,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                             Load more
                           </>
                         )}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}
@@ -1313,12 +1562,13 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                       </ul>
 
                       {!isCurrentPlan && tierKey !== 'free' && (
-                        <button
+                        <Button
+                          type="button"
                           onClick={() => handleSubscribe(tierKey)}
-                          className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium"
+                          className="h-auto w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground"
                         >
                           Upgrade to {tier.name}
-                        </button>
+                        </Button>
                       )}
 
                       {isCurrentPlan && subscription?.subscribed && (
@@ -1336,12 +1586,14 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                               )}
                             </div>
                           )}
-                          <button
+                          <Button
+                            type="button"
+                            variant="outline"
                             onClick={handleManageSubscription}
-                            className="w-full py-3 rounded-xl neu-button font-medium"
+                            className="h-auto w-full rounded-xl py-3 font-medium"
                           >
                             Manage Subscription
-                          </button>
+                          </Button>
                         </>
                       )}
                     </div>
@@ -1354,13 +1606,22 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
             {activeTab === 'payout' && (
               <div className="space-y-6">
                 <div className="neu-card rounded-2xl p-5">
-                  <h3 className="font-semibold mb-2">Payout Requirements</h3>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="font-semibold">Payout Requirements</h3>
+                    {isDemoMode && <DemoModeBadge className="text-[9px] px-2 py-0.5 min-h-[20px]" />}
+                  </div>
                   <ul className="space-y-2 text-sm text-muted-foreground">
                     <li>• Minimum {MIN_PAYOUT_VICOIN} Vicoins or {MIN_PAYOUT_ICOIN} Icoins</li>
                     <li>• Fee: 2% (min 10, max 500 coins)</li>
                     <li>• KYC verification required</li>
                     <li>• Processing: 1–5 business days depending on method</li>
                   </ul>
+                  {isDemoMode && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-200">
+                      <span className="rounded-lg border border-white/10 bg-slate-900/70 px-2 py-1">KYC (Simulated)</span>
+                      <span className="rounded-lg border border-white/10 bg-slate-900/70 px-2 py-1">Payout Confirmation (Simulated)</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* KYC status */}
@@ -1395,32 +1656,34 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                   <div>
                     <label className="text-sm font-medium mb-2 block">Withdraw as</label>
                     <div className="flex gap-2">
-                      <button
+                      <Button
                         type="button"
+                        variant={payoutCoinType === 'vicoin' ? 'default' : 'outline'}
                         onClick={() => setPayoutCoinType('vicoin')}
                         className={cn(
-                          'flex-1 py-2.5 rounded-xl text-sm font-medium',
+                          'h-auto flex-1 rounded-xl py-2.5 text-sm font-medium',
                           payoutCoinType === 'vicoin' ? 'bg-primary text-primary-foreground' : 'neu-button'
                         )}
                       >
                         Vicoins (V)
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant={payoutCoinType === 'icoin' ? 'default' : 'outline'}
                         onClick={() => setPayoutCoinType('icoin')}
                         className={cn(
-                          'flex-1 py-2.5 rounded-xl text-sm font-medium',
+                          'h-auto flex-1 rounded-xl py-2.5 text-sm font-medium',
                           payoutCoinType === 'icoin' ? 'bg-primary text-primary-foreground' : 'neu-button'
                         )}
                       >
                         Icoins (I)
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <div>
                     <label className="text-sm font-medium mb-2 block">Amount</label>
                     <div className="flex gap-2 items-center">
-                      <input
+                      <Input
                         type="number"
                         inputMode="numeric"
                         value={payoutAmount}
@@ -1428,7 +1691,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                         placeholder={`${payoutMin}–${payoutMax}`}
                         min={payoutMin}
                         max={Math.min(payoutMax, availableBalance)}
-                        className="flex-1 px-4 py-3 rounded-xl neu-inset bg-transparent text-sm"
+                        className="flex-1 bg-transparent px-4 py-3 text-sm"
                       />
                       <span className="text-sm text-muted-foreground w-6">
                         {payoutCoinType === 'vicoin' ? 'V' : 'I'}
@@ -1456,18 +1719,19 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                         { id: 'crypto' as const, label: 'Crypto', icon: Bitcoin },
                       ] as const
                     ).map(({ id, label, icon: Icon }) => (
-                      <button
+                      <Button
                         key={id}
                         type="button"
+                        variant={payoutMethod === id ? 'default' : 'outline'}
                         onClick={() => setPayoutMethod(id)}
                         className={cn(
-                          'flex flex-col items-center gap-1 py-3 rounded-xl text-xs font-medium',
+                          'h-auto flex flex-col items-center gap-1 rounded-xl py-3 text-xs font-medium',
                           payoutMethod === id ? 'bg-primary text-primary-foreground' : 'neu-button'
                         )}
                       >
                         <Icon className="w-5 h-5" />
                         {label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -1476,13 +1740,15 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                 <div className="neu-card rounded-2xl p-4">
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium">Destination</label>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowPaymentMethodSheet(true)}
-                      className="text-xs text-primary flex items-center gap-1"
+                      className="h-auto p-0 text-xs text-primary"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add / manage
-                    </button>
+                    </Button>
                   </div>
                   {loadingMethods ? (
                     <div className="py-4 flex items-center justify-center">
@@ -1493,17 +1759,26 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                       Add a payment method to receive payouts. You can still request; we&apos;ll use your profile contact.
                     </p>
                   ) : (
-                    <select
-                      value={payoutPaymentMethodId ?? paymentMethods[0]?.id ?? ''}
-                      onChange={(e) => setPayoutPaymentMethodId(e.target.value || null)}
-                      className="w-full px-4 py-3 rounded-xl neu-inset bg-transparent text-sm"
+                    <Select
+                      value={payoutPaymentMethodId ?? paymentMethods[0]?.id ?? undefined}
+                      onValueChange={(value) => setPayoutPaymentMethodId(value || null)}
                     >
-                      {paymentMethods.map((pm) => (
-                        <option key={pm.id} value={pm.id}>
-                          {pm.nickname || pm.method_type} {pm.details?.account_last4 ? `••${pm.details.account_last4}` : pm.details?.email ? `(${pm.details.email})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="h-12 w-full rounded-xl bg-transparent px-4 text-sm">
+                        <SelectValue placeholder="Select destination" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentMethods.map((pm) => (
+                          <SelectItem key={pm.id} value={pm.id}>
+                            {pm.nickname || pm.method_type}{' '}
+                            {pm.details?.account_last4
+                              ? `••${pm.details.account_last4}`
+                              : pm.details?.email
+                                ? `(${pm.details.email})`
+                                : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
 
@@ -1511,7 +1786,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                   <p className="text-sm text-destructive text-center">{payoutError}</p>
                 )}
 
-                <button
+                <Button
                   type="button"
                   disabled={!canSubmitPayout}
                   onClick={handleRequestPayout}
@@ -1524,7 +1799,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                           ? 'Insufficient balance'
                           : undefined
                   }
-                  className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-auto w-full rounded-2xl bg-primary py-4 font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {requesting ? (
                     <>
@@ -1537,7 +1812,12 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                       Request payout
                     </>
                   )}
-                </button>
+                </Button>
+                {isDemoMode && (
+                  <p className="text-xs -mt-3 text-muted-foreground">
+                    Simulated payout confirmation. Timeline outcome is controlled in Demo Controls.
+                  </p>
+                )}
 
                 {!canWithdraw && (
                   <p className="text-xs text-center text-muted-foreground">
@@ -1555,13 +1835,15 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     {loadingHistory ? (
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     ) : (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => loadPayoutHistory()}
-                        className="text-xs text-primary"
+                        className="h-auto p-0 text-xs text-primary"
                       >
                         Refresh
-                      </button>
+                      </Button>
                     )}
                   </div>
                   {payoutHistory.length === 0 ? (
@@ -1617,25 +1899,27 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     <div className="bg-background w-full max-h-[90vh] rounded-t-2xl sm:rounded-2xl p-4 overflow-y-auto">
                       <div className="flex justify-between items-center mb-4">
                         <h3 className="font-semibold">Payment methods</h3>
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="icon"
                           onClick={() => setShowPaymentMethodSheet(false)}
-                          className="p-2 rounded-xl neu-button"
+                          className="h-10 w-10 rounded-xl"
                         >
                           <X className="w-5 h-5" />
-                        </button>
+                        </Button>
                       </div>
                       <PaymentMethodManager />
-                      <button
+                      <Button
                         type="button"
                         onClick={() => {
                           loadPaymentMethods();
                           setShowPaymentMethodSheet(false);
                         }}
-                        className="w-full mt-4 py-3 rounded-xl bg-primary text-primary-foreground font-medium"
+                        className="mt-4 h-auto w-full rounded-xl bg-primary py-3 font-medium text-primary-foreground"
                       >
                         Done
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1675,12 +1959,49 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                     {selectedTransaction.amount} {selectedTransaction.coinType === 'icoin' ? 'Icoin' : 'Vicoin'}
                   </span>
                 </SheetTitle>
+                <SheetDescription className="pt-2">
+                  <span className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]',
+                    getTransactionStatusChip(selectedTransaction).className
+                  )}>
+                    {getTransactionStatusChip(selectedTransaction).icon}
+                    {getTransactionStatusChip(selectedTransaction).label}
+                  </span>
+                </SheetDescription>
               </SheetHeader>
               <div className="space-y-4 text-sm">
                 <div>
                   <p className="text-muted-foreground mb-1">Description</p>
                   <p className="font-medium">{selectedTransaction.description}</p>
                 </div>
+                {(selectedTransaction.status === 'pending' || selectedTransaction.status === 'verification_required') && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                    <p className="font-medium text-amber-300">Pending details</p>
+                    <p className="text-xs text-slate-200">
+                      {selectedTransaction.statusDetail ?? 'This transaction is still being verified and processed.'}
+                    </p>
+                    <div className="grid grid-cols-1 gap-1 text-xs text-slate-300">
+                      <p>
+                        Reason: {selectedTransaction.statusReason ? selectedTransaction.statusReason.replace(/_/g, ' ') : 'processing window'}
+                      </p>
+                      <p>
+                        Next step: {selectedTransaction.nextStep ?? 'No action required while checks complete.'}
+                      </p>
+                      {selectedTransaction.etaLabel && <p>ETA: {selectedTransaction.etaLabel}</p>}
+                    </div>
+                  </div>
+                )}
+                {(selectedTransaction.status === 'reversed' || selectedTransaction.status === 'failed') && (
+                  <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 space-y-2">
+                    <p className="font-medium text-red-300">Reversal details</p>
+                    <p className="text-xs text-slate-200">
+                      {selectedTransaction.statusDetail ?? 'This transaction was reversed.'}
+                    </p>
+                    <p className="text-xs text-slate-300">
+                      Next step: {selectedTransaction.nextStep ?? 'Retry or contact support.'}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-muted-foreground mb-1">Date & time</p>
                   <p className="font-medium">
@@ -1696,10 +2017,12 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                       <code className="text-xs font-mono bg-muted px-2 py-1 rounded truncate flex-1">
                         {selectedTransaction.referenceId}
                       </code>
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="icon"
                         onClick={() => handleCopyTxField(selectedTransaction.referenceId!, 'reference')}
-                        className="p-2 rounded-xl neu-button shrink-0"
+                        className="h-9 w-9 shrink-0 rounded-xl"
                         title="Copy reference"
                       >
                         {copiedField === 'reference' ? (
@@ -1707,7 +2030,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                         ) : (
                           <Copy className="w-4 h-4" />
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1715,12 +2038,14 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                   <p className="text-muted-foreground mb-1">Transaction ID</p>
                   <div className="flex items-center gap-2">
                     <code className="text-xs font-mono bg-muted px-2 py-1 rounded truncate flex-1">
-                      {selectedTransaction.id}
+                      {selectedTransaction.transactionId}
                     </code>
-                    <button
+                    <Button
                       type="button"
-                      onClick={() => handleCopyTxField(selectedTransaction.id, 'id')}
-                      className="p-2 rounded-xl neu-button shrink-0"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleCopyTxField(selectedTransaction.transactionId, 'id')}
+                      className="h-9 w-9 shrink-0 rounded-xl"
                       title="Copy ID"
                     >
                       {copiedField === 'id' ? (
@@ -1728,7 +2053,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
                       ) : (
                         <Copy className="w-4 h-4" />
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

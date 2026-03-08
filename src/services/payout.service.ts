@@ -2,7 +2,7 @@
 // Handles retries for transient errors and user-friendly error messages.
 import { supabase } from '@/integrations/supabase/client';
 import { isDemoMode } from '@/lib/appMode';
-import { addDemoBalance, getDemoBalances, pushDemoTransaction } from '@/lib/demoState';
+import { addDemoBalance, getDemoBalances, getDemoCheckoutOutcome, pushDemoTransaction } from '@/lib/demoState';
 
 export type PayoutMethod = 'paypal' | 'bank' | 'crypto';
 
@@ -140,6 +140,7 @@ function createDemoPayoutId(): string {
 async function requestPayoutOnce(params: RequestPayoutParams): Promise<RequestPayoutResult> {
   if (isDemoMode) {
     const { amount, coinType, method } = params;
+    const demoOutcome = getDemoCheckoutOutcome();
     const balances = getDemoBalances();
     const current = coinType === 'vicoin' ? balances.vicoins : balances.icoins;
     if (current < amount) {
@@ -148,27 +149,46 @@ async function requestPayoutOnce(params: RequestPayoutParams): Promise<RequestPa
 
     const { fee, netAmount } = getPayoutFee(amount);
     addDemoBalance(coinType, -amount);
+    const txStatus = demoOutcome === 'reversed' ? 'reversed' : demoOutcome === 'pending' ? 'pending' : 'completed';
     const tx = pushDemoTransaction({
       type: 'withdrawn',
       amount,
       coinType,
       description: `Demo payout (${method})`,
+      status: txStatus,
+      statusReason: txStatus === 'reversed' ? 'retry_available' : txStatus === 'pending' ? 'processing_window' : undefined,
+      statusDetail:
+        txStatus === 'reversed'
+          ? 'Instant payout failed during destination confirmation.'
+          : txStatus === 'pending'
+            ? 'Payout is in processing window.'
+            : undefined,
+      nextStep:
+        txStatus === 'reversed'
+          ? 'Retry with standard transfer or contact support.'
+          : txStatus === 'pending'
+            ? 'No action required while processing.'
+            : undefined,
+      etaLabel: txStatus === 'pending' ? '1-2 business days' : 'Today',
+      destinationLabel: params.paymentMethodId ?? method,
+      feeAmount: fee,
       referenceId: null,
     });
 
     const now = new Date().toISOString();
+    const payoutStatus = txStatus === 'reversed' ? 'failed' : txStatus;
     const payoutRow: PayoutRequestRow = {
       id: createDemoPayoutId(),
       user_id: 'demo-user',
       payment_method_id: params.paymentMethodId ?? null,
       amount,
       coin_type: coinType,
-      status: 'pending',
+      status: payoutStatus,
       fee,
       net_amount: netAmount,
       reference_id: tx.id,
-      failure_reason: null,
-      processed_at: null,
+      failure_reason: txStatus === 'reversed' ? 'Instant payout destination timed out' : null,
+      processed_at: txStatus === 'completed' ? now : null,
       created_at: now,
       updated_at: now,
     };
@@ -185,9 +205,9 @@ async function requestPayoutOnce(params: RequestPayoutParams): Promise<RequestPa
       method,
       fee,
       net_amount: netAmount,
-      status: 'pending',
+      status: payoutStatus,
       reference_id: tx.id,
-      estimated_arrival: '1-2 business days',
+      estimated_arrival: txStatus === 'completed' ? 'Same day' : '1-2 business days',
       new_balance: coinType === 'vicoin' ? nextBalances.vicoins : nextBalances.icoins,
     };
   }

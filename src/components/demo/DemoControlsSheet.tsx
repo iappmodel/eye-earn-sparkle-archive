@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, MonitorPlay, Globe2, ShieldCheck, TimerReset, X } from 'lucide-react';
+import { Check, MonitorPlay, Globe2, RotateCcw, ShieldCheck, TimerReset, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCameraRuntimeIssue, hasMapboxEnvToken, isSupabaseConfigured } from '@/lib/demoRuntime';
 
@@ -22,6 +22,10 @@ interface DemoControlsSheetProps {
   onClose: () => void;
   onControlsChange: (next: DemoControlsState) => void;
   onLocaleChange: (nextLocale: 'en' | 'pt') => void;
+  /** Optional: reset demo to Hero Entry (for rehearsals) */
+  onRestartDemo?: () => void;
+  /** Optional: reset floating button layout/preferences */
+  onResetLayout?: () => void;
 }
 
 const verificationDelayOptions = [
@@ -49,6 +53,8 @@ export const DemoControlsSheet: React.FC<DemoControlsSheetProps> = ({
   onClose,
   onControlsChange,
   onLocaleChange,
+  onRestartDemo,
+  onResetLayout,
 }) => {
   if (!isOpen) return null;
   const cameraIssue = getCameraRuntimeIssue();
@@ -245,6 +251,36 @@ export const DemoControlsSheet: React.FC<DemoControlsSheetProps> = ({
               ))}
             </div>
           </section>
+
+          {onRestartDemo && (
+            <section>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onRestartDemo();
+                    onClose();
+                  }}
+                  className="w-full min-h-[44px] rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 flex items-center justify-center gap-2 text-amber-300 text-sm font-medium hover:bg-amber-500/20 transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Restart Demo
+                </button>
+                {onResetLayout && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onResetLayout();
+                    }}
+                    className="w-full min-h-[44px] rounded-xl border border-slate-500/40 bg-slate-500/10 px-3 py-2 flex items-center justify-center gap-2 text-slate-200 text-sm font-medium hover:bg-slate-500/20 transition-colors"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Reset Layout
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
 
           <section>
             <p className="text-xs uppercase tracking-[0.16em] text-slate-400 mb-2 flex items-center gap-2">

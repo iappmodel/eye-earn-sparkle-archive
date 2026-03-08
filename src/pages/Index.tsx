@@ -25,6 +25,7 @@ import { useMediaSettings } from '@/components/MediaSettings';
 import { ConfettiCelebration, useCelebration } from '@/components/ConfettiCelebration';
 import { MediaCardSkeleton } from '@/components/ui/ContentSkeleton';
 import { PullToRefresh } from '@/components/ui/PullToRefresh';
+import { Button } from '@/components/ui/button';
 import { CommentsPanel } from '@/components/CommentsPanel';
 import { ShareSheet } from '@/components/ShareSheet';
 import { NetworkStatusIndicator } from '@/components/NetworkStatusIndicator';
@@ -57,15 +58,19 @@ import { NotificationCenter } from '@/components/NotificationCenter';
 import { NotificationPreferences } from '@/components/NotificationPreferences';
 import { ContentReportFlow } from '@/components/ContentReportFlow';
 import { TipSheet } from '@/components/TipSheet';
+import { HeroEntry } from '@/components/demo/HeroEntry';
 import { DemoScenarioSelector, type DemoScenarioId } from '@/components/demo/DemoScenarioSelector';
 import { DemoControlsSheet, type DemoControlsState } from '@/components/demo/DemoControlsSheet';
 import { GuidedInvestorTour, type GuidedTourAction } from '@/components/demo/GuidedInvestorTour';
 import { isDemoMode } from '@/lib/appMode';
 import {
+  DEMO_STATE_EVENT,
   DEMO_SCENARIO_SEEN_KEY,
   DEMO_CONTROLS_KEY,
   DEMO_BALANCES_KEY,
   defaultDemoBalances,
+  pushDemoTransaction,
+  setDemoTransactionStatus,
   type DemoBalances,
 } from '@/lib/demoState';
 import { toast } from 'sonner';
@@ -87,8 +92,8 @@ const NetworkStatusAutoHide: React.FC = () => {
 
 // Auto-hide wrapper for screen page indicators
 const ScreenIndicatorsAutoHide: React.FC<{
-  leftPages: any[];
-  rightPages: any[];
+  leftPages: unknown[];
+  rightPages: unknown[];
   isAtCenter: boolean;
 }> = ({ leftPages, rightPages, isAtCenter }) => {
   const { isVisible } = useControlsVisibility();
@@ -230,14 +235,8 @@ const Index = () => {
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [showCreatorTools, setShowCreatorTools] = useState(false);
   const demoModeEnabled = isDemoMode;
-  const [showScenarioSelector, setShowScenarioSelector] = useState(() => {
-    if (!isDemoMode) return false;
-    try {
-      return localStorage.getItem(DEMO_SCENARIO_SEEN_KEY) !== 'true';
-    } catch {
-      return true;
-    }
-  });
+  const [showHeroEntry, setShowHeroEntry] = useState(() => isDemoMode);
+  const [showScenarioSelector, setShowScenarioSelector] = useState(false);
   const [showDemoControls, setShowDemoControls] = useState(false);
   const [demoControls, setDemoControls] = useState<DemoControlsState>(() => getStoredDemoControls());
   const [demoBalances, setDemoBalances] = useState<DemoBalances>(() => getStoredDemoBalances());
@@ -273,6 +272,19 @@ const Index = () => {
       // ignore persistence errors in private mode
     }
   }, [demoBalances]);
+
+  useEffect(() => {
+    if (!demoModeEnabled || typeof window === 'undefined') return;
+    const syncBalances = () => {
+      setDemoBalances(getStoredDemoBalances());
+    };
+    window.addEventListener(DEMO_STATE_EVENT, syncBalances as EventListener);
+    window.addEventListener('storage', syncBalances);
+    return () => {
+      window.removeEventListener(DEMO_STATE_EVENT, syncBalances as EventListener);
+      window.removeEventListener('storage', syncBalances);
+    };
+  }, [demoModeEnabled]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -411,19 +423,75 @@ const Index = () => {
     []
   );
 
+  const applyDemoBalanceDelta = useCallback((coinType: 'vicoin' | 'icoin', delta: number) => {
+    setDemoBalances((prev) => {
+      const nextValue = Math.max(
+        0,
+        Math.round((((coinType === 'vicoin' ? prev.vicoins : prev.icoins) + delta) * 100)) / 100
+      );
+      if (coinType === 'vicoin') {
+        return { ...prev, vicoins: nextValue };
+      }
+      return { ...prev, icoins: nextValue };
+    });
+  }, []);
+
+  const queueDemoReward = useCallback(
+    (params: { rewardType: 'vicoin' | 'icoin'; rewardAmount: number; campaignName?: string; referenceId?: string | null }) => {
+      const { rewardType, rewardAmount, campaignName, referenceId } = params;
+      setCoinSlideType(rewardType);
+      setCoinSlideAmount(rewardAmount);
+      setShowCoinSlide(true);
+
+      const tx = pushDemoTransaction({
+        type: 'earned',
+        amount: rewardAmount,
+        coinType: rewardType,
+        description: campaignName ? `Promo Reward · ${campaignName}` : 'Promo Reward',
+        status: 'verification_required',
+        statusReason: 'verification',
+        statusDetail: 'Reward pending verification checks.',
+        nextStep: 'This reward will settle automatically.',
+        etaLabel: '2-5 sec',
+        referenceId: referenceId ?? null,
+      });
+
+      toast.success('Reward added as pending', {
+        description: campaignName
+          ? `${campaignName} is now awaiting verification.`
+          : 'Verification in progress.',
+      });
+
+      const delayMs = demoControls.verificationDelayMs >= 2000
+        ? Math.min(5000, demoControls.verificationDelayMs)
+        : 2000 + Math.floor(Math.random() * 3000);
+
+      window.setTimeout(() => {
+        const settled = setDemoTransactionStatus(tx.id, 'completed', {
+          statusDetail: 'Verification completed.',
+          nextStep: undefined,
+          etaLabel: 'Completed',
+        });
+        if (!settled) return;
+        applyDemoBalanceDelta(rewardType, rewardAmount);
+        toast.success('Reward completed', {
+          description: `+${rewardAmount} ${rewardType === 'vicoin' ? 'Vicoins' : 'Icoins'} available in wallet.`,
+        });
+      }, delayMs);
+    },
+    [applyDemoBalanceDelta, demoControls.verificationDelayMs]
+  );
+
   const simulateDemoReward = useCallback(() => {
     const rewardType = currentMedia?.reward?.type ?? 'icoin';
     const rewardAmount = currentMedia?.reward?.amount ?? 1;
-    setCoinSlideType(rewardType);
-    setCoinSlideAmount(rewardAmount);
-    setShowCoinSlide(true);
-    setDemoBalances((prev) => ({
-      ...prev,
-      [rewardType === 'vicoin' ? 'vicoins' : 'icoins']:
-        prev[rewardType === 'vicoin' ? 'vicoins' : 'icoins'] + rewardAmount,
-    }));
-    toast.success(`Simulated reward: +${rewardAmount} ${rewardType === 'vicoin' ? 'Vicoins' : 'Icoins'}`);
-  }, [currentMedia?.reward?.amount, currentMedia?.reward?.type]);
+    queueDemoReward({
+      rewardType,
+      rewardAmount,
+      campaignName: currentMedia?.title ?? 'Promo Campaign',
+      referenceId: currentMedia?.id ?? null,
+    });
+  }, [currentMedia?.id, currentMedia?.reward?.amount, currentMedia?.reward?.type, currentMedia?.title, queueDemoReward]);
 
   const handleGuidedTourAction = useCallback(
     (action: GuidedTourAction) => {
@@ -451,6 +519,18 @@ const Index = () => {
     },
     [issueWalletTourCommand, simulateDemoReward]
   );
+
+  const handleResetLayout = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const keysToReset = Object.keys(window.localStorage).filter((key) => key.startsWith('visuai-'));
+    for (const key of keysToReset) {
+      window.localStorage.removeItem(key);
+    }
+    window.dispatchEvent(new Event('storage'));
+    toast.success('Control layout reset', {
+      description: 'Floating controls were restored to defaults.',
+    });
+  }, []);
 
   // Clamp index when feed length changes
   useEffect(() => {
@@ -641,7 +721,7 @@ const Index = () => {
           : attentionValidated;
 
     if (!effectiveAttentionValidated) {
-      toast.info('No reward earned', { description: 'Full watch and attention are required for this campaign.' });
+      toast.info('No reward earned. Full watch required for this campaign.');
       return;
     }
 
@@ -650,21 +730,14 @@ const Index = () => {
       setIsClaimingReward(true);
       const rewardType = currentMedia.reward.type;
       const rewardAmount = currentMedia.reward.amount;
-      window.setTimeout(() => {
-        setCoinSlideType(rewardType);
-        setCoinSlideAmount(rewardAmount);
-        setShowCoinSlide(true);
-        setDemoBalances((prev) => ({
-          ...prev,
-          [rewardType === 'vicoin' ? 'vicoins' : 'icoins']:
-            prev[rewardType === 'vicoin' ? 'vicoins' : 'icoins'] + rewardAmount,
-        }));
-        toast.success(`+${rewardAmount} ${rewardType === 'vicoin' ? 'Vicoins' : 'Icoins'}`, {
-          description: 'Demo verification completed.',
-        });
-        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-        setIsClaimingReward(false);
-      }, Math.max(0, demoControls.verificationDelayMs));
+      queueDemoReward({
+        rewardType,
+        rewardAmount,
+        campaignName: currentMedia.title ?? 'Promo Campaign',
+        referenceId: currentMedia.id,
+      });
+      if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+      setIsClaimingReward(false);
       return;
     }
 
@@ -709,7 +782,7 @@ const Index = () => {
     } finally {
       setIsClaimingReward(false);
     }
-  }, [currentMedia, demoControls.rewardMode, demoControls.verificationDelayMs, demoModeEnabled, profile, refreshProfile]);
+  }, [currentMedia, demoControls.rewardMode, demoModeEnabled, profile, queueDemoReward, refreshProfile]);
 
   const handleRewardEarned = useCallback((amount: number, type: 'vicoin' | 'icoin') => {
     setCoinSlideType(type);
@@ -1174,21 +1247,24 @@ const Index = () => {
         >
         {demoModeEnabled && !showScenarioSelector && (
           <div className="fixed top-3 left-3 z-[95] flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => setShowScenarioSelector(true)}
-              className="min-h-[44px] rounded-full border border-sky-400/40 bg-slate-900/70 backdrop-blur-md px-3 py-1.5 text-xs font-medium text-sky-100"
+              className="min-h-[44px] rounded-full border-sky-400/40 bg-slate-900/70 px-3 py-1.5 text-xs font-medium text-sky-100 backdrop-blur-md hover:bg-slate-900/80"
             >
               Demo Mode
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="icon"
               onClick={() => setShowDemoControls(true)}
-              className="min-h-[44px] w-10 h-10 rounded-full border border-white/20 bg-slate-900/70 backdrop-blur-md text-slate-100 flex items-center justify-center"
+              className="h-10 w-10 rounded-full border-white/20 bg-slate-900/70 text-slate-100 backdrop-blur-md hover:bg-slate-900/80"
               aria-label="Open demo controls"
             >
               <Settings2 className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         )}
 
@@ -1219,6 +1295,14 @@ const Index = () => {
                       onSkip={handleSkip}
                       isActive={!isTransitioning && isAtCenter}
                     />
+                  </div>
+
+                  {/* Edge preview peeks for cross-navigation discoverability */}
+                  <div className="pointer-events-none absolute inset-0 z-20">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 h-28 w-2 rounded-r-full bg-white/25 blur-[0.5px]" />
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 h-28 w-2 rounded-l-full bg-white/25 blur-[0.5px]" />
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-2 rounded-b-full bg-white/18" />
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-2 rounded-t-full bg-white/18" />
                   </div>
 
                   {/* Cross Navigation hints */}
@@ -1457,12 +1541,14 @@ const Index = () => {
             <div className="h-full flex flex-col">
               <div className="flex items-center justify-between p-4 border-b">
                 <h1 className="text-xl font-bold">For You</h1>
-                <button 
+                <Button
+                  type="button"
+                  variant="ghost"
                   onClick={() => { setShowFeed(false); setActiveTab('home'); }}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="h-8 w-8 rounded-full p-0 text-muted-foreground hover:text-foreground"
                 >
                   ✕
-                </button>
+                </Button>
               </div>
               <div className="flex-1 overflow-hidden pb-20">
                 <PersonalizedFeed />
@@ -1520,14 +1606,16 @@ const Index = () => {
         {isAtCenter && currentMedia?.promoLocation && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-40 flex items-center gap-2">
             {promoRoute.isInRoute(currentMedia.promoLocation.promotionId) ? (
-              <button
+              <Button
+                type="button"
                 onClick={() => setShowRouteBuilderFromFeed(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-green-500/90 text-white font-medium shadow-lg text-sm"
+                className="h-auto rounded-full bg-green-500/90 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-green-500"
               >
                 <RouteIcon className="w-4 h-4" /> In route · Tap to open
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
+                type="button"
                 onClick={() => {
                   if (!promoRoute.isBuilding) promoRoute.startRoute('Feed Route');
                   promoRoute.addStop({
@@ -1547,15 +1635,17 @@ const Index = () => {
                   setShowRouteBuilderFromFeed(true);
                   toast.success('Added to route');
                 }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-primary-foreground font-medium shadow-lg hover:scale-105 transition-transform text-sm"
+                className="h-auto rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105"
               >
                 <RouteIcon className="w-4 h-4" /> Add to route
-              </button>
+              </Button>
             )}
             {promoRoute.isInWatchLater(currentMedia.promoLocation.promotionId) ? (
               <span className="px-3 py-2.5 rounded-full bg-muted text-muted-foreground text-sm">Saved</span>
             ) : (
-              <button
+              <Button
+                type="button"
+                variant="secondary"
                 onClick={() => {
                   promoRoute.addToWatchLater({
                     id: `stop-${currentMedia.promoLocation!.promotionId}`,
@@ -1571,10 +1661,10 @@ const Index = () => {
                   });
                   toast.success('Saved for later');
                 }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-muted/80 text-foreground font-medium border border-border hover:bg-muted transition-colors text-sm"
+                className="h-auto rounded-full border border-border bg-muted/80 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 <Bookmark className="w-4 h-4" /> Save for later
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -1582,24 +1672,26 @@ const Index = () => {
         {/* Floating Route Banner - visible on feed when building a route */}
         {isAtCenter && promoRoute.isBuilding && promoRoute.totalStops > 0 && !currentMedia?.promoLocation && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-40">
-            <button
+            <Button
+              type="button"
               onClick={() => setShowRouteBuilderFromFeed(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-green-500 text-white font-medium shadow-lg shadow-green-500/30 hover:scale-105 transition-transform text-sm animate-slide-up"
+              className="h-auto animate-slide-up rounded-full bg-green-500 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-green-500/30 transition-transform hover:scale-105"
             >
               <RouteIcon className="w-4 h-4" />
               {promoRoute.totalStops} stops · {promoRoute.totalReward} coins
-            </button>
+            </Button>
           </div>
         )}
         {isAtCenter && promoRoute.isBuilding && promoRoute.totalStops > 0 && currentMedia?.promoLocation && (
           <div className="fixed bottom-[4.25rem] left-1/2 transform -translate-x-1/2 z-40">
-            <button
+            <Button
+              type="button"
               onClick={() => setShowRouteBuilderFromFeed(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-full bg-green-500 text-white font-medium shadow-lg text-xs"
+              className="h-auto rounded-full bg-green-500 px-4 py-2 text-xs font-medium text-white shadow-lg"
             >
               <RouteIcon className="w-3.5 h-3.5" />
               {promoRoute.totalStops} stops · {promoRoute.totalReward} coins
-            </button>
+            </Button>
           </div>
         )}
 
@@ -1835,10 +1927,28 @@ const Index = () => {
           onComplete={stopCelebration}
         />
 
+        {demoModeEnabled && showHeroEntry && (
+          <HeroEntry
+            onEnterDemo={() => {
+              setShowHeroEntry(false);
+              setShowScenarioSelector(true);
+            }}
+            onInvestorWalkthrough={() => {
+              setShowHeroEntry(false);
+              setShowScenarioSelector(true);
+            }}
+            onOpenPresenterPanel={() => setShowDemoControls(true)}
+          />
+        )}
+
         <DemoScenarioSelector
           isOpen={showScenarioSelector}
           onOpenDemoControls={() => setShowDemoControls(true)}
           onStartScenario={handleStartScenario}
+          onBack={() => {
+            setShowScenarioSelector(false);
+            setShowHeroEntry(true);
+          }}
         />
 
         <DemoControlsSheet
@@ -1848,6 +1958,14 @@ const Index = () => {
           onClose={() => setShowDemoControls(false)}
           onControlsChange={setDemoControls}
           onLocaleChange={(nextLocale) => setLocale(nextLocale)}
+          onResetLayout={handleResetLayout}
+          onRestartDemo={() => {
+            setShowHeroEntry(true);
+            setShowScenarioSelector(false);
+            setShowWallet(false);
+            setShowProfile(false);
+            setShowDemoControls(false);
+          }}
         />
 
         <GuidedInvestorTour

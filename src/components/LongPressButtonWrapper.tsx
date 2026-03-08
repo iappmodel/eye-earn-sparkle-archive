@@ -1,4 +1,4 @@
-// Long Press Button Wrapper - Enables editing and repositioning any button via 1s long-press
+// Long Press Button Wrapper - Enables editing and repositioning any button via 2s long-press
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Settings, Move, X, Check, Eye, EyeOff, Clock, Trash2, RotateCcw, Grid3X3, Zap, Maximize2, Palette,
@@ -1813,7 +1813,7 @@ export const LongPressButtonWrapper: React.FC<LongPressButtonWrapperProps> = ({
   onActionChange,
   onVisibilityChange,
   onSettingsChange,
-  longPressDelay = 2500,
+  longPressDelay = 2000,
   enableDrag = true,
   className,
   showAutoHideSettings = false,

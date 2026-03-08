@@ -18,6 +18,8 @@ import { AdvancedThemeControls } from './AdvancedThemeControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { DemoModeBadge } from '@/components/demo/DemoModeBadge';
+import { isDemoMode } from '@/lib/appMode';
 
 interface ThemePresetsSheetProps {
   isOpen: boolean;
@@ -259,6 +261,7 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
             <div>
               <h2 className="font-display text-lg font-bold">Settings</h2>
               <p className="text-xs text-muted-foreground">Themes, buttons & layout</p>
+              {isDemoMode && <DemoModeBadge className="mt-2 w-fit text-[9px] px-2 py-0.5 min-h-[20px]" />}
             </div>
           </div>
           

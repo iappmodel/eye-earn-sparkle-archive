@@ -6,6 +6,15 @@ import { logger } from '@/lib/logger';
 import { getCameraRuntimeIssue, isDemoVisionSimulationEnabled } from '@/lib/demoRuntime';
 import { fetchProfileCalibration, saveProfileCalibration } from '@/services/calibration.service';
 import { securityService } from '@/services/security.service';
+import {
+  getDefaultVisionCalibration,
+  loadVisionCalibration,
+  mergeVisionCalibration,
+  normalizeVisionCalibration,
+  saveVisionCalibration,
+  type AffineParams,
+  type VisionCalibrationProfile,
+} from '@/lib/visionCalibration/profile';
 
 // Storage keys
 export const BLINK_COMMANDS_KEY = 'app_blink_commands';
@@ -44,24 +53,8 @@ export interface GazeCommand {
   enabled: boolean;
 }
 
-/** 2D affine params: targetX = a*gazeX + b*gazeY + c, targetY = d*gazeX + e*gazeY + f */
-export type AffineParams = [number, number, number, number, number, number];
-
-export interface CalibrationData {
-  offsetX: number;
-  offsetY: number;
-  scaleX: number;
-  scaleY: number;
-  isCalibrated: boolean;
-  calibratedAt: number;
-  autoCalibrationEnabled: boolean;
-  autoAdjustments: number;
-  /** 2D affine mapping for better accuracy (Phase 2). When present, used instead of offset+scale. */
-  affineParams?: AffineParams;
-  /** Personalized slow blink range (ms) from training. Defaults: 400–2000 */
-  slowBlinkMinMs?: number;
-  slowBlinkMaxMs?: number;
-}
+export type { AffineParams };
+export type CalibrationData = VisionCalibrationProfile;
 
 export interface AutoCalibrationState {
   clickHistory: { gazeX: number; gazeY: number; targetX: number; targetY: number; timestamp: number }[];
@@ -147,17 +140,6 @@ const DEFAULT_SETTINGS: RemoteControlSettings = {
   tiltSensitivity: 5,
 };
 
-const DEFAULT_CALIBRATION: CalibrationData = {
-  offsetX: 0,
-  offsetY: 0,
-  scaleX: 1,
-  scaleY: 1,
-  isCalibrated: false,
-  calibratedAt: 0,
-  autoCalibrationEnabled: true,
-  autoAdjustments: 0,
-};
-
 const AUTO_CALIBRATION_STORAGE_KEY = 'app_remote_control_auto_calibration';
 
 const DEFAULT_GAZE_COMMANDS: GazeCommand[] = [
@@ -224,16 +206,11 @@ export const saveRemoteControlSettings = (settings: RemoteControlSettings) => {
 };
 
 export const loadCalibrationData = (): CalibrationData => {
-  try {
-    const saved = localStorage.getItem(CALIBRATION_DATA_KEY);
-    return saved ? { ...DEFAULT_CALIBRATION, ...JSON.parse(saved) } : DEFAULT_CALIBRATION;
-  } catch {
-    return DEFAULT_CALIBRATION;
-  }
+  return loadVisionCalibration();
 };
 
 export const saveCalibrationData = (data: CalibrationData) => {
-  localStorage.setItem(CALIBRATION_DATA_KEY, JSON.stringify(data));
+  saveVisionCalibration(data);
 };
 
 /** Solve 3x3 system Mx=v. Returns null if singular. */
@@ -574,6 +551,15 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     invertY: settings.invertY,
     gazeScale: settings.gazeReach,
     gazeSmoothing: 0.25,
+    enableHandTracking: true,
+    fusionConfig: {
+      livenessMinScore: calibration.livenessMinScore,
+      handPinchMinConfidence: calibration.handPinchMinConfidence,
+      handPointMinConfidence: calibration.handPointMinConfidence,
+      handOpenPalmMinConfidence: calibration.handOpenPalmMinConfidence,
+      headYawCommandThreshold: calibration.headYawCommandThreshold,
+      nodRangeThreshold: calibration.nodRangeThreshold,
+    },
     visionBackend: settings.visionBackend ?? 'face_mesh',
     onBlink: handleBlink,
     onBlinkPattern: handleBlinkPattern,
@@ -598,6 +584,8 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   }, [useContextPath, visionCtx, handleBlink, handleBlinkPattern, handleLeftWink, handleRightWink]);
 
   const gestureCooldownRef = useRef<Record<string, number>>({});
+  const lastVisionHandEventRef = useRef(0);
+  const lastVisionCommandEventRef = useRef(0);
   const smileBaselineRef = useRef<number | null>(null);
   const cornerBaselineRef = useRef<{ leftY: number; rightY: number } | null>(null);
   const browBaselineRef = useRef<{ left: number; right: number } | null>(null);
@@ -627,38 +615,41 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     };
   }, []);
 
-  // Load gesture thresholds saved during calibration
+  // Load gesture thresholds from unified calibration profile (fallback to legacy key once).
   useEffect(() => {
+    if (calibration.gestureThresholds && Object.keys(calibration.gestureThresholds).length > 0) {
+      savedGestureThresholds.current = calibration.gestureThresholds;
+      return;
+    }
     try {
       const saved = localStorage.getItem('app_gesture_thresholds');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          savedGestureThresholds.current = parsed;
-        }
+      if (!saved) return;
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        savedGestureThresholds.current = parsed;
       }
     } catch {
       // ignore
     }
+  }, [calibration.gestureThresholds]);
+
+  const persistCalibration = useCallback((data: CalibrationData) => {
+    const normalized = normalizeVisionCalibration(data);
+    setCalibration(normalized);
+    saveCalibrationData(normalized);
   }, []);
 
   /** Merge and persist gesture thresholds from calibration flows (FacialExpressionScanning, etc.) */
   const mergeGestureThresholds = useCallback((partial: Record<string, number>) => {
-    try {
-      const existing = localStorage.getItem('app_gesture_thresholds');
-      const current = existing ? { ...JSON.parse(existing) } : {};
-      Object.assign(current, partial);
-      localStorage.setItem('app_gesture_thresholds', JSON.stringify(current));
-      savedGestureThresholds.current = current;
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const persistCalibration = useCallback((data: CalibrationData) => {
-    setCalibration(data);
-    saveCalibrationData(data);
-  }, []);
+    const current = {
+      ...(calibration.gestureThresholds ?? {}),
+      ...savedGestureThresholds.current,
+      ...partial,
+    };
+    savedGestureThresholds.current = current;
+    const merged = mergeVisionCalibration(calibration, { gestureThresholds: current });
+    persistCalibration(merged);
+  }, [calibration, persistCalibration]);
 
   // Load calibration from profile when signed in
   useEffect(() => {
@@ -681,8 +672,7 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
       const candidate = remoteAt >= localAt ? remote : local;
 
       if (candidate) {
-        const merged: CalibrationData = { ...DEFAULT_CALIBRATION, ...candidate };
-        persistCalibration(merged);
+        persistCalibration(candidate);
       }
 
       remoteLoadedRef.current = true;
@@ -855,6 +845,29 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     }
   }, [enabled, settings.enabled, calibration.slowBlinkMinMs, calibration.slowBlinkMaxMs, vision.landmarks, vision.faceBox, vision.eyeOpenness, vision.headYaw]);
 
+  useEffect(() => {
+    if (!enabled || !settings.enabled) return;
+    const eventTs = vision.lastHandGestureTime ?? 0;
+    if (!eventTs || eventTs <= lastVisionHandEventRef.current) return;
+    lastVisionHandEventRef.current = eventTs;
+
+    if (vision.handGesture === 'pinch') dispatchGestureTrigger('handPinch');
+    if (vision.handGesture === 'point') dispatchGestureTrigger('handPoint');
+    if (vision.handGesture === 'openPalm') dispatchGestureTrigger('handOpenPalm');
+  }, [enabled, settings.enabled, vision.handGesture, vision.lastHandGestureTime, dispatchGestureTrigger]);
+
+  useEffect(() => {
+    if (!enabled || !settings.enabled) return;
+    const eventTs = vision.lastCommandTime ?? 0;
+    if (!eventTs || eventTs <= lastVisionCommandEventRef.current) return;
+    lastVisionCommandEventRef.current = eventTs;
+
+    if (vision.commandIntent === 'select') dispatchGestureTrigger('handPinch');
+    if (vision.commandIntent === 'confirm') dispatchGestureTrigger('headNod');
+    if (vision.commandIntent === 'next') dispatchGestureTrigger('faceTurnRight');
+    if (vision.commandIntent === 'previous') dispatchGestureTrigger('faceTurnLeft');
+  }, [enabled, settings.enabled, vision.commandIntent, vision.lastCommandTime, dispatchGestureTrigger]);
+
   // Gaze is now provided by Vision Engine (landmark-based).
 
   const contextReleaseRef = useRef<(() => void) | null>(null);
@@ -889,6 +902,13 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
                 calibratedGazePosition: calibrated,
                 headYaw: Math.sin(t * 0.7) * 4,
                 headPitch: Math.cos(t * 0.6) * 3,
+                handCount: 1,
+                handGesture: 'none',
+                handGestureConfidence: 0,
+                commandIntent: 'none',
+                commandConfidence: 0,
+                livenessScore: 0.78,
+                livenessStable: true,
                 needsUserGesture: false,
                 source: 'demo',
               },
@@ -1041,6 +1061,15 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
             calibratedGazePosition,
             headYaw: vision.headYaw,
             headPitch: vision.headPitch,
+            handCount: vision.handCount,
+            handGesture: vision.handGesture,
+            handGestureConfidence: vision.handGestureConfidence,
+            lastHandGestureTime: vision.lastHandGestureTime,
+            commandIntent: vision.commandIntent,
+            commandConfidence: vision.commandConfidence,
+            lastCommandTime: vision.lastCommandTime,
+            livenessScore: vision.livenessScore,
+            livenessStable: vision.livenessStable,
             timestamp: Date.now(),
           },
         })
@@ -1051,7 +1080,27 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
 
     if (!vision.gazePosition) return;
     processGazePosition(vision.gazePosition.x, vision.gazePosition.y);
-  }, [vision.gazePosition, vision.hasFace, vision.eyeEAR, vision.eyeOpenness, vision.headYaw, vision.headPitch, enabled, settings.enabled, calibration, processGazePosition]);
+  }, [
+    vision.gazePosition,
+    vision.hasFace,
+    vision.eyeEAR,
+    vision.eyeOpenness,
+    vision.headYaw,
+    vision.headPitch,
+    vision.handCount,
+    vision.handGesture,
+    vision.handGestureConfidence,
+    vision.lastHandGestureTime,
+    vision.commandIntent,
+    vision.commandConfidence,
+    vision.lastCommandTime,
+    vision.livenessScore,
+    vision.livenessStable,
+    enabled,
+    settings.enabled,
+    calibration,
+    processGazePosition,
+  ]);
 
   useEffect(() => {
     if (!enabled || !settings.enabled) return;
@@ -1294,10 +1343,10 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
   }, []);
 
   const resetCalibration = useCallback(() => {
-    persistCalibration(DEFAULT_CALIBRATION);
+    persistCalibration(getDefaultVisionCalibration(calibration.deviceClass));
     autoCalibrationHistoryRef.current = [];
     setState(prev => ({ ...prev, lastAction: 'Calibration reset' }));
-  }, [persistCalibration]);
+  }, [calibration.deviceClass, persistCalibration]);
 
   // Toggle auto-calibration
   const toggleAutoCalibration = useCallback(() => {
@@ -1436,8 +1485,14 @@ export function useBlinkRemoteControl(options: UseBlinkRemoteControlOptions = {}
     settings,
     gazeCommands,
     calibration,
+    visionHasFace: vision.hasFace,
     eyeOpenness: vision.eyeOpenness,
     blinkCount: vision.blinkCount,
+    livenessScore: vision.livenessScore,
+    livenessStable: vision.livenessStable,
+    handGesture: vision.handGesture,
+    handGestureConfidence: vision.handGestureConfidence,
+    commandIntent: vision.commandIntent,
     currentDirection,
     normalizedPosition,
     calibrationTargets: CALIBRATION_TARGETS,

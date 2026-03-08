@@ -24,6 +24,9 @@ export interface VisionFaceBox {
   h: number;
 }
 
+export type VisionHandGesture = 'none' | 'pinch' | 'point' | 'openPalm' | 'closedFist';
+export type VisionCommandIntent = 'none' | 'select' | 'confirm' | 'next' | 'previous';
+
 export interface VisionState {
   isRunning: boolean;
   hasFace: boolean;
@@ -40,6 +43,16 @@ export interface VisionState {
   baselineReady: boolean;
   headYaw: number; // degrees, negative = left, positive = right
   headPitch: number; // degrees, negative = up, positive = down
+  handCount: number;
+  handDetected: boolean;
+  handGesture: VisionHandGesture;
+  handGestureConfidence: number;
+  lastHandGestureTime: number | null;
+  commandIntent: VisionCommandIntent;
+  commandConfidence: number;
+  lastCommandTime: number | null;
+  livenessScore: number; // 0-1
+  livenessStable: boolean;
 }
 
 /** Blink detection tuning. Calibration mode uses looser thresholds and faster baseline. */
@@ -67,10 +80,20 @@ export interface BlinkDetectionConfig {
 
 export type VisionBackend = 'face_mesh' | 'face_landmarker';
 
+export interface VisionFusionConfig {
+  livenessMinScore?: number;
+  handPinchMinConfidence?: number;
+  handPointMinConfidence?: number;
+  handOpenPalmMinConfidence?: number;
+  headYawCommandThreshold?: number;
+  nodRangeThreshold?: number;
+}
+
 interface UseVisionEngineOptions {
   enabled?: boolean;
   videoRef: React.RefObject<HTMLVideoElement>;
   detectionInterval?: number;
+  handDetectionInterval?: number;
   minDetectionConfidence?: number;
   minTrackingConfidence?: number;
   patternTimeout?: number;
@@ -87,6 +110,10 @@ interface UseVisionEngineOptions {
   visionBackend?: VisionBackend;
   /** Run EAR/gaze/blink computation in a Web Worker to keep main thread free for video (default true). */
   useWorker?: boolean;
+  /** Detect hands on the same stream and emit gesture hints for remote control (default false). */
+  enableHandTracking?: boolean;
+  /** Optional calibration-aware thresholds for command fusion and liveness. */
+  fusionConfig?: VisionFusionConfig;
   onBlink?: () => void;
   onBlinkPattern?: (count: number) => void;
   onLeftWink?: () => void;
@@ -101,6 +128,8 @@ const sharedFaceMeshListeners = new Set<(results: any) => void>();
 let sharedFaceLandmarker: any | null = null;
 let sharedFaceLandmarkerPromise: Promise<any> | null = null;
 const sharedFaceLandmarkerListeners = new Set<(results: any) => void>();
+let sharedHandLandmarker: any | null = null;
+let sharedHandLandmarkerPromise: Promise<any> | null = null;
 let sharedDriverId: number | null = null;
 let sharedDriverPriority = false;
 let sharedDriverVisionBackend: VisionBackend = 'face_mesh';
@@ -112,8 +141,28 @@ let sharedSendFailCount = 0;
 
 const FACE_LANDMARKER_MODEL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const HAND_LANDMARKER_MODEL =
+  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const TASKS_VISION_WASM =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm';
+
+const HAND_GESTURE_EVENT_COOLDOWN_MS = 420;
+const COMMAND_COOLDOWN_MS: Record<VisionCommandIntent, number> = {
+  none: 0,
+  select: 650,
+  confirm: 900,
+  next: 700,
+  previous: 700,
+};
+
+const DEFAULT_FUSION_CONFIG: Required<VisionFusionConfig> = {
+  livenessMinScore: 0.55,
+  handPinchMinConfidence: 0.58,
+  handPointMinConfidence: 0.62,
+  handOpenPalmMinConfidence: 0.55,
+  headYawCommandThreshold: 18,
+  nodRangeThreshold: 12,
+};
 
 const ensureSharedFaceMesh = async () => {
   if (sharedFaceMesh) return sharedFaceMesh;
@@ -180,6 +229,38 @@ const ensureSharedFaceLandmarker = async (
   })();
 
   return sharedFaceLandmarkerPromise;
+};
+
+const ensureSharedHandLandmarker = async (
+  minDetectionConfidence: number,
+  minTrackingConfidence: number
+) => {
+  if (sharedHandLandmarker) return sharedHandLandmarker;
+  if (sharedHandLandmarkerPromise) return sharedHandLandmarkerPromise;
+
+  sharedHandLandmarkerPromise = (async () => {
+    try {
+      const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
+      const vision = await FilesetResolver.forVisionTasks(TASKS_VISION_WASM);
+      const handOptions: any = {
+        baseOptions: { modelAssetPath: HAND_LANDMARKER_MODEL },
+        runningMode: 'VIDEO',
+        numHands: 2,
+        minHandDetectionConfidence: minDetectionConfidence,
+        minHandPresenceConfidence: minTrackingConfidence,
+        minTrackingConfidence,
+      };
+      const landmarker = await HandLandmarker.createFromOptions(vision, handOptions);
+      sharedHandLandmarker = landmarker;
+      return landmarker;
+    } catch (err) {
+      sharedHandLandmarkerPromise = null;
+      sharedHandLandmarker = null;
+      throw err;
+    }
+  })();
+
+  return sharedHandLandmarkerPromise;
 };
 
 const LEFT_EYE: [number, number, number, number, number, number] = [33, 160, 158, 133, 153, 144];
@@ -250,6 +331,90 @@ const gazeFromEye = (
   } catch {
     return null;
   }
+};
+
+interface HandGestureCandidate {
+  gesture: VisionHandGesture;
+  confidence: number;
+}
+
+interface HandGestureSample extends HandGestureCandidate {
+  count: number;
+  observedAt: number;
+  eventAt: number | null;
+}
+
+const EMPTY_HAND_SAMPLE: HandGestureSample = {
+  count: 0,
+  gesture: 'none',
+  confidence: 0,
+  observedAt: 0,
+  eventAt: null,
+};
+
+const handDist = (a?: NormalizedLandmark, b?: NormalizedLandmark) =>
+  a && b ? Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0)) : Number.POSITIVE_INFINITY;
+
+const isExtended = (tip?: NormalizedLandmark, pip?: NormalizedLandmark, mcp?: NormalizedLandmark) =>
+  Boolean(tip && pip && mcp && tip.y < pip.y && pip.y < mcp.y);
+
+const isCurled = (tip?: NormalizedLandmark, pip?: NormalizedLandmark) =>
+  Boolean(tip && pip && tip.y > pip.y);
+
+const classifyPrimaryHandGesture = (
+  hands: NormalizedLandmark[][] | null | undefined
+): HandGestureCandidate => {
+  const hand = hands?.[0];
+  if (!hand || hand.length < 21) {
+    return { gesture: 'none', confidence: 0 };
+  }
+
+  const thumbTip = hand[4];
+  const indexTip = hand[8];
+  const middleTip = hand[12];
+  const ringTip = hand[16];
+  const pinkyTip = hand[20];
+  const indexPip = hand[6];
+  const middlePip = hand[10];
+  const ringPip = hand[14];
+  const pinkyPip = hand[18];
+  const indexMcp = hand[5];
+  const middleMcp = hand[9];
+  const ringMcp = hand[13];
+  const pinkyMcp = hand[17];
+
+  const pinchDistance = handDist(thumbTip, indexTip);
+  const pinchConfidence = clamp01((0.07 - pinchDistance) / 0.04);
+
+  const indexExtended = isExtended(indexTip, indexPip, indexMcp);
+  const middleExtended = isExtended(middleTip, middlePip, middleMcp);
+  const ringExtended = isExtended(ringTip, ringPip, ringMcp);
+  const pinkyExtended = isExtended(pinkyTip, pinkyPip, pinkyMcp);
+  const extendedCount = [indexExtended, middleExtended, ringExtended, pinkyExtended].filter(Boolean).length;
+
+  const indexCurled = isCurled(indexTip, indexPip);
+  const middleCurled = isCurled(middleTip, middlePip);
+  const ringCurled = isCurled(ringTip, ringPip);
+  const pinkyCurled = isCurled(pinkyTip, pinkyPip);
+
+  if (pinchConfidence >= 0.58) {
+    return { gesture: 'pinch', confidence: Math.max(0.58, pinchConfidence) };
+  }
+
+  if (extendedCount >= 4 && pinchDistance > 0.08) {
+    const openness = clamp01((extendedCount - 3) / 1);
+    return { gesture: 'openPalm', confidence: Math.max(0.55, openness * 0.85) };
+  }
+
+  if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+    return { gesture: 'point', confidence: 0.72 };
+  }
+
+  if (indexCurled && middleCurled && ringCurled && pinkyCurled) {
+    return { gesture: 'closedFist', confidence: 0.68 };
+  }
+
+  return { gesture: 'none', confidence: 0 };
 };
 
 // Head pose estimation: approximate yaw/pitch/roll from 2D landmarks.
@@ -326,6 +491,7 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     enabled = false,
     videoRef,
     detectionInterval = 80,
+    handDetectionInterval = 120,
     minDetectionConfidence = 0.6,
     minTrackingConfidence = 0.6,
     patternTimeout = 600,
@@ -336,6 +502,8 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     driverPriority = false,
     visionBackend = 'face_mesh',
     useWorker = true,
+    enableHandTracking = false,
+    fusionConfig,
     blinkConfig: blinkConfigOpt,
     onBlink,
     onBlinkPattern,
@@ -367,19 +535,34 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     baselineReady: false,
     headYaw: 0,
     headPitch: 0,
+    handCount: 0,
+    handDetected: false,
+    handGesture: 'none',
+    handGestureConfidence: 0,
+    lastHandGestureTime: null,
+    commandIntent: 'none',
+    commandConfidence: 0,
+    lastCommandTime: null,
+    livenessScore: 0,
+    livenessStable: false,
   });
 
   const faceMeshRef = useRef<any>(null);
   const faceLandmarkerRef = useRef<any>(null);
+  const handLandmarkerRef = useRef<any>(null);
   const processingRef = useRef(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const instanceIdRef = useRef<number>(++sharedInstanceSeq);
   const enabledRef = useRef(enabled);
-  const optionsRef = useRef({ mirrorX, invertY, gazeScale, gazeSmoothing });
+  const optionsRef = useRef({ mirrorX, invertY, gazeScale, gazeSmoothing, handDetectionInterval, enableHandTracking });
   const patternTimeoutMsRef = useRef(patternTimeout);
   const driverPriorityRef = useRef(driverPriority);
   const visionBackendRef = useRef(visionBackend);
   const blinkConfigRef = useRef(blinkConfigResolved);
+  const fusionConfigRef = useRef<Required<VisionFusionConfig>>({
+    ...DEFAULT_FUSION_CONFIG,
+    ...(fusionConfig ?? {}),
+  });
 
   const baselineEarRef = useRef<number | null>(null);
   const baselineEarSamples = useRef<number[]>([]); // collect initial samples before setting baseline
@@ -409,6 +592,22 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
   const setStateRef = useRef(setState);
   setStateRef.current = setState;
   const lastWorkerStateTs = useRef(0);
+  const latestHandSampleRef = useRef<HandGestureSample>(EMPTY_HAND_SAMPLE);
+  const lastHandDetectionTsRef = useRef(0);
+  const lastHandGestureKindRef = useRef<VisionHandGesture>('none');
+  const lastHandGestureEventTsRef = useRef(0);
+  const consecutiveFaceFramesRef = useRef(0);
+  const lastFaceCenterRef = useRef<{ x: number; y: number } | null>(null);
+  const faceMotionHistoryRef = useRef<number[]>([]);
+  const blinkHistoryRef = useRef<number[]>([]);
+  const pitchHistoryRef = useRef<Array<{ t: number; v: number }>>([]);
+  const lastCommandTsByIntentRef = useRef<Record<VisionCommandIntent, number>>({
+    none: 0,
+    select: 0,
+    confirm: 0,
+    next: 0,
+    previous: 0,
+  });
 
   useEffect(() => {
     onBlinkRef.current = onBlink;
@@ -431,8 +630,8 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
   }, [enabled]);
 
   useEffect(() => {
-    optionsRef.current = { mirrorX, invertY, gazeScale, gazeSmoothing };
-  }, [mirrorX, invertY, gazeScale, gazeSmoothing]);
+    optionsRef.current = { mirrorX, invertY, gazeScale, gazeSmoothing, handDetectionInterval, enableHandTracking };
+  }, [mirrorX, invertY, gazeScale, gazeSmoothing, handDetectionInterval, enableHandTracking]);
 
   useEffect(() => {
     patternTimeoutMsRef.current = patternTimeout;
@@ -449,6 +648,197 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
   useEffect(() => {
     blinkConfigRef.current = blinkConfigResolved;
   }, [blinkConfigResolved]);
+
+  useEffect(() => {
+    fusionConfigRef.current = {
+      ...DEFAULT_FUSION_CONFIG,
+      ...(fusionConfig ?? {}),
+    };
+  }, [fusionConfig]);
+
+  const getRecentHandSample = useCallback((now: number): HandGestureSample => {
+    const sample = latestHandSampleRef.current;
+    if (!sample || now - sample.observedAt > 1200) {
+      return EMPTY_HAND_SAMPLE;
+    }
+    return sample;
+  }, []);
+
+  const noteBlinkForLiveness = useCallback((ts: number) => {
+    blinkHistoryRef.current.push(ts);
+    blinkHistoryRef.current = blinkHistoryRef.current.filter((t) => ts - t < 30000);
+  }, []);
+
+  const updateLivenessState = useCallback(
+    (hasFace: boolean, faceCenter: { x: number; y: number } | null, now: number) => {
+      if (hasFace) {
+        consecutiveFaceFramesRef.current += 1;
+        if (faceCenter && lastFaceCenterRef.current) {
+          faceMotionHistoryRef.current.push(
+            Math.hypot(faceCenter.x - lastFaceCenterRef.current.x, faceCenter.y - lastFaceCenterRef.current.y)
+          );
+          if (faceMotionHistoryRef.current.length > 40) {
+            faceMotionHistoryRef.current.shift();
+          }
+        }
+        if (faceCenter) {
+          lastFaceCenterRef.current = faceCenter;
+        }
+      } else {
+        consecutiveFaceFramesRef.current = 0;
+        lastFaceCenterRef.current = null;
+        if (faceMotionHistoryRef.current.length > 12) {
+          faceMotionHistoryRef.current = faceMotionHistoryRef.current.slice(-12);
+        }
+      }
+
+      blinkHistoryRef.current = blinkHistoryRef.current.filter((t) => now - t < 30000);
+      const motionAvg =
+        faceMotionHistoryRef.current.length > 0
+          ? faceMotionHistoryRef.current.reduce((sum, motion) => sum + motion, 0) / faceMotionHistoryRef.current.length
+          : 0;
+      const motionScore = clamp01((motionAvg - 0.0002) / 0.0028);
+      const continuityScore = clamp01(consecutiveFaceFramesRef.current / 14);
+      const blinkRatePerMinute = blinkHistoryRef.current.length * 2;
+      const blinkScore =
+        blinkRatePerMinute === 0 ? 0.2 : blinkRatePerMinute < 2 ? 0.45 : blinkRatePerMinute <= 45 ? 1 : 0.6;
+      const livenessScore = hasFace
+        ? clamp01(continuityScore * 0.45 + motionScore * 0.35 + blinkScore * 0.2)
+        : 0;
+      const livenessMin = fusionConfigRef.current.livenessMinScore;
+      return {
+        livenessScore,
+        livenessStable: hasFace && livenessScore >= livenessMin,
+      };
+    },
+    []
+  );
+
+  const maybeEmitCommandIntent = useCallback(
+    (
+      now: number,
+      headYaw: number,
+      headPitch: number,
+      handSample: HandGestureSample,
+      livenessStable: boolean
+    ): { intent: VisionCommandIntent; confidence: number; timestamp: number | null } => {
+      pitchHistoryRef.current.push({ t: now, v: headPitch });
+      pitchHistoryRef.current = pitchHistoryRef.current.filter((entry) => now - entry.t <= 650);
+
+      if (!livenessStable) {
+        return { intent: 'none', confidence: 0, timestamp: null };
+      }
+
+      const cfg = fusionConfigRef.current;
+      let candidateIntent: VisionCommandIntent = 'none';
+      let candidateConfidence = 0;
+
+      if (handSample.gesture === 'pinch' && handSample.confidence >= cfg.handPinchMinConfidence) {
+        candidateIntent = 'select';
+        candidateConfidence = handSample.confidence;
+      } else if (
+        (handSample.gesture === 'point' && handSample.confidence >= cfg.handPointMinConfidence) ||
+        (handSample.gesture === 'openPalm' && handSample.confidence >= cfg.handOpenPalmMinConfidence)
+      ) {
+        candidateIntent = 'confirm';
+        candidateConfidence = handSample.confidence;
+      } else {
+        const pitchValues = pitchHistoryRef.current.map((entry) => entry.v);
+        if (pitchValues.length >= 3) {
+          const maxPitch = Math.max(...pitchValues);
+          const minPitch = Math.min(...pitchValues);
+          const nodRange = maxPitch - minPitch;
+          if (nodRange > cfg.nodRangeThreshold) {
+            candidateIntent = 'confirm';
+            candidateConfidence = clamp01(0.58 + (nodRange - cfg.nodRangeThreshold) / 16);
+          }
+        }
+        if (candidateIntent === 'none') {
+          if (headYaw >= cfg.headYawCommandThreshold) {
+            candidateIntent = 'next';
+            candidateConfidence = clamp01(0.55 + (Math.abs(headYaw) - cfg.headYawCommandThreshold) / 20);
+          } else if (headYaw <= -cfg.headYawCommandThreshold) {
+            candidateIntent = 'previous';
+            candidateConfidence = clamp01(0.55 + (Math.abs(headYaw) - cfg.headYawCommandThreshold) / 20);
+          }
+        }
+      }
+
+      if (candidateIntent === 'none') {
+        return { intent: 'none', confidence: 0, timestamp: null };
+      }
+
+      const lastTs = lastCommandTsByIntentRef.current[candidateIntent] ?? 0;
+      if (now - lastTs < COMMAND_COOLDOWN_MS[candidateIntent]) {
+        return { intent: 'none', confidence: 0, timestamp: null };
+      }
+      lastCommandTsByIntentRef.current[candidateIntent] = now;
+      return { intent: candidateIntent, confidence: candidateConfidence, timestamp: now };
+    },
+    []
+  );
+
+  const applySignalFusion = useCallback(
+    (input: {
+      now: number;
+      hasFace: boolean;
+      faceBox: VisionFaceBox | null;
+      headYaw: number;
+      headPitch: number;
+    }) => {
+      const hand = getRecentHandSample(input.now);
+      const faceCenter = input.faceBox
+        ? { x: input.faceBox.x + input.faceBox.w / 2, y: input.faceBox.y + input.faceBox.h / 2 }
+        : null;
+      const liveness = updateLivenessState(input.hasFace, faceCenter, input.now);
+      const command = maybeEmitCommandIntent(
+        input.now,
+        input.headYaw,
+        input.headPitch,
+        hand,
+        liveness.livenessStable
+      );
+      return { hand, liveness, command };
+    },
+    [getRecentHandSample, maybeEmitCommandIntent, updateLivenessState]
+  );
+
+  const runHandDetection = useCallback((video: HTMLVideoElement, timestamp: number) => {
+    const detector = handLandmarkerRef.current;
+    if (!detector) return;
+    try {
+      const result = detector.detectForVideo(video, timestamp);
+      const hands = (result?.landmarks ?? []) as NormalizedLandmark[][];
+      const candidate = classifyPrimaryHandGesture(hands);
+
+      let eventAt: number | null = null;
+      if (candidate.gesture !== 'none' && candidate.confidence >= 0.55) {
+        const changed = lastHandGestureKindRef.current !== candidate.gesture;
+        const cooledDown = timestamp - lastHandGestureEventTsRef.current >= HAND_GESTURE_EVENT_COOLDOWN_MS;
+        if (changed || cooledDown) {
+          eventAt = timestamp;
+          lastHandGestureEventTsRef.current = timestamp;
+        }
+        lastHandGestureKindRef.current = candidate.gesture;
+      } else if (candidate.gesture === 'none') {
+        lastHandGestureKindRef.current = 'none';
+      }
+
+      latestHandSampleRef.current = {
+        count: hands.length,
+        gesture: candidate.gesture,
+        confidence: candidate.confidence,
+        observedAt: timestamp,
+        eventAt,
+      };
+    } catch (err) {
+      logger.warn('[VisionEngine] Hand detection failed:', err);
+      latestHandSampleRef.current = {
+        ...EMPTY_HAND_SAMPLE,
+        observedAt: timestamp,
+      };
+    }
+  }, []);
 
   // Create vision sample worker so gaze/EAR/blink run off main thread (keeps video smooth).
   useEffect(() => {
@@ -483,6 +873,7 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
         const now = Date.now();
         if (now - lastBlinkTimeRef.current > cfg.blinkCooldownMs) {
           lastBlinkTimeRef.current = now;
+          noteBlinkForLiveness(now);
           blinkPatternRef.current.count += 1;
           blinkPatternRef.current.timestamp = now;
           onBlinkRef.current?.();
@@ -506,6 +897,13 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
       const now = Date.now();
       if (now - lastWorkerStateTs.current < VISION_STATE_UPDATE_THROTTLE_MS) return;
       lastWorkerStateTs.current = now;
+      const fused = applySignalFusion({
+        now,
+        hasFace: true,
+        faceBox: out.faceBox,
+        headYaw: out.headYaw,
+        headPitch: out.headPitch,
+      });
       setStateRef.current((prev) => ({
         ...prev,
         hasFace: true,
@@ -519,6 +917,16 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
         baselineReady: out.baselineReady,
         headYaw: out.headYaw,
         headPitch: out.headPitch,
+        handCount: fused.hand.count,
+        handDetected: fused.hand.count > 0,
+        handGesture: fused.hand.gesture,
+        handGestureConfidence: fused.hand.confidence,
+        lastHandGestureTime: fused.hand.eventAt ?? prev.lastHandGestureTime,
+        commandIntent: fused.command.intent !== 'none' ? fused.command.intent : prev.commandIntent,
+        commandConfidence: fused.command.intent !== 'none' ? fused.command.confidence : prev.commandConfidence,
+        lastCommandTime: fused.command.timestamp ?? prev.lastCommandTime,
+        livenessScore: fused.liveness.livenessScore,
+        livenessStable: fused.liveness.livenessStable,
       }));
     };
     worker.addEventListener('message', onMessage);
@@ -527,13 +935,16 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
       worker.terminate();
       workerRef.current = null;
     };
-  }, [enabled, useWorker]);
+  }, [applySignalFusion, enabled, noteBlinkForLiveness, useWorker]);
 
   const handleResults = useCallback((results: any) => {
     if (!enabledRef.current) return;
 
     const landmarks = results?.multiFaceLandmarks?.[0] as NormalizedLandmark[] | undefined;
     if (!landmarks || landmarks.length < 468) {
+      const now = Date.now();
+      const hand = getRecentHandSample(now);
+      const liveness = updateLivenessState(false, null, now);
       noFaceFramesRef.current += 1;
       if (noFaceFramesRef.current > 15) {
         baselineEarRef.current = null;
@@ -561,6 +972,13 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
         baselineReady: false,
         headYaw: 0,
         headPitch: 0,
+        handCount: hand.count,
+        handDetected: hand.count > 0,
+        handGesture: hand.gesture,
+        handGestureConfidence: hand.confidence,
+        lastHandGestureTime: hand.eventAt ?? prev.lastHandGestureTime,
+        livenessScore: liveness.livenessScore,
+        livenessStable: liveness.livenessStable,
       }));
       return;
     }
@@ -733,6 +1151,7 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     if (blinked) {
       if (now - lastBlinkTimeRef.current > cfg.blinkCooldownMs) {
         lastBlinkTimeRef.current = now;
+        noteBlinkForLiveness(now);
 
         blinkPatternRef.current.count += 1;
         blinkPatternRef.current.timestamp = now;
@@ -787,6 +1206,14 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
       gazeEmaRef.current = null;
     }
 
+    const fused = applySignalFusion({
+      now,
+      hasFace: true,
+      faceBox,
+      headYaw: headPose.yaw,
+      headPitch: headPose.pitch,
+    });
+
     setState((prev) => ({
       ...prev,
       hasFace: true,
@@ -800,12 +1227,22 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
       baselineReady: baselineEarRef.current != null,
       headYaw: headPose.yaw,
       headPitch: headPose.pitch,
+      handCount: fused.hand.count,
+      handDetected: fused.hand.count > 0,
+      handGesture: fused.hand.gesture,
+      handGestureConfidence: fused.hand.confidence,
+      lastHandGestureTime: fused.hand.eventAt ?? prev.lastHandGestureTime,
+      commandIntent: fused.command.intent !== 'none' ? fused.command.intent : prev.commandIntent,
+      commandConfidence: fused.command.intent !== 'none' ? fused.command.confidence : prev.commandConfidence,
+      lastCommandTime: fused.command.timestamp ?? prev.lastCommandTime,
+      livenessScore: fused.liveness.livenessScore,
+      livenessStable: fused.liveness.livenessStable,
     }));
     } catch (err) {
       // One bad frame (e.g. malformed landmarks on some devices) should not crash the app
       logger.warn('[VisionEngine] handleResults error:', err);
     }
-  }, []);
+  }, [applySignalFusion, getRecentHandSample, noteBlinkForLiveness, updateLivenessState]);
 
   const ensureFaceMesh = useCallback(async () => {
     if (faceMeshRef.current) return faceMeshRef.current;
@@ -838,6 +1275,14 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     return landmarker;
   }, [minDetectionConfidence, minTrackingConfidence]);
 
+  const ensureHandLandmarker = useCallback(async () => {
+    if (handLandmarkerRef.current) return handLandmarkerRef.current;
+
+    const landmarker = await ensureSharedHandLandmarker(minDetectionConfidence, minTrackingConfidence);
+    handLandmarkerRef.current = landmarker;
+    return landmarker;
+  }, [minDetectionConfidence, minTrackingConfidence]);
+
   useEffect(() => {
     const listeners = visionBackend === 'face_landmarker' ? sharedFaceLandmarkerListeners : sharedFaceMeshListeners;
     listeners.add(handleResults);
@@ -860,6 +1305,13 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
         await ensureFaceLandmarker();
       } else {
         await ensureFaceMesh();
+      }
+      if (optionsRef.current.enableHandTracking) {
+        try {
+          await ensureHandLandmarker();
+        } catch (err) {
+          logger.warn('[VisionEngine] Failed to initialize hand landmarker:', err);
+        }
       }
     } catch (err) {
       logger.warn(`[VisionEngine] Failed to initialize ${backend}:`, err);
@@ -924,6 +1376,16 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
           await faceMeshRef.current?.send({ image: v });
           sharedSendFailCount = 0;
         }
+        const opts = optionsRef.current;
+        if (
+          opts.enableHandTracking &&
+          handLandmarkerRef.current &&
+          Date.now() - lastHandDetectionTsRef.current >= opts.handDetectionInterval
+        ) {
+          const ts = Date.now();
+          lastHandDetectionTsRef.current = ts;
+          runHandDetection(v, ts);
+        }
       } catch (err) {
         sharedSendFailCount += 1;
         if (sharedDriverVisionBackend === 'face_mesh' && sharedSendFailCount >= 5) {
@@ -951,7 +1413,7 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
         sharedDriverLastSendTs = Date.now();
       }
     }, detectionInterval);
-  }, [enabled, detectionInterval, ensureFaceMesh, ensureFaceLandmarker, videoRef]);
+  }, [enabled, detectionInterval, ensureFaceMesh, ensureFaceLandmarker, ensureHandLandmarker, runHandDetection, videoRef]);
 
   const stop = useCallback(() => {
     if (intervalRef.current) {
@@ -974,7 +1436,36 @@ export function useVisionEngine(options: UseVisionEngineOptions) {
     lastBlinkTimeRef.current = 0;
     noFaceFramesRef.current = 0;
     blinkPatternRef.current = { count: 0, timestamp: 0 };
-    setState((prev) => ({ ...prev, isRunning: false }));
+    latestHandSampleRef.current = EMPTY_HAND_SAMPLE;
+    lastHandDetectionTsRef.current = 0;
+    lastHandGestureKindRef.current = 'none';
+    lastHandGestureEventTsRef.current = 0;
+    consecutiveFaceFramesRef.current = 0;
+    lastFaceCenterRef.current = null;
+    faceMotionHistoryRef.current = [];
+    blinkHistoryRef.current = [];
+    pitchHistoryRef.current = [];
+    lastCommandTsByIntentRef.current = {
+      none: 0,
+      select: 0,
+      confirm: 0,
+      next: 0,
+      previous: 0,
+    };
+    setState((prev) => ({
+      ...prev,
+      isRunning: false,
+      handCount: 0,
+      handDetected: false,
+      handGesture: 'none',
+      handGestureConfidence: 0,
+      lastHandGestureTime: null,
+      commandIntent: 'none',
+      commandConfidence: 0,
+      lastCommandTime: null,
+      livenessScore: 0,
+      livenessStable: false,
+    }));
   }, []);
 
   useEffect(() => {

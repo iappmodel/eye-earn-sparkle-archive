@@ -11,6 +11,7 @@ import { loadRemoteControlSettings } from '@/hooks/useBlinkRemoteControl';
 import { useVisionEngine } from '@/hooks/useVisionEngine';
 import { useVision, USE_VISION_CONTEXT } from '@/contexts/VisionContext';
 import { getCameraRuntimeIssue, isDemoVisionSimulationEnabled } from '@/lib/demoRuntime';
+import { loadVisionCalibration } from '@/lib/visionCalibration/profile';
 import type { SkinToneFallbackResult } from '@/lib/skinToneFallback';
 import {
   createAttentionState,
@@ -188,6 +189,8 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
   presetIdRef.current = presetId;
   const requiredThresholdRef = useRef(requiredAttentionThreshold);
   requiredThresholdRef.current = requiredAttentionThreshold;
+  const [visionCalibration, setVisionCalibration] = useState(() => loadVisionCalibration());
+  const livenessMinScoreRef = useRef(visionCalibration.livenessMinScore);
 
   // Time-weighted attention ledger (stable across sampling rates)
   const attentionStateRef = useRef(createAttentionState(scoreSmoothing || 0.25));
@@ -241,6 +244,14 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
     gazeSmoothing: 0.25,
     visionBackend: rcSettings.visionBackend ?? 'face_mesh',
     blinkConfig: { calibrationMode: true },
+    fusionConfig: {
+      livenessMinScore: visionCalibration.livenessMinScore,
+      handPinchMinConfidence: visionCalibration.handPinchMinConfidence,
+      handPointMinConfidence: visionCalibration.handPointMinConfidence,
+      handOpenPalmMinConfidence: visionCalibration.handOpenPalmMinConfidence,
+      headYawCommandThreshold: visionCalibration.headYawCommandThreshold,
+      nodRangeThreshold: visionCalibration.nodRangeThreshold,
+    },
   });
   const wasAttentiveRef = useRef(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -281,6 +292,17 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
   useEffect(() => {
     onAttentionRestoredRef.current = onAttentionRestored;
   }, [onAttentionRestored]);
+
+  useEffect(() => {
+    const syncLivenessThreshold = () => {
+      const next = loadVisionCalibration();
+      livenessMinScoreRef.current = next.livenessMinScore;
+      setVisionCalibration(next);
+    };
+    syncLivenessThreshold();
+    window.addEventListener('visionCalibrationChanged', syncLivenessThreshold);
+    return () => window.removeEventListener('visionCalibrationChanged', syncLivenessThreshold);
+  }, []);
 
   // Track tab visibility
   const [isTabVisible, setIsTabVisible] = useState(true);
@@ -366,6 +388,8 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       calibratedGazePosition?: { x: number; y: number };
       headYaw?: number;
       headPitch?: number;
+      livenessScore?: number;
+      livenessStable?: boolean;
     }, source: AttentionSource, sourceConfidence: number, needsUserGesture = false) => {
       const cfg = getAttentionConfig(presetIdRef.current);
       const state = attentionStateRef.current;
@@ -389,8 +413,15 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
         return;
       }
 
+      const livenessMin = livenessMinScoreRef.current;
+      const livenessScore = typeof d.livenessScore === 'number' ? d.livenessScore : 1;
+      const livenessStable =
+        typeof d.livenessStable === 'boolean' ? d.livenessStable : livenessScore >= livenessMin;
+      const spoofRisk = d.hasFace && livenessScore < Math.max(0.2, livenessMin - 0.2);
+      const effectiveHasFace = spoofRisk ? false : d.hasFace;
+
       const sample: EngineAttentionSample = {
-        hasFace: d.hasFace,
+        hasFace: effectiveHasFace,
         eyeEAR: d.eyeEAR,
         gazePosition: d.gazePosition,
         calibratedGazePosition: d.calibratedGazePosition,
@@ -418,7 +449,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
         onAttentionLostRef.current?.();
       }
 
-      const facePresent = d.hasFace && isTabVisibleRef.current;
+      const facePresent = effectiveHasFace && isTabVisibleRef.current;
       const flags: AttentionFlag[] = [];
       if (!facePresent) flags.push('NO_FACE');
       if ((d.eyeEAR ?? 0) <= earThreshold) flags.push('EYES_CLOSED');
@@ -429,6 +460,7 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
         Math.abs(gazeForCheck.y - 0.5) < gazeForwardRange;
       if (!gazeForward) flags.push('LOOK_AWAY');
       if (Math.abs(d.headYaw ?? 0) >= maxYaw || Math.abs(d.headPitch ?? 0) >= maxPitch) flags.push('BAD_POSE');
+      if (d.hasFace && !spoofRisk && !livenessStable) flags.push('LOW_LIVENESS');
 
       sessionStatsRef.current.count++;
       sessionStatsRef.current.sum += uiScore100;
@@ -580,7 +612,15 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
       try {
         window.dispatchEvent(
           new CustomEvent('visionEngineSample', {
-            detail: { hasFace: true, eyeEAR: 0.26, needsUserGesture: false, source: 'demo', reason },
+            detail: {
+              hasFace: true,
+              eyeEAR: 0.26,
+              livenessScore: 0.76,
+              livenessStable: true,
+              needsUserGesture: false,
+              source: 'demo',
+              reason,
+            },
           })
         );
       } catch {
@@ -629,6 +669,8 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
             calibratedGazePosition: fromRc.calibratedGazePosition as { x: number; y: number } | undefined,
             headYaw: typeof fromRc.headYaw === 'number' ? fromRc.headYaw : undefined,
             headPitch: typeof fromRc.headPitch === 'number' ? fromRc.headPitch : undefined,
+            livenessScore: typeof fromRc.livenessScore === 'number' ? fromRc.livenessScore : undefined,
+            livenessStable: typeof fromRc.livenessStable === 'boolean' ? fromRc.livenessStable : undefined,
           },
           'vision',
           1,
@@ -646,6 +688,8 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
             gazePosition: vs.gazePosition ?? undefined,
             headYaw: vs.headYaw,
             headPitch: vs.headPitch,
+            livenessScore: vs.livenessScore,
+            livenessStable: vs.livenessStable,
           },
           'vision',
           1,
@@ -663,6 +707,8 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
             calibratedGazePosition: own.gazePosition ?? undefined,
             headYaw: own.headYaw,
             headPitch: own.headPitch,
+            livenessScore: own.livenessScore,
+            livenessStable: own.livenessStable,
           },
           'vision',
           1

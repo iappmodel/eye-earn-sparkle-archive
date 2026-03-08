@@ -12,6 +12,15 @@ export interface VisionStreamSample {
   gazePosition?: { x: number; y: number };
   headYaw?: number;
   headPitch?: number;
+  handCount?: number;
+  handGesture?: 'none' | 'pinch' | 'point' | 'openPalm' | 'closedFist';
+  handGestureConfidence?: number;
+  lastHandGestureTime?: number | null;
+  commandIntent?: 'none' | 'select' | 'confirm' | 'next' | 'previous';
+  commandConfidence?: number;
+  lastCommandTime?: number | null;
+  livenessScore?: number;
+  livenessStable?: boolean;
 }
 
 export interface VisionStreamHandle {

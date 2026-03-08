@@ -72,6 +72,10 @@ const triggerIcon = (trigger: GestureTrigger): string => {
     screenTap: '👆', screenDoubleTap: '👆👆',
     phoneTiltLeft: '📱←', phoneTiltRight: '📱→',
     phoneTiltForward: '📱↑', phoneTiltBack: '📱↓',
+    handPinch: '🤏',
+    handPoint: '☝️',
+    handOpenPalm: '🖐️',
+    headNod: '🙆',
   };
   return map[trigger] || '⚡';
 };

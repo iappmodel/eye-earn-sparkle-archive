@@ -1,14 +1,17 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { CalibrationData } from '@/hooks/useBlinkRemoteControl';
+import {
+  normalizeVisionCalibration,
+  type VisionCalibrationProfile,
+} from '@/lib/visionCalibration/profile';
 
 type CalibrationPayload = {
-  global?: CalibrationData;
-  devices?: Record<string, CalibrationData>;
+  global?: VisionCalibrationProfile;
+  devices?: Record<string, VisionCalibrationProfile>;
 };
 
-const isCalibrationData = (value: unknown): value is CalibrationData => {
+const isCalibrationData = (value: unknown): value is VisionCalibrationProfile => {
   if (!value || typeof value !== 'object') return false;
-  const v = value as CalibrationData;
+  const v = value as VisionCalibrationProfile;
   return (
     typeof v.offsetX === 'number' &&
     typeof v.offsetY === 'number' &&
@@ -20,22 +23,28 @@ const isCalibrationData = (value: unknown): value is CalibrationData => {
 
 const normalizePayload = (value: unknown): CalibrationPayload => {
   if (isCalibrationData(value)) {
-    return { global: value, devices: {} };
+    return { global: normalizeVisionCalibration(value), devices: {} };
   }
   if (!value || typeof value !== 'object') {
     return { devices: {} };
   }
-  const payload = value as CalibrationPayload;
+  const payload = value as { global?: unknown; devices?: Record<string, unknown> };
+  const devices: Record<string, VisionCalibrationProfile> = {};
+  if (payload.devices && typeof payload.devices === 'object') {
+    Object.entries(payload.devices).forEach(([deviceId, calibration]) => {
+      devices[deviceId] = normalizeVisionCalibration(calibration);
+    });
+  }
   return {
-    global: payload.global,
-    devices: payload.devices || {},
+    global: payload.global ? normalizeVisionCalibration(payload.global) : undefined,
+    devices,
   };
 };
 
 export const fetchProfileCalibration = async (
   userId: string,
   deviceId?: string | null
-): Promise<CalibrationData | null> => {
+): Promise<VisionCalibrationProfile | null> => {
   const { data, error } = await supabase
     .from('profiles')
     .select('calibration_data')
@@ -50,14 +59,14 @@ export const fetchProfileCalibration = async (
   const payload = normalizePayload(data?.calibration_data);
   // Per-device: prefer device-specific calibration when available, else fall back to global
   if (deviceId && payload.devices?.[deviceId] && isCalibrationData(payload.devices[deviceId])) {
-    return payload.devices[deviceId] as CalibrationData;
+    return payload.devices[deviceId] as VisionCalibrationProfile;
   }
-  return (payload.global ?? null) as CalibrationData | null;
+  return (payload.global ?? null) as VisionCalibrationProfile | null;
 };
 
 export const saveProfileCalibration = async (
   userId: string,
-  data: CalibrationData,
+  data: VisionCalibrationProfile,
   deviceId?: string | null
 ) => {
   const { data: current, error: readError } = await supabase
@@ -72,12 +81,13 @@ export const saveProfileCalibration = async (
   }
 
   const payload = normalizePayload(current?.calibration_data);
+  const normalized = normalizeVisionCalibration(data);
   if (deviceId) {
     payload.devices = payload.devices || {};
-    payload.devices[deviceId] = data;
-    if (!payload.global) payload.global = data;
+    payload.devices[deviceId] = normalized;
+    if (!payload.global) payload.global = normalized;
   } else {
-    payload.global = data;
+    payload.global = normalized;
   }
 
   const { error } = await supabase

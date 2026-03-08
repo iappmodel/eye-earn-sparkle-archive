@@ -132,13 +132,14 @@ export const ATTENTION_PRESETS: Record<AttentionPresetId, AttentionPreset> = {
 export const DEFAULT_ATTENTION_PRESET: AttentionPresetId = 'normal';
 
 /** Human-readable flags for attention state (aligned with useAttentionVerification). */
-export type AttentionFlag = 'NO_FACE' | 'EYES_CLOSED' | 'LOOK_AWAY' | 'BAD_POSE';
+export type AttentionFlag = 'NO_FACE' | 'EYES_CLOSED' | 'LOOK_AWAY' | 'BAD_POSE' | 'LOW_LIVENESS';
 
 export const ATTENTION_FLAG_LABELS: Record<AttentionFlag, string> = {
   NO_FACE: 'Face not detected',
   EYES_CLOSED: 'Eyes closed',
   LOOK_AWAY: 'Looking away',
   BAD_POSE: 'Head turned',
+  LOW_LIVENESS: 'Liveness check failed',
 };
 
 /** Default thresholds when not using a preset (same as "normal"). */

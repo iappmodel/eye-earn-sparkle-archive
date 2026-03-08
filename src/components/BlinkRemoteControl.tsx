@@ -62,6 +62,7 @@ import { fetchVoiceCalibration } from '@/services/voice.service';
 import type { VoiceCommandId } from '@/constants/voiceCommands';
 import { TargetEditor } from '@/components/TargetEditor';
 import { TargetSuggestions } from '@/components/TargetSuggestions';
+import { UnifiedVisionCalibrationWizard } from '@/components/vision/UnifiedVisionCalibrationWizard';
 
 interface BlinkRemoteControlProps {
   enabled: boolean;
@@ -252,6 +253,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [showComboGuide, setShowComboGuide] = useState(false);
   const [guideComboId, setGuideComboId] = useState<string | null>(null);
   const [showDebugOverlay, setShowDebugOverlay] = useState(false);
+  const [showUnifiedCalibration, setShowUnifiedCalibration] = useState(false);
   const [showBlinkCalibration, setShowBlinkCalibration] = useState(false);
   const [showEyeMovement, setShowEyeMovement] = useState(false);
   const [showFacialExpression, setShowFacialExpression] = useState(false);
@@ -429,12 +431,15 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     settings,
     gazeCommands,
     calibration,
+    visionHasFace,
     eyeOpenness,
     ghostButtons,
     currentDirection,
     isCameraActive,
     calibrationTargets,
     blinkCount,
+    livenessScore,
+    livenessStable,
     registerButton,
     unregisterButton,
     toggleActive,
@@ -479,6 +484,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const lastDirectionStepAtRef = useRef(0);
 
   const isCalibrationOpen =
+    showUnifiedCalibration ||
     showBlinkCalibration ||
     showEyeMovement ||
     showFacialExpression ||
@@ -1634,8 +1640,8 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                 </h4>
                 <p className="text-sm text-muted-foreground">
                   {calibration.isCalibrated 
-                    ? `Last calibrated: ${new Date(calibration.calibratedAt).toLocaleDateString()}`
-                    : 'Improve accuracy by calibrating to your eye position'
+                    ? `Last calibrated: ${new Date(calibration.calibratedAt).toLocaleDateString()} · Quality ${Math.round(calibration.profileQuality * 100)}%`
+                    : 'Run a single quick flow for gaze, gesture, and remote control calibration.'
                   }
                 </p>
                 <div className="flex gap-2">
@@ -1644,11 +1650,21 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                     size="sm"
                     onClick={() => {
                       setShowSettings(false);
-                      setShowBlinkCalibration(true);
+                      setShowUnifiedCalibration(true);
                     }}
                   >
                     <Target className="w-4 h-4 mr-2" />
-                    {calibration.isCalibrated ? 'Recalibrate' : 'Start Calibration'}
+                    {calibration.isCalibrated ? 'Quick Recalibrate' : 'Start Quick Calibration'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowSettings(false);
+                      setShowBlinkCalibration(true);
+                    }}
+                  >
+                    Advanced
                   </Button>
                   {calibration.isCalibrated && (
                     <Button
@@ -1748,6 +1764,25 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
           </Tabs>
         </SheetContent>
       </Sheet>
+
+      <UnifiedVisionCalibrationWizard
+        isOpen={showUnifiedCalibration}
+        onClose={() => setShowUnifiedCalibration(false)}
+        rawGazePosition={rawGazePosition}
+        hasFace={visionHasFace}
+        livenessScore={livenessScore}
+        livenessStable={livenessStable}
+        calibration={calibration}
+        onSave={(next) => {
+          persistCalibration(next);
+          setShowUnifiedCalibration(false);
+          haptics.success();
+        }}
+        onOpenAdvanced={() => {
+          setShowUnifiedCalibration(false);
+          setShowBlinkCalibration(true);
+        }}
+      />
 
       {/* Eye Blink Calibration - Step 1 */}
       <EyeBlinkCalibration

@@ -16,6 +16,7 @@ import { useVisionStream } from '@/contexts/VisionStreamContext';
 import { loadRemoteControlSettings } from '@/hooks/useBlinkRemoteControl';
 import { logger } from '@/lib/logger';
 import { analyzeSkinToneFrame } from '@/lib/skinToneFallback';
+import { loadVisionCalibration } from '@/lib/visionCalibration/profile';
 import type { VisionState } from '@/hooks/useVisionEngine';
 
 const VISION_FALLBACK_MS = 5000;
@@ -69,6 +70,7 @@ export function VisionProvider({ children }: VisionProviderProps) {
   const [isActive, setIsActive] = useState(false);
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
   const [settings, setSettings] = useState(loadRemoteControlSettings);
+  const [calibration, setCalibration] = useState(loadVisionCalibration);
   const [streamSample, setStreamSample] = useState<{
     hasFace: boolean;
     eyeEAR?: number;
@@ -76,6 +78,15 @@ export function VisionProvider({ children }: VisionProviderProps) {
     gazePosition?: { x: number; y: number };
     headYaw?: number;
     headPitch?: number;
+    handCount?: number;
+    handGesture?: VisionState['handGesture'];
+    handGestureConfidence?: number;
+    lastHandGestureTime?: number | null;
+    commandIntent?: VisionState['commandIntent'];
+    commandConfidence?: number;
+    lastCommandTime?: number | null;
+    livenessScore?: number;
+    livenessStable?: boolean;
   } | null>(null);
 
   const loadSettings = useCallback(() => {
@@ -105,6 +116,13 @@ export function VisionProvider({ children }: VisionProviderProps) {
     return () => window.removeEventListener('remoteControlSettingsChanged', handler);
   }, [loadSettings]);
 
+  useEffect(() => {
+    const syncCalibration = () => setCalibration(loadVisionCalibration());
+    syncCalibration();
+    window.addEventListener('visionCalibrationChanged', syncCalibration);
+    return () => window.removeEventListener('visionCalibrationChanged', syncCalibration);
+  }, []);
+
   // When VisionStreamContext is available, subscribe to it and sync state
   useEffect(() => {
     if (!visionStream) return;
@@ -116,6 +134,15 @@ export function VisionProvider({ children }: VisionProviderProps) {
         gazePosition: s.gazePosition,
         headYaw: s.headYaw,
         headPitch: s.headPitch,
+        handCount: s.handCount,
+        handGesture: s.handGesture,
+        handGestureConfidence: s.handGestureConfidence,
+        lastHandGestureTime: s.lastHandGestureTime,
+        commandIntent: s.commandIntent,
+        commandConfidence: s.commandConfidence,
+        lastCommandTime: s.lastCommandTime,
+        livenessScore: s.livenessScore,
+        livenessStable: s.livenessStable,
       });
     });
     return unsub;
@@ -235,6 +262,15 @@ export function VisionProvider({ children }: VisionProviderProps) {
     invertY: settings.invertY ?? true,
     gazeScale: settings.gazeReach ?? 1.6,
     gazeSmoothing: 0.25,
+    enableHandTracking: true,
+    fusionConfig: {
+      livenessMinScore: calibration.livenessMinScore,
+      handPinchMinConfidence: calibration.handPinchMinConfidence,
+      handPointMinConfidence: calibration.handPointMinConfidence,
+      handOpenPalmMinConfidence: calibration.handOpenPalmMinConfidence,
+      headYawCommandThreshold: calibration.headYawCommandThreshold,
+      nodRangeThreshold: calibration.nodRangeThreshold,
+    },
     visionBackend: settings.visionBackend ?? 'face_mesh',
     onBlink,
     onBlinkPattern,
@@ -352,6 +388,16 @@ export function VisionProvider({ children }: VisionProviderProps) {
         baselineReady: true,
         headYaw: streamSample.headYaw ?? 0,
         headPitch: streamSample.headPitch ?? 0,
+        handCount: streamSample.handCount ?? 0,
+        handDetected: (streamSample.handCount ?? 0) > 0,
+        handGesture: streamSample.handGesture ?? 'none',
+        handGestureConfidence: streamSample.handGestureConfidence ?? 0,
+        lastHandGestureTime: streamSample.lastHandGestureTime ?? null,
+        commandIntent: streamSample.commandIntent ?? 'none',
+        commandConfidence: streamSample.commandConfidence ?? 0,
+        lastCommandTime: streamSample.lastCommandTime ?? null,
+        livenessScore: streamSample.livenessScore ?? (streamSample.hasFace ? 0.65 : 0),
+        livenessStable: streamSample.livenessStable ?? false,
       };
     }
     if (fallbackState) {
@@ -362,6 +408,16 @@ export function VisionProvider({ children }: VisionProviderProps) {
         gazePosition: null,
         headYaw: 0,
         headPitch: 0,
+        handCount: 0,
+        handDetected: false,
+        handGesture: 'none',
+        handGestureConfidence: 0,
+        lastHandGestureTime: null,
+        commandIntent: 'none',
+        commandConfidence: 0,
+        lastCommandTime: null,
+        livenessScore: fallbackState.hasFace ? 0.4 : 0,
+        livenessStable: false,
       };
     }
     return vision;

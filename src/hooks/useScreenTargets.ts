@@ -27,7 +27,11 @@ export type SimpleGestureTrigger =
   | 'phoneTiltLeft'
   | 'phoneTiltRight'
   | 'phoneTiltForward'
-  | 'phoneTiltBack';
+  | 'phoneTiltBack'
+  | 'handPinch'
+  | 'handPoint'
+  | 'handOpenPalm'
+  | 'headNod';
 
 export type GestureTrigger =
   | SimpleGestureTrigger
@@ -143,6 +147,10 @@ export const TRIGGER_LABELS: Record<SimpleGestureTrigger, string> = {
   phoneTiltRight: 'Tilt Phone Right',
   phoneTiltForward: 'Tilt Phone Forward',
   phoneTiltBack: 'Tilt Phone Back',
+  handPinch: 'Hand Pinch',
+  handPoint: 'Hand Point',
+  handOpenPalm: 'Open Palm',
+  headNod: 'Head Nod',
 };
 
 export const TRIGGER_CATEGORIES: { label: string; triggers: SimpleGestureTrigger[] }[] = [
@@ -157,6 +165,10 @@ export const TRIGGER_CATEGORIES: { label: string; triggers: SimpleGestureTrigger
   {
     label: 'Touch & Motion',
     triggers: ['screenTap', 'screenDoubleTap', 'phoneTiltLeft', 'phoneTiltRight', 'phoneTiltForward', 'phoneTiltBack'],
+  },
+  {
+    label: 'Hands & Head',
+    triggers: ['handPinch', 'handPoint', 'handOpenPalm', 'headNod'],
   },
 ];
 

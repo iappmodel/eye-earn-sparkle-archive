@@ -145,7 +145,11 @@ export const TargetOverlay: React.FC<TargetOverlayProps> = ({
       trigger === 'phoneTiltLeft' ||
       trigger === 'phoneTiltRight' ||
       trigger === 'phoneTiltForward' ||
-      trigger === 'phoneTiltBack'
+      trigger === 'phoneTiltBack' ||
+      trigger === 'handPinch' ||
+      trigger === 'handPoint' ||
+      trigger === 'handOpenPalm' ||
+      trigger === 'headNod'
     );
   };
 

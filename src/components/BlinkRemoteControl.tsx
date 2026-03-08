@@ -77,6 +77,8 @@ interface BlinkRemoteControlProps {
   className?: string;
 }
 
+type TobiiWsBridgeStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'disconnected';
+
 const BLINK_ACTIONS: { value: BlinkAction; label: string; icon: React.ReactNode }[] = [
   { value: 'click', label: 'Tap', icon: <MousePointer className="w-4 h-4" /> },
   { value: 'longPress', label: 'Long Press', icon: <Hand className="w-4 h-4" /> },
@@ -289,6 +291,10 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
   const [slowBlinkResult, setSlowBlinkResult] = useState<SlowBlinkResult | null>(null);
   const [voiceCalibrationResult, setVoiceCalibrationResult] = useState<VoiceCalibrationResult | null>(null);
   const [voiceProfile, setVoiceProfile] = useState<Awaited<ReturnType<typeof fetchVoiceCalibration>>>(null);
+  const [tobiiWsStatus, setTobiiWsStatus] = useState<{
+    status: TobiiWsBridgeStatus;
+    message: string;
+  }>({ status: 'idle', message: 'Bridge idle' });
   
   // Tutorial hook
   const {
@@ -508,6 +514,29 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
     sensitivity: settings.tiltSensitivity,
     onTilt: () => haptics.light(),
   });
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { status?: TobiiWsBridgeStatus; message?: string }
+        | undefined;
+      const status = detail?.status ?? 'idle';
+      const message = detail?.message ?? 'Bridge idle';
+      setTobiiWsStatus({ status, message });
+    };
+    window.addEventListener('tobiiWsBridgeStatus', handler as EventListener);
+    return () => window.removeEventListener('tobiiWsBridgeStatus', handler as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (settings.gazeBackend !== 'tobii_ws') {
+      setTobiiWsStatus({ status: 'idle', message: 'Select Tobii WS backend to connect' });
+      return;
+    }
+    if (settings.enabled) {
+      setTobiiWsStatus({ status: 'idle', message: 'Remote Control camera is active' });
+    }
+  }, [settings.gazeBackend, settings.enabled]);
 
   const lastDirectionStepAtRef = useRef(0);
 
@@ -1504,7 +1533,7 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
               {/* Gaze backend (for eye-tracking when RC is off) */}
               <div className="space-y-2 p-4 rounded-lg border border-border">
                 <h4 className="font-medium">Gaze Backend</h4>
-                <p className="text-sm text-muted-foreground">Gaze source for attention tracking. MediaPipe is default. GazeCloud (higher accuracy) requires domain registration. WebGazer self-calibrates from clicks.</p>
+                <p className="text-sm text-muted-foreground">Gaze source for attention tracking. MediaPipe is default. GazeCloud (higher accuracy) requires domain registration. WebGazer self-calibrates from clicks. Tobii WS reads gaze from a local WebSocket bridge.</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant={(settings.gazeBackend ?? 'mediapipe') === 'mediapipe' ? 'default' : 'outline'}
@@ -1527,7 +1556,53 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
                   >
                     WebGazer
                   </Button>
+                  <Button
+                    variant={settings.gazeBackend === 'tobii_ws' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => updateSettings({ gazeBackend: 'tobii_ws' })}
+                  >
+                    Tobii WS
+                  </Button>
                 </div>
+                {settings.gazeBackend === 'tobii_ws' && (
+                  <div className="space-y-1 pt-1">
+                    <label className="text-xs text-muted-foreground">WebSocket URL</label>
+                    <input
+                      type="text"
+                      value={settings.tobiiWsUrl ?? 'ws://127.0.0.1:8765'}
+                      onChange={(e) => updateSettings({ tobiiWsUrl: e.target.value })}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      placeholder="ws://127.0.0.1:8765"
+                    />
+                    <div className="pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTobiiWsStatus({ status: 'connecting', message: 'Manual reconnect requested' });
+                          window.dispatchEvent(new Event('tobiiWsBridgeTest'));
+                        }}
+                      >
+                        Test WS
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <span
+                        className={cn(
+                          'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+                          tobiiWsStatus.status === 'connected' && 'bg-emerald-500/15 text-emerald-500',
+                          tobiiWsStatus.status === 'connecting' && 'bg-amber-500/15 text-amber-500',
+                          tobiiWsStatus.status === 'error' && 'bg-red-500/15 text-red-500',
+                          (tobiiWsStatus.status === 'idle' || tobiiWsStatus.status === 'disconnected') && 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {tobiiWsStatus.status.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate">{tobiiWsStatus.message}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Run a local Tobii bridge that streams normalized gaze coordinates.</p>
+                  </div>
+                )}
               </div>
 
               {/* Extended calibration (16 points) */}

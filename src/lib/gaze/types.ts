@@ -12,12 +12,12 @@ export interface GazeSample {
   headPitch?: number;
   timestamp: number;
   /** Provider identifier for debugging */
-  source: 'mediapipe' | 'gazecloud' | 'webgazer';
+  source: 'mediapipe' | 'gazecloud' | 'webgazer' | 'tobii_ws';
   /** GazeCloud: 0=valid, -1=face lost, 1=uncalibrated */
   state?: number;
 }
 
-export type GazeBackend = 'mediapipe' | 'gazecloud' | 'webgazer';
+export type GazeBackend = 'mediapipe' | 'gazecloud' | 'webgazer' | 'tobii_ws';
 
 export interface GazeProvider {
   readonly backend: GazeBackend;

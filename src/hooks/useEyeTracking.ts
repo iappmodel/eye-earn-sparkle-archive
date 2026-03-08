@@ -229,8 +229,8 @@ export function useEyeTracking(options: UseEyeTrackingOptions = {}) {
   const visionCtx = useVision();
   const rcSettings = loadRemoteControlSettings();
   const gazeBackend = rcSettings.gazeBackend ?? 'mediapipe';
-  const useAlternateGaze = gazeBackend === 'gazecloud' || gazeBackend === 'webgazer';
-  // When gazeBackend is gazecloud/webgazer, GazeBackendBridge emits visionEngineSample; no own camera
+  const useAlternateGaze = gazeBackend === 'gazecloud' || gazeBackend === 'webgazer' || gazeBackend === 'tobii_ws';
+  // When gazeBackend is gazecloud/webgazer/tobii_ws, GazeBackendBridge emits visionEngineSample; no own camera
   const useContextPath = !useAlternateGaze && USE_VISION_CONTEXT && !!visionCtx && enabled && !rcEnabled;
   // When RC is off, run our own Vision Engine for MediaPipe-quality attention (no skin-tone fallback)
   // When useContextPath, we use VisionContext instead of own camera

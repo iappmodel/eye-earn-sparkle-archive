@@ -88,8 +88,10 @@ export interface RemoteControlSettings {
   extendedGazeCalibration?: boolean;
   /** Vision backend: face_mesh (legacy) or face_landmarker (Phase 3) */
   visionBackend?: 'face_mesh' | 'face_landmarker';
-  /** Gaze source: mediapipe (default), gazecloud (higher accuracy, server-side), webgazer (fallback) */
-  gazeBackend?: 'mediapipe' | 'gazecloud' | 'webgazer';
+  /** Gaze source: mediapipe (default), gazecloud, webgazer, or tobii_ws (local bridge) */
+  gazeBackend?: 'mediapipe' | 'gazecloud' | 'webgazer' | 'tobii_ws';
+  /** WebSocket URL for tobii_ws backend */
+  tobiiWsUrl?: string;
   /** Runtime tuning profile for gaze response + selection speed */
   controlProfile?: RemoteControlProfile;
 }
@@ -152,6 +154,7 @@ const DEFAULT_SETTINGS: RemoteControlSettings = {
   tiltEnabled: false,
   tiltSensitivity: 5,
   controlProfile: 'adaptive',
+  tobiiWsUrl: 'ws://127.0.0.1:8765',
 };
 
 const getDefaultRemoteControlSettings = (

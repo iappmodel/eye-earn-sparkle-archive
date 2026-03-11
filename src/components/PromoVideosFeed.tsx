@@ -63,6 +63,7 @@ const themeProgressBars: Record<VideoTheme, string> = {
 interface PromoVideosFeedProps {
   isActive: boolean;
   onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
   onRewardEarned?: (amount: number, type: 'vicoin' | 'icoin') => void;
 }
 
@@ -75,6 +76,7 @@ const REWARD_FILTERS: { value: PromoFeedRewardFilter; label: string }[] = [
 export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   isActive,
   onSwipeLeft,
+  onSwipeRight,
   onRewardEarned,
 }) => {
   const { user, refreshProfile } = useAuth();
@@ -209,10 +211,9 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
     const diff = touchStartY.current - touchEndY.current;
     if (Math.abs(diff) > 50 && localItems.length > 0) {
       haptics.light();
+      const len = localItems.length;
       setCurrentIndex((prev) =>
-        diff > 0
-          ? Math.min(prev + 1, localItems.length - 1)
-          : Math.max(prev - 1, 0)
+        diff > 0 ? (prev + 1) % len : (prev - 1 + len) % len
       );
     }
     touchStartY.current = 0;
@@ -223,8 +224,9 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
     (e: React.WheelEvent) => {
       if (Math.abs(e.deltaY) > 30 && localItems.length > 0) {
         haptics.light();
+        const len = localItems.length;
         setCurrentIndex((prev) =>
-          e.deltaY > 0 ? Math.min(prev + 1, localItems.length - 1) : Math.max(prev - 1, 0)
+          e.deltaY > 0 ? (prev + 1) % len : (prev - 1 + len) % len
         );
       }
     },
@@ -280,6 +282,8 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
         setProgress(100);
         setIsWatching(false);
         handleWatchComplete();
+        const len = Math.max(1, localItems.length);
+        setCurrentIndex((prev) => (prev + 1) % len);
       };
       video.addEventListener('timeupdate', onTimeUpdate);
       video.addEventListener('ended', onEnded);
@@ -298,13 +302,15 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
           if (progressInterval.current) clearInterval(progressInterval.current);
           setIsWatching(false);
           handleWatchComplete();
+          const len = Math.max(1, localItems.length);
+          setCurrentIndex((prev) => (prev + 1) % len);
         }
       }, 50);
       return () => {
         if (progressInterval.current) clearInterval(progressInterval.current);
       };
     }
-  }, [isWatching, currentItem, isPromo, hasVideo, handleWatchComplete]);
+  }, [isWatching, currentItem, isPromo, hasVideo, handleWatchComplete, localItems.length]);
 
   useEffect(() => {
     setProgress(0);
@@ -447,13 +453,15 @@ export const PromoVideosFeed: React.FC<PromoVideosFeedProps> = ({
   const goNext = useCallback(() => {
     if (localItems.length === 0) return;
     haptics.light();
-    setCurrentIndex((prev) => Math.min(prev + 1, localItems.length - 1));
+    const len = Math.max(1, localItems.length);
+    setCurrentIndex((prev) => (prev + 1) % len);
   }, [localItems.length, haptics]);
 
   const goPrev = useCallback(() => {
     haptics.light();
-    setCurrentIndex((prev) => Math.max(prev - 1, 0));
-  }, [haptics]);
+    const len = Math.max(1, localItems.length);
+    setCurrentIndex((prev) => (prev - 1 + len) % len);
+  }, [localItems.length, haptics]);
 
   const handleVideoLoadedData = useCallback(() => {
     setVideoLoading(false);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Smartphone, CheckCircle, Share, MoreVertical, Plus } from 'lucide-react';
+import { Download, Smartphone, CheckCircle, Share, MoreVertical, Plus, Link2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import { Card3D } from '@/components/ui/Card3D';
 import { GlassText } from '@/components/ui/GlassText';
 import { cn } from '@/lib/utils';
@@ -16,8 +17,12 @@ const Install: React.FC = () => {
   const [isIOS, setIsIOS] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [installUrl, setInstallUrl] = useState('');
+  const [canShare, setCanShare] = useState(false);
 
   useEffect(() => {
+    setInstallUrl(`${window.location.origin}/install`);
+    setCanShare(!!navigator.share && /mobile|android|iphone|ipad/i.test(navigator.userAgent));
     // Check if already installed
     const checkStandalone = window.matchMedia('(display-mode: standalone)').matches;
     setIsStandalone(checkStandalone);
@@ -220,6 +225,59 @@ const Install: React.FC = () => {
               </div>
             </div>
           )}
+        </Card3D>
+      </div>
+
+      {/* Download link – shareable URL for mobile install */}
+      <div className="px-6 pt-6">
+        <Card3D depth="shallow" glowEnabled className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Link2 className="w-5 h-5 text-primary" />
+            <span className="font-semibold text-foreground">Get the app (mobile)</span>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3">
+            Open this link on your phone to install iView as an app.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <a
+              href={installUrl || '/install'}
+              className="flex-1 text-sm font-mono text-primary truncate p-2 bg-background/50 rounded-lg border border-border block"
+            >
+              {installUrl || 'Loading…'}
+            </a>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 shrink-0"
+              onClick={async () => {
+                const url = installUrl || `${window.location.origin}/install`;
+                if (canShare && navigator.share) {
+                  try {
+                    await navigator.share({
+                      title: 'iView - Watch & Earn',
+                      text: 'Install iView to watch videos and earn rewards.',
+                      url,
+                    });
+                    toast.success('Link shared');
+                  } catch (e) {
+                    if ((e as Error).name !== 'AbortError') {
+                      await navigator.clipboard?.writeText(url);
+                      toast.success('Link copied');
+                    }
+                  }
+                } else {
+                  await navigator.clipboard?.writeText(url);
+                  toast.success('Link copied to clipboard');
+                }
+              }}
+            >
+              {canShare ? (
+                <><Share className="w-4 h-4 mr-1" /> Share link</>
+              ) : (
+                <><Copy className="w-4 h-4 mr-1" /> Copy link</>
+              )}
+            </Button>
+          </div>
         </Card3D>
       </div>
 

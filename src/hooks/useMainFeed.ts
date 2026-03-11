@@ -9,6 +9,7 @@ import { MAIN_FEED_STATUS } from '@/constants/contentStatus';
 import { supabase } from '@/integrations/supabase/client';
 import { isDemoMode } from '@/lib/appMode';
 import { isValidFollowTarget } from '@/services/follow.service';
+import { SAVED_VIDEOS } from '@/lib/mockupVideos';
 
 export interface MainFeedCreator {
   id: string;
@@ -51,108 +52,39 @@ export interface MainFeedItem {
   isShellCreator?: boolean;
 }
 
-// Fallback mock data when DB is empty or fetch fails. Creator IDs are non-UUID so follow uses shell mode only.
-const FALLBACK_FEED: MainFeedItem[] = [
-  {
-    id: 'fallback-1',
-    type: 'promo',
-    src: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    duration: 8,
-    title: 'Holiday Special',
-    reward: { amount: 50, type: 'vicoin' },
-    creator: {
-      id: 'creator-1',
-      username: 'holiday_deals',
-      displayName: 'Holiday Deals',
-      avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
-      postsCount: 156,
-      followersCount: 24500,
-      followingCount: 89,
-      isVerified: true,
-    },
-    isShellCreator: true,
-  },
-  {
-    id: 'fallback-2',
-    type: 'video',
-    src: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    duration: 15,
-    title: 'Trending Now',
-    creator: {
-      id: 'creator-2',
-      username: 'alex_creates',
-      displayName: 'Alex Rivera',
-      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
-      postsCount: 89,
-      followersCount: 12300,
-      followingCount: 234,
-      isVerified: false,
-    },
-    isShellCreator: true,
-  },
-  {
-    id: 'fallback-3',
-    type: 'promo',
-    src: 'https://images.unsplash.com/photo-1560472355-536de3962603?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    duration: 10,
-    title: 'Coffee Shop Reward',
-    reward: { amount: 1, type: 'icoin' },
-    creator: {
-      id: 'creator-3',
-      username: 'cafe_central',
-      displayName: 'Cafe Central',
-      avatarUrl: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=100&h=100&fit=crop',
-      postsCount: 342,
-      followersCount: 8700,
-      followingCount: 156,
-      isVerified: true,
-    },
-    isShellCreator: true,
-  },
-  {
-    id: 'fallback-4',
-    type: 'image',
-    src: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&h=1080&fit=crop',
-    duration: 5,
-    title: 'Mountain View',
-    creator: {
-      id: 'creator-4',
-      username: 'nature_shots',
-      displayName: 'Maya Thompson',
-      avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
-      postsCount: 234,
-      followersCount: 45600,
-      followingCount: 123,
-      isVerified: true,
-    },
-    isShellCreator: true,
-  },
-  {
-    id: 'fallback-5',
-    type: 'promo',
-    src: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1920&h=1080&fit=crop',
-    videoSrc: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    duration: 12,
-    title: 'Sneaker Drop',
-    reward: { amount: 25, type: 'vicoin' },
-    creator: {
-      id: 'creator-5',
-      username: 'sneaker_drops',
-      displayName: 'Sneaker Drops',
-      avatarUrl: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=100&h=100&fit=crop',
-      postsCount: 567,
-      followersCount: 89000,
-      followingCount: 45,
-      isVerified: true,
-    },
-    isShellCreator: true,
-  },
-];
-
+// Fallback mock data (SCIENCE videos) when DB is empty or demo mode. Creator IDs are non-UUID so follow uses shell mode only.
 const DEFAULT_AVATAR = 'https://api.dicebear.com/7.x/avataaars/svg?seed=';
+const SCIENCE_TITLES = ['Lab Discovery', 'Space Tech', 'Quantum View', 'Neural Networks', 'Climate Data', 'Bio Lab', 'Physics Demo', 'Robot Workshop', 'Future Science'];
+const SCIENCE_CREATORS = ['science_lab', 'space_tech', 'quantum_lab', 'neural_ai', 'climate_study', 'bio_research', 'physics_demo', 'robotics_hub', 'future_sci'];
+
+function buildFallbackFeed(): MainFeedItem[] {
+  return SAVED_VIDEOS.map((videoSrc, i) => {
+    const isPromo = i % 3 === 0;
+    const creatorId = `creator-main-${i + 1}`;
+    return {
+      id: `fallback-main-${i + 1}`,
+      type: isPromo ? 'promo' : 'video',
+      src: videoSrc,
+      videoSrc,
+      duration: 12,
+      title: SCIENCE_TITLES[i] ?? `Science #${i + 1}`,
+      ...(isPromo && { reward: { amount: 25 + i * 10, type: 'vicoin' as const } }),
+      creator: {
+        id: creatorId,
+        username: SCIENCE_CREATORS[i] ?? `science_${i + 1}`,
+        displayName: SCIENCE_TITLES[i] ?? `Science Creator ${i + 1}`,
+        avatarUrl: `${DEFAULT_AVATAR}${i + 10}`,
+        postsCount: 50 + i * 20,
+        followersCount: 1000 + i * 500,
+        followingCount: 50,
+        isVerified: isPromo,
+      },
+      isShellCreator: true,
+    };
+  });
+}
+
+const FALLBACK_FEED: MainFeedItem[] = buildFallbackFeed();
 
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
@@ -431,7 +363,8 @@ async function loadMainFeed(): Promise<MainFeedItem[]> {
       }
 
       if (feedItems.length > 0) return feedItems;
-      if (!ce && !pe) return [];
+      // Empty DB: return fallback so the feed never shows a black screen
+      if (!ce && !pe) return FALLBACK_FEED;
       lastError = new Error(ce ? String(ce) : pe ? String(pe) : 'Failed to load feed');
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
@@ -462,7 +395,7 @@ export function useMainFeed() {
   });
 
   return {
-    items: items ?? FALLBACK_FEED,
+    items: (items?.length ? items : undefined) ?? FALLBACK_FEED,
     isLoading,
     error: error ? (error instanceof Error ? error.message : 'Failed to load feed') : null,
     refresh,

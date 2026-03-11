@@ -14,7 +14,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className }) => (
 
 export const MediaCardSkeleton: React.FC = () => (
   <div className="relative w-full h-full bg-background overflow-hidden">
-    {/* Background shimmer */}
+    {/* Background shimmer – visible in dark mode to avoid black screen */}
     <Skeleton className="absolute inset-0 rounded-none" />
     
     {/* Top left label */}

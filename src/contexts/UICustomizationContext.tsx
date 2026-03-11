@@ -18,7 +18,7 @@ export interface ButtonPosition {
 // Color mode for base theme (light/dark)
 export type ColorMode = 'light' | 'dark' | 'system';
 
-// User-saved custom theme preset
+// User-saved custom theme preset (includes page layout when saved from settings)
 export interface CustomThemePreset {
   id: string;
   name: string;
@@ -26,6 +26,7 @@ export interface CustomThemePreset {
   colors: { primary: string; accent: string; glow: string };
   buttonShape: ThemeSettings['buttonShape'];
   glowIntensity: ThemeSettings['glowIntensity'];
+  pageLayout?: PageLayout;
 }
 
 // Theme customization settings
@@ -111,12 +112,15 @@ const defaultAdvancedSettings: AdvancedSettings = {
   animationSpeed: 1,
 };
 
-// Default page layout
+// Default page layout: 4-feed carousel anchored on Saved (main feed with mockups).
+// From Saved: right -> Explore, left -> Friends, right twice -> Promos.
+// Horizontal and vertical use the same cyclic order.
 const defaultPageLayout: PageLayout = {
   pages: [
-    { id: 'main', direction: 'center', order: 0, contentType: 'main', label: 'Main Feed', theme: 'inherit' },
-    { id: 'friends', direction: 'left', order: 0, contentType: 'friends', label: 'Friends', theme: 'ocean' },
-    { id: 'promotions', direction: 'right', order: 0, contentType: 'promotions', label: 'Promotions', theme: 'ember' },
+    { id: 'saved', direction: 'center', order: 0, contentType: 'saved', label: 'Saved', theme: 'ember' },
+    { id: 'explore', direction: 'center', order: 1, contentType: 'explore', label: 'Explore', theme: 'forest' },
+    { id: 'friends', direction: 'center', order: 2, contentType: 'friends', label: 'Friends', theme: 'ocean' },
+    { id: 'promotions', direction: 'center', order: 3, contentType: 'promotions', label: 'Promos', theme: 'ember' },
   ],
   enableMultiDirection: true,
 };
@@ -170,6 +174,7 @@ interface UICustomizationContextType extends UICustomizationState {
   updatePage: (id: string, updates: Partial<PageSlot>) => void;
   reorderPages: (direction: PageDirection, fromIndex: number, toIndex: number) => void;
   resetPageLayout: () => void;
+  setPageLayout: (layout: PageLayout) => void;
   getPagesByDirection: (direction: PageDirection) => PageSlot[];
   
   // Import/Export
@@ -189,6 +194,63 @@ const defaultState: UICustomizationState = {
   recentPresetIds: [],
 };
 
+const CENTER_FEED_ORDER: readonly string[] = ['saved', 'explore', 'friends', 'promotions'];
+
+const normalizeContentType = (contentType: string): string => {
+  if (contentType === 'favorites') return 'explore';
+  if (contentType === 'main') return 'saved';
+  return contentType;
+};
+
+const normalizeFeedLabel = (contentType: string, label: string): string => {
+  if (contentType === 'explore') return 'Explore';
+  if (contentType === 'saved') return 'Saved';
+  if (contentType === 'promotions') return 'Promos';
+  if (contentType === 'friends') return 'Friends';
+  return label;
+};
+
+const normalizeFourFeedCarousel = (layout: PageLayout): PageLayout => {
+  const normalizedPages = layout.pages.map((page) => {
+    const contentType = normalizeContentType(page.contentType);
+    return {
+      ...page,
+      contentType,
+      label: normalizeFeedLabel(contentType, page.label),
+    };
+  });
+
+  const centerPages = normalizedPages.filter((p) => p.direction === 'center');
+  const hasAllFeeds = CENTER_FEED_ORDER.every((feed) => centerPages.some((p) => p.contentType === feed));
+
+  if (!hasAllFeeds) {
+    return { ...layout, pages: normalizedPages };
+  }
+
+  const centerByContent = new Map(centerPages.map((p) => [p.contentType, p] as const));
+  const orderedCenterPages = CENTER_FEED_ORDER.map((feed, index) => {
+    const page = centerByContent.get(feed)!;
+    return {
+      ...page,
+      order: index,
+      label: normalizeFeedLabel(feed, page.label),
+    };
+  });
+
+  const orderSet = new Set(CENTER_FEED_ORDER);
+  const extraCenterPages = centerPages
+    .filter((p) => !orderSet.has(p.contentType))
+    .sort((a, b) => a.order - b.order)
+    .map((p, idx) => ({ ...p, order: CENTER_FEED_ORDER.length + idx }));
+
+  const nonCenterPages = normalizedPages.filter((p) => p.direction !== 'center');
+
+  return {
+    ...layout,
+    pages: [...nonCenterPages, ...orderedCenterPages, ...extraCenterPages],
+  };
+};
+
 const UICustomizationContext = createContext<UICustomizationContextType | undefined>(undefined);
 
 export function useUICustomization() {
@@ -200,15 +262,26 @@ export function useUICustomization() {
 }
 
 function mergeSavedState(saved: Record<string, unknown>): UICustomizationState {
+  // Migrate old layouts: if any page has contentType 'main', use new 4-feed layout
+  let pageLayout = defaultState.pageLayout;
+  if (saved.pageLayout && typeof saved.pageLayout === 'object') {
+    const pl = saved.pageLayout as { pages?: Array<{ direction?: string; contentType?: string }> };
+    const pages = Array.isArray(pl.pages) ? pl.pages : [];
+    const hasLegacyMain = pages.some((p) => p.contentType === 'main');
+    const hasNoCenter = !pages.some((p) => p.direction === 'center');
+    const mergedLayout = hasLegacyMain || hasNoCenter
+      ? defaultPageLayout
+      : ({ ...defaultPageLayout, ...saved.pageLayout } as PageLayout);
+    pageLayout = normalizeFourFeedCarousel(mergedLayout);
+  }
+
   return {
     ...defaultState,
     ...saved,
     themeSettings: { ...defaultThemeSettings, ...(saved.themeSettings as object) },
     advancedSettings: { ...defaultAdvancedSettings, ...(saved.advancedSettings as object) },
     buttonLayout: Array.isArray(saved.buttonLayout) ? saved.buttonLayout : defaultState.buttonLayout,
-    pageLayout: saved.pageLayout && typeof saved.pageLayout === 'object'
-      ? { ...defaultPageLayout, ...saved.pageLayout } as PageLayout
-      : defaultState.pageLayout,
+    pageLayout,
     colorMode: ['light', 'dark', 'system'].includes(saved.colorMode as string) ? saved.colorMode as ColorMode : defaultState.colorMode,
     customPresets: Array.isArray(saved.customPresets) ? saved.customPresets as CustomThemePreset[] : defaultState.customPresets,
     recentPresetIds: Array.isArray(saved.recentPresetIds) ? saved.recentPresetIds.slice(0, MAX_RECENT_PRESETS) : defaultState.recentPresetIds,
@@ -313,7 +386,7 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
     }));
   }, []);
 
-  const saveCustomPreset = useCallback((name: string): string | null => {
+  const saveCustomPreset = useCallback((name: string, includePageLayout = true): string | null => {
     const id = `custom-${Date.now()}`;
     setState(s => {
       if (s.customPresets.some(p => p.name === name)) return s;
@@ -324,6 +397,7 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
         colors: { ...s.themeSettings.colors },
         buttonShape: s.themeSettings.buttonShape,
         glowIntensity: s.themeSettings.glowIntensity,
+        ...(includePageLayout && { pageLayout: { ...s.pageLayout } }),
       };
       return {
         ...s,
@@ -520,8 +594,12 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
   const resetPageLayout = useCallback(() => {
     setState(s => ({
       ...s,
-      pageLayout: defaultPageLayout
+      pageLayout: normalizeFourFeedCarousel(defaultPageLayout)
     }));
+  }, []);
+
+  const setPageLayout = useCallback((layout: PageLayout) => {
+    setState(s => ({ ...s, pageLayout: normalizeFourFeedCarousel(layout) }));
   }, []);
 
   const getPagesByDirection = useCallback((direction: PageDirection) => {
@@ -552,7 +630,7 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
       }
       setState(s => ({
         ...s,
-        pageLayout: data.pageLayout,
+        pageLayout: normalizeFourFeedCarousel(data.pageLayout),
         themeSettings: data.themeSettings || s.themeSettings,
         advancedSettings: data.advancedSettings || s.advancedSettings,
       }));
@@ -625,6 +703,7 @@ export function UICustomizationProvider({ children }: { children: React.ReactNod
         updatePage,
         reorderPages,
         resetPageLayout,
+        setPageLayout,
         getPagesByDirection,
         exportLayout,
         importLayout,

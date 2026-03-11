@@ -32,9 +32,11 @@ interface PageLayoutEditorProps {
   onClose: () => void;
 }
 
-// Available page content types
+// Available page content types (main = saved for backward compat)
 const pageContentTypes = [
   { id: 'main', label: 'Main Feed', icon: Home, color: '270 95% 65%' },
+  { id: 'saved', label: 'Saved', icon: Home, color: '15 100% 55%' },
+  { id: 'explore', label: 'Explore', icon: Compass, color: '150 80% 45%' },
   { id: 'friends', label: 'Friends', icon: Users, color: '200 100% 50%' },
   { id: 'promotions', label: 'Promotions', icon: Video, color: '320 90% 60%' },
   { id: 'discovery', label: 'iGO', icon: Compass, color: '45 100% 55%' },
@@ -163,14 +165,15 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
       .sort((a, b) => a.order - b.order);
   };
 
-  // Get current center page
-  const centerPage = pageLayout.pages.find(p => p.direction === 'center');
+  // Get all center pages (carousel: Friends | Explore | Saved | Promos)
+  const centerPages = getPagesByDirection('center');
 
   // Handle add page
   const handleAddPage = (direction: PageDirection) => {
     const existingPages = getPagesByDirection(direction);
     const newOrder = existingPages.length;
-    const defaultContent = direction === 'left' ? 'friends' : 
+    const defaultContent = direction === 'center' ? 'saved' :
+                          direction === 'left' ? 'friends' : 
                           direction === 'right' ? 'promotions' : 
                           direction === 'up' ? 'favorites' : 'rewards';
     
@@ -293,11 +296,16 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
           )}
         </div>
         
-        {/* Delete button (not for center) */}
+        {/* Delete button (not for single center page – keep at least one) */}
         {!isCenter && (
           <button
             onClick={(e) => {
               e.stopPropagation();
+              const centerCount = getPagesByDirection('center').length;
+              if (centerCount <= 1) {
+                toast.error('Keep at least one center page');
+                return;
+              }
               removePage(page.id);
             }}
             className={cn(
@@ -470,9 +478,12 @@ export const PageLayoutEditor: React.FC<PageLayoutEditorProps> = ({
               {renderDirectionArrow('left')}
             </div>
 
-            {/* Center (Main page) */}
-            <div className="relative">
-              {centerPage && renderPageCard(centerPage, 0, true)}
+            {/* Center (Main carousel – multiple feeds swipeable) */}
+            <div className="relative flex items-center gap-2">
+              {renderAddButton('center')}
+              <div className="flex items-center gap-2 min-w-0 overflow-x-auto py-2">
+                {centerPages.map((page, index) => renderPageCard(page, index, centerPages.length === 1))}
+              </div>
               {/* Phone frame effect */}
               <div className="absolute inset-0 rounded-2xl border-2 border-foreground/10 pointer-events-none" />
             </div>

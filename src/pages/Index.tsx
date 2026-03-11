@@ -1,13 +1,14 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { MediaCard } from '@/components/MediaCard';
-import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, useControlsVisibility } from '@/components/FloatingControls';
+import { FloatingControls, ControlsVisibilityProvider, DoubleTapGestureDetector, useControlsVisibility, AccessibleShowControlsButton } from '@/components/FloatingControls';
 import { CoinSlideAnimation } from '@/components/CoinSlideAnimation';
 import { WalletScreen, type WalletTourCommand } from '@/components/WalletScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
 import { DiscoveryMap } from '@/components/DiscoveryMap';
 import { PersonalizedFeed } from '@/components/PersonalizedFeed';
 import { FavoritesPage } from '@/components/FavoritesPage';
+import { FavoritesVideosFeed } from '@/components/FavoritesVideosFeed';
 import { UnifiedContentFeed } from '@/components/UnifiedContentFeed';
 import { MessagesScreen } from '@/components/MessagesScreen';
 import { CrossNavigation } from '@/components/CrossNavigation';
@@ -116,7 +117,7 @@ const ScreenIndicatorsAutoHide: React.FC<{
   );
 };
 
-type HorizontalScreen = 'friends' | 'main' | 'promos';
+type FeedType = 'friends' | 'explore' | 'saved' | 'promotions';
 
 const defaultDemoControls: DemoControlsState = {
   forceLandscapePlayback: false,
@@ -179,7 +180,7 @@ const Index = () => {
     markStepComplete: markOnboardingStepComplete,
     progressPercentage: onboardingProgressPercentage,
   } = useOnboarding();
-  const { pageLayout, getPagesByDirection } = useUICustomization();
+  const { pageLayout, getPagesByDirection, resetPageLayout } = useUICustomization();
   const { showTutorial, completeTutorial, skipTutorial } = useGestureTutorial();
   const { isActive: showCelebration, type: celebrationType, celebrate, stopCelebration } = useCelebration();
   const { light, medium } = useHapticFeedback();
@@ -636,6 +637,7 @@ const Index = () => {
           <FriendsPostsFeed
             isActive={isActive}
             onSwipeRight={() => pageNavigate('right')}
+            onSwipeLeft={() => pageNavigate('left')}
             onFindPeople={() => {
               const discoveryPage = getPagesByDirection('up').find((p) => p.contentType === 'discovery')
                 ?? getPagesByDirection('right').find((p) => p.contentType === 'discovery');
@@ -649,6 +651,7 @@ const Index = () => {
           <PromoVideosFeed 
             isActive={isActive} 
             onSwipeLeft={() => pageNavigate('left')}
+            onSwipeRight={() => pageNavigate('right')}
             onRewardEarned={(amount, type) => {
               setCoinSlideType(type);
               setShowCoinSlide(true);
@@ -662,6 +665,8 @@ const Index = () => {
         return <WalletScreen isOpen={true} onClose={() => pageNavigate('up')} vicoins={vicoins} icoins={icoins} />;
       case 'messages':
         return <MessagesScreen isOpen={true} onClose={() => {}} />;
+      case 'explore':
+        return <FavoritesVideosFeed isActive={isActive} />;
       case 'favorites':
         return (
           <FavoritesPage
@@ -697,12 +702,24 @@ const Index = () => {
 
   // Determine current screen type for backward compatibility
   const currentScreenType = useMemo(() => {
-    if (!currentPage) return 'main';
-    if (currentState.direction === 'center') return 'main';
+    if (!currentPage) return 'saved';
     if (currentPage.contentType === 'friends') return 'friends';
+    if (currentPage.contentType === 'explore') return 'explore';
+    if (currentPage.contentType === 'saved' || currentPage.contentType === 'main') return 'saved';
     if (currentPage.contentType === 'promotions') return 'promos';
     return currentPage.contentType;
-  }, [currentPage, currentState.direction]);
+  }, [currentPage]);
+
+  // Content types that use the main feed (saved/main or fallback for unknown)
+  const MAIN_FEED_TYPES = useMemo(() => new Set(['friends', 'promotions', 'discovery', 'rewards', 'wallet', 'messages', 'explore', 'favorites', 'following']), []);
+  const isMainFeedPage = currentPage?.contentType === 'saved' || currentPage?.contentType === 'main' || (currentPage && !MAIN_FEED_TYPES.has(currentPage.contentType));
+
+  // Advance to next video in Saved feed (infinite loop)
+  const advanceSavedVideo = useCallback(() => {
+    if (!isMainFeedPage) return;
+    const len = Math.max(1, feedItems.length);
+    setCurrentIndex(prev => (prev + 1) % len);
+  }, [isMainFeedPage, feedItems.length]);
 
   // Handle promo completion - use rewards service for secure backend validation
   const handleMediaComplete = useCallback(async (
@@ -711,7 +728,10 @@ const Index = () => {
     _watchDuration?: number,
     attentionSessionId?: string
   ) => {
-    if (!currentMedia?.reward) return;
+    if (!currentMedia?.reward) {
+      advanceSavedVideo();
+      return;
+    }
 
     const effectiveAttentionValidated =
       demoControls.rewardMode === 'always_pass'
@@ -738,6 +758,7 @@ const Index = () => {
       });
       if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
       setIsClaimingReward(false);
+      advanceSavedVideo();
       return;
     }
 
@@ -781,8 +802,9 @@ const Index = () => {
       }
     } finally {
       setIsClaimingReward(false);
+      advanceSavedVideo();
     }
-  }, [currentMedia, demoControls.rewardMode, demoModeEnabled, profile, queueDemoReward, refreshProfile]);
+  }, [currentMedia, demoControls.rewardMode, demoModeEnabled, profile, queueDemoReward, refreshProfile, advanceSavedVideo]);
 
   const handleRewardEarned = useCallback((amount: number, type: 'vicoin' | 'icoin') => {
     setCoinSlideType(type);
@@ -802,9 +824,9 @@ const Index = () => {
     setCoinSlideAmount(null);
   }, []);
 
-  // Navigate with swipe animation (vertical) - for main feed content
+  // Advance to next/prev video within Saved feed (infinite loop)
   const navigateToMedia = useCallback((direction: 'up' | 'down') => {
-    if (isTransitioning || currentState.direction !== 'center') return;
+    if (isTransitioning || !isMainFeedPage) return;
     
     setIsTransitioning(true);
     setSwipeDirection(direction);
@@ -819,28 +841,27 @@ const Index = () => {
       setSwipeDirection(null);
       setIsTransitioning(false);
     }, 300);
-  }, [isTransitioning, currentState.direction, feedItems.length]);
+  }, [isTransitioning, isMainFeedPage, feedItems.length]);
 
   // Skip to next media
   const handleSkip = useCallback(() => {
     navigateToMedia('up');
   }, [navigateToMedia]);
 
+  const isSavedSwipePage = currentPage?.contentType === 'saved' || currentPage?.contentType === 'main';
+
   const handleNavigate = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
-    // Set active direction to trigger the brief indicator display
     setActiveDirection(direction);
-    
-    // Use page navigation for horizontal, media navigation for vertical on center
     if (direction === 'up' || direction === 'down') {
-      if (currentState.direction === 'center') {
+      // Vertical gestures scroll videos; category switching is horizontal.
+      // Saved feed is controlled here, while other feeds handle their own up/down.
+      if (isSavedSwipePage) {
         navigateToMedia(direction);
-      } else {
-        pageNavigate(direction);
       }
-    } else {
-      pageNavigate(direction);
+      return;
     }
-  }, [navigateToMedia, pageNavigate, currentState.direction]);
+    pageNavigate(direction);
+  }, [isSavedSwipePage, navigateToMedia, pageNavigate]);
 
   // Listen for gazeNavigate events from the remote control system
   useEffect(() => {
@@ -1234,9 +1255,12 @@ const Index = () => {
   };
 
   // Get configured pages for each direction
+  const centerPages = getPagesByDirection('center');
   const leftPages = getPagesByDirection('left');
   const rightPages = getPagesByDirection('right');
   const isAtCenter = currentState.direction === 'center';
+  const isSavedFeed = currentPage?.contentType === 'saved' || currentPage?.contentType === 'main';
+  const showMainFeed = isMainFeedPage || (isAtCenter && !currentPage); // includes saved/main + unknown types + no page (prevents black screen)
 
   return (
     <ControlsVisibilityProvider>
@@ -1271,11 +1295,10 @@ const Index = () => {
         {/* Dynamic Page Container with transitions */}
         <div className={cn("absolute inset-0", getTransitionClasses())} style={getTransitionStyles()}>
           {/* Render based on current page content type */}
-          {isAtCenter ? (
-            // Main Media Feed (Center)
+          {isAtCenter && showMainFeed ? (
+            // Saved Feed (Main Feed) – MediaCard with infinite video loop
             <div className="absolute inset-0">
               {currentMedia ? (
-                <>
                   <div className={cn(
                     'absolute inset-0 transition-transform duration-300 ease-out',
                     swipeDirection === 'up' && 'animate-swipe-exit-up',
@@ -1301,34 +1324,40 @@ const Index = () => {
                       isActive={!isTransitioning && isAtCenter}
                     />
                   </div>
+              ) : (
+                <MediaCardSkeleton />
+              )}
 
-                  {/* Edge preview peeks for cross-navigation discoverability */}
-                  <div className="pointer-events-none absolute inset-0 z-20">
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 h-28 w-2 rounded-r-full bg-white/25 blur-[0.5px]" />
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 h-28 w-2 rounded-l-full bg-white/25 blur-[0.5px]" />
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-2 rounded-b-full bg-white/18" />
-                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-2 rounded-t-full bg-white/18" />
-                  </div>
+              {/* Always show controls & nav when on main feed (even during skeleton/loading) */}
+              {/* Edge preview peeks for cross-navigation discoverability */}
+              <div className="pointer-events-none absolute inset-0 z-20">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 h-28 w-2 rounded-r-full bg-white/25 blur-[0.5px]" />
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 h-28 w-2 rounded-l-full bg-white/25 blur-[0.5px]" />
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-2 rounded-b-full bg-white/18" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-2 rounded-t-full bg-white/18" />
+              </div>
 
-                  {/* Cross Navigation hints */}
-                  <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} />
+              <CrossNavigation
+                onNavigate={handleNavigate}
+                activeDirection={activeDirection}
+                labels={{ up: 'Next', down: 'Prev', left: 'Prev', right: 'Next' }}
+              />
 
-                  {/* Floating Controls */}
-                  <FloatingControls
-                    onWalletClick={() => setShowWallet(true)}
-                    onProfileClick={() => setShowProfile(true)}
-                    onLikeClick={handleLike}
-                    onTip={handleTip}
-                    tipEnabled={currentCreatorTippable}
-                    onCommentClick={handleComment}
-                    onShareClick={handleShare}
-                    onSettingsClick={handleSettings}
-                    onFollowClick={handleFollow}
-                    onAchievementsClick={() => setShowAchievementsPanel(true)}
-                    achievementsCount={unlockedAchievements.size}
-                    onSaveVideo={handleSaveVideo}
-                    onSaveLongPress={handleSaveLongPress}
-                    onComboAction={(action) => {
+              <FloatingControls
+                onWalletClick={() => setShowWallet(true)}
+                onProfileClick={() => setShowProfile(true)}
+                onLikeClick={handleLike}
+                onTip={handleTip}
+                tipEnabled={currentCreatorTippable}
+                onCommentClick={handleComment}
+                onShareClick={handleShare}
+                onSettingsClick={handleSettings}
+                onFollowClick={handleFollow}
+                onAchievementsClick={() => setShowAchievementsPanel(true)}
+                achievementsCount={unlockedAchievements.size}
+                onSaveVideo={handleSaveVideo}
+                onSaveLongPress={handleSaveLongPress}
+                onComboAction={(action) => {
                   switch (action) {
                     case 'like':
                       light();
@@ -1356,11 +1385,11 @@ const Index = () => {
                       break;
                     case 'friendsFeed':
                       light();
-                      pageNavigate('left');
+                      navigateToPage('friends');
                       break;
                     case 'promoFeed':
                       light();
-                      pageNavigate('right');
+                      navigateToPage('promotions');
                       break;
                     case 'openSettings':
                       light();
@@ -1446,8 +1475,8 @@ const Index = () => {
                 isLiked={contentLikes.isLiked(currentMedia?.id ?? '')}
                 isFollowing={currentMedia?.creator ? follow.isFollowing : false}
                 likeCount={contentLikes.getLikeCount(currentMedia?.id ?? '', currentMedia?.likes ?? 0)}
-                isVideoSaved={savedVideos.isSaved(currentMedia.id)}
-                creatorInfo={currentMedia.creator}
+                isVideoSaved={savedVideos.isSaved(currentMedia?.id ?? '')}
+                creatorInfo={currentMedia?.creator}
                 onViewCreatorProfile={async () => {
                   const creator = currentMedia?.creator;
                   if (!creator) {
@@ -1468,7 +1497,6 @@ const Index = () => {
                 }}
               />
 
-              {/* Achievements panel */}
               <AttentionAchievementsPanel
                 isVisible={showAchievementsPanel}
                 onClose={() => setShowAchievementsPanel(false)}
@@ -1477,24 +1505,129 @@ const Index = () => {
                 unlockedAt={achievementUnlockedAt}
               />
 
-              {/* Achievement unlock notification */}
               <AchievementUnlockNotification
                 achievement={newlyUnlocked}
                 onDismiss={dismissNotification}
                 onLegendaryCelebrate={() => celebrate('achievement')}
               />
-                </>
+            </div>
+          ) : currentPage ? (
+            // Dynamic page content (center or side pages) – always show FloatingControls for wallet/profile/settings
+            <div className="absolute inset-0">
+              {(() => {
+                const content = renderPageContent(currentPage.contentType, true);
+                return content ?? (
+                  <div className="h-full flex flex-col items-center justify-center gap-4 p-6 bg-background">
+                    <p className="text-muted-foreground text-sm">Unknown page type: {currentPage.contentType}</p>
+                    <Button variant="outline" onClick={() => { resetPageLayout(); window.location.reload(); }}>
+                      Reset layout
+                    </Button>
+                  </div>
+                );
+              })()}
+              {/* Floating controls on feed pages (Friends, Explore, Promotions) – wallet, profile, settings */}
+              {['friends', 'explore', 'promotions', 'favorites'].includes(currentPage.contentType) && (
+              <FloatingControls
+                onWalletClick={() => setShowWallet(true)}
+                onProfileClick={() => setShowProfile(true)}
+                onLikeClick={() => {}}
+                onCommentClick={() => {}}
+                onShareClick={() => {}}
+                onSettingsClick={handleSettings}
+                onFollowClick={handleFollow}
+                tipEnabled={currentCreatorTippable}
+                onComboAction={(action) => {
+                  switch (action) {
+                    case 'friendsFeed':
+                      light();
+                      navigateToPage('friends');
+                      break;
+                    case 'promoFeed':
+                      light();
+                      navigateToPage('promotions');
+                      break;
+                    case 'openSettings':
+                      handleSettings();
+                      break;
+                    case 'openWallet':
+                      setShowWallet(true);
+                      break;
+                    case 'openProfile':
+                      setShowProfile(true);
+                      break;
+                    case 'openMap':
+                      setShowMap(true);
+                      break;
+                    case 'openAchievements':
+                      setShowAchievementsPanel(true);
+                      break;
+                    default:
+                      break;
+                  }
+                }}
+                achievementsCount={unlockedAchievements.size}
+                onAchievementsClick={() => setShowAchievementsPanel(true)}
+              />
+              )}
+            </div>
+          ) : (
+            // Fallback when no page configured – show main feed + controls to prevent black screen
+            <div className="absolute inset-0">
+              {currentMedia ? (
+                <MediaCard
+                  key={currentMedia.id}
+                  type={currentMedia.type}
+                  src={currentMedia.src}
+                  videoSrc={currentMedia.videoSrc}
+                  duration={currentMedia.duration}
+                  reward={currentMedia.reward}
+                  contentId={currentMedia.id}
+                  preferLandscapePlayback={demoControls.forceLandscapePlayback}
+                  isLandscapeViewport={isLandscapeViewport}
+                  onComplete={handleMediaComplete}
+                  onSkip={handleSkip}
+                  onEarlyExit={() => toast.info('No reward earned', { description: 'Full watch required.' })}
+                  isActive={isAtCenter}
+                />
               ) : (
                 <MediaCardSkeleton />
               )}
+              <CrossNavigation onNavigate={handleNavigate} activeDirection={activeDirection} labels={{ up: 'Next', down: 'Prev', left: 'Prev', right: 'Next' }} />
+              <FloatingControls
+                onWalletClick={() => setShowWallet(true)}
+                onProfileClick={() => setShowProfile(true)}
+                onLikeClick={handleLike}
+                onTip={handleTip}
+                tipEnabled={currentCreatorTippable}
+                onCommentClick={handleComment}
+                onShareClick={handleShare}
+                onSettingsClick={handleSettings}
+                onFollowClick={handleFollow}
+                onAchievementsClick={() => setShowAchievementsPanel(true)}
+                achievementsCount={unlockedAchievements.size}
+                onSaveVideo={handleSaveVideo}
+                onSaveLongPress={handleSaveLongPress}
+                onComboAction={(a) => {
+                  if (a === 'openSettings') handleSettings();
+                  else if (a === 'openWallet') setShowWallet(true);
+                  else if (a === 'openProfile') setShowProfile(true);
+                  else if (a === 'nextVideo') navigateToMedia('up');
+                  else if (a === 'prevVideo') navigateToMedia('down');
+                }}
+                isLiked={contentLikes.isLiked(currentMedia?.id ?? '')}
+                isFollowing={currentMedia?.creator ? follow.isFollowing : false}
+                likeCount={contentLikes.getLikeCount(currentMedia?.id ?? '', currentMedia?.likes ?? 0)}
+                isVideoSaved={savedVideos.isSaved(currentMedia?.id ?? '')}
+                creatorInfo={currentMedia?.creator}
+                onViewCreatorProfile={() => currentMedia?.creator && navigate(`/profile/${currentMedia.creator.username ?? currentMedia.creator.id}`)}
+                onMessageCreator={() => setShowMessages(true)}
+              />
             </div>
-          ) : currentPage ? (
-            // Dynamic page content based on configured layout
-            <div className="absolute inset-0">
-              {renderPageContent(currentPage.contentType, true)}
-            </div>
-          ) : null}
+          )}
         </div>
+
+        {/* Always show "Reveal controls" button when hidden – works on all feeds */}
+        <AccessibleShowControlsButton />
 
         {/* Screen Indicators - hidden with controls */}
         <ScreenIndicatorsAutoHide leftPages={leftPages} rightPages={rightPages} isAtCenter={isAtCenter} />

@@ -23,6 +23,22 @@ interface LayoutTemplate {
 // Predefined templates
 const templates: LayoutTemplate[] = [
   {
+    id: '4feed',
+    name: '4-Feed Carousel',
+    description: 'Main (Promos) | Explore | Saved | Friends',
+    icon: Grid3X3,
+    colors: { primary: '210 96% 62%', accent: '42 96% 56%' },
+    layout: {
+      pages: [
+        { id: 'promotions', direction: 'center', order: 0, contentType: 'promotions', label: 'Promos', theme: 'ember' },
+        { id: 'explore', direction: 'center', order: 1, contentType: 'explore', label: 'Explore', theme: 'forest' },
+        { id: 'saved', direction: 'center', order: 2, contentType: 'saved', label: 'Saved', theme: 'ember' },
+        { id: 'friends', direction: 'center', order: 3, contentType: 'friends', label: 'Friends', theme: 'ocean' },
+      ],
+      enableMultiDirection: true,
+    },
+  },
+  {
     id: 'tiktok',
     name: 'TikTok Style',
     description: 'Vertical swipe between feeds',

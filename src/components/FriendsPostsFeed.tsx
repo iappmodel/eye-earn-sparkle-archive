@@ -101,11 +101,12 @@ function CaptionWithHashtags({ text }: { text: string }) {
 interface FriendsPostsFeedProps {
   isActive: boolean;
   onSwipeRight?: () => void;
+  onSwipeLeft?: () => void;
   /** Called when user taps "Find people to follow" in empty state (following 0 users). */
   onFindPeople?: () => void;
 }
 
-export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, onSwipeRight, onFindPeople }) => {
+export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, onSwipeRight, onSwipeLeft, onFindPeople }) => {
   const haptics = useHapticFeedback();
   const contentLikes = useContentLikes();
   const { isSaved, toggleSave } = useSavedVideos();
@@ -283,15 +284,16 @@ export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, on
   const goNext = useCallback(() => {
     if (posts.length === 0) return;
     haptics.light();
-    setCurrentIndex((prev) => Math.min(prev + 1, posts.length - 1));
+    setCurrentIndex((prev) => (prev + 1) % posts.length);
     setProgress(0);
   }, [posts.length, haptics]);
 
   const goPrev = useCallback(() => {
+    if (posts.length === 0) return;
     haptics.light();
-    setCurrentIndex((prev) => Math.max(prev - 1, 0));
+    setCurrentIndex((prev) => (prev - 1 + posts.length) % posts.length);
     setProgress(0);
-  }, [haptics]);
+  }, [posts.length, haptics]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -637,7 +639,7 @@ export const FriendsPostsFeed: React.FC<FriendsPostsFeedProps> = ({ isActive, on
       {/* Swipe hint */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 text-white/40 text-xs font-medium">
         <ChevronRight className="w-4 h-4" />
-        Swipe right for main feed
+        Swipe right for Main (Promos)
       </div>
 
       {/* End of feed */}

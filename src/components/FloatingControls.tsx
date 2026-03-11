@@ -510,7 +510,7 @@ const ProfilePreviewSheet: React.FC<ProfilePreviewSheetProps> = ({
 };
 
 // Always-available accessible button to open controls (for keyboard/screen reader when controls are hidden)
-const AccessibleShowControlsButton: React.FC = () => {
+export const AccessibleShowControlsButton: React.FC = () => {
   const { isVisible, revealControls } = useControlsVisibility();
   const { medium } = useHapticFeedback();
 
@@ -768,8 +768,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
 
   return (
     <>
-      {/* Always-available accessible button when controls are hidden */}
-      <AccessibleShowControlsButton />
+      {/* AccessibleShowControlsButton is rendered at page level so it shows on all feeds */}
       {/* Right side: entire stack (including visibility toggle) hides together; tap screen to bring back */}
       <div 
         className={cn(

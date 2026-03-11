@@ -28,7 +28,6 @@ import {
   type CalibrationData,
 } from '@/hooks/useBlinkRemoteControl';
 import { useAuth } from '@/contexts/AuthContext';
-import { USE_VISION_CONTEXT } from '@/contexts/VisionContext';
 import { GazeDirection } from '@/hooks/useGazeDirection';
 import { 
   useGestureCombos, 
@@ -540,8 +539,9 @@ export const BlinkRemoteControl: React.FC<BlinkRemoteControlProps> = ({
 
   const lastDirectionStepAtRef = useRef(0);
 
+  // Quick calibration needs the live RC stream; only pause for legacy flows
+  // that own camera/session independently.
   const isCalibrationOpen =
-    (showUnifiedCalibration && USE_VISION_CONTEXT) ||
     showBlinkCalibration ||
     showEyeMovement ||
     showFacialExpression ||

@@ -91,6 +91,7 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
     setButtonShape,
     setGlowIntensity,
     setColorMode,
+    setPageLayout,
     resetThemeToDefault,
     saveCustomPreset,
     removeCustomPreset,
@@ -160,7 +161,10 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
     setPreset(preset.id, preset.colors);
     setButtonShape(preset.buttonShape);
     setGlowIntensity(preset.glowIntensity);
-  }, [setPreset, setButtonShape, setGlowIntensity]);
+    if (preset.pageLayout?.pages?.length) {
+      setPageLayout(preset.pageLayout);
+    }
+  }, [setPreset, setButtonShape, setGlowIntensity, setPageLayout]);
 
   const toggleHeight = () => {
     if (sheetHeight === 'collapsed') setSheetHeight('partial');
@@ -186,7 +190,7 @@ export const ThemePresetsSheet: React.FC<ThemePresetsSheetProps> = ({
     saveCustomPreset(name);
     setCustomPresetName('');
     setShowSavePresetModal(false);
-    toast.success('Theme saved as "' + name + '"');
+    toast.success('Preset saved', { description: `"${name}" (theme + page layout)` });
   };
 
   const handleExportTheme = () => {

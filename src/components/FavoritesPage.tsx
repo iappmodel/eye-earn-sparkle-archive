@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Map, Heart, LogIn } from 'lucide-react';
+import { Map, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { FavoriteLocations } from './FavoriteLocations';
+import { FavoritesVideosFeed } from './FavoritesVideosFeed';
 import { useAuth } from '@/contexts/AuthContext';
+import { isDemoMode } from '@/lib/appMode';
 import { cn } from '@/lib/utils';
 
 interface FavoritesPageProps {
@@ -48,6 +50,14 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({
           Create an account or sign in to save your favorite promotion locations
           and access them anytime.
         </p>
+      </div>
+    );
+  }
+
+  if (isDemoMode) {
+    return (
+      <div className={cn('flex flex-col h-full overflow-hidden px-4', className)}>
+        <FavoritesVideosFeed isActive={isActive} />
       </div>
     );
   }

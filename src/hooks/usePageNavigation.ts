@@ -72,7 +72,12 @@ export const usePageNavigation = (): UsePageNavigationReturn => {
   const canNavigate = useCallback((direction: PageDirection): boolean => {
     if (isNavigating.current) return false;
     
-    // From center, can go in any direction that has pages
+    // 4-feed carousel: all center pages, left/down=prev, right/up=next (cycle)
+    const centerPages = getPagesByDirection('center');
+    if (centerPages.length > 1 && currentState.direction === 'center') {
+      return direction === 'up' || direction === 'down' || direction === 'left' || direction === 'right';
+    }
+    // From center (single), can go in any direction that has pages
     if (currentState.direction === 'center') {
       const targetPages = getPagesByDirection(direction);
       return targetPages.length > 0 || direction === 'up' || direction === 'down';
@@ -129,13 +134,21 @@ export const usePageNavigation = (): UsePageNavigationReturn => {
       let newState: PageState;
       
       if (currentState.direction === 'center') {
-        // Going from center to a direction
-        const targetPages = getPagesByDirection(direction);
-        if (targetPages.length > 0) {
-          newState = { direction, index: 0 };
+        const centerPages = getPagesByDirection('center');
+        if (centerPages.length > 1) {
+          // 4-feed carousel: left/down=prev, right/up=next (wrap)
+          const len = centerPages.length;
+          const next = direction === 'right' || direction === 'up'
+            ? (currentState.index + 1) % len
+            : (currentState.index - 1 + len) % len;
+          newState = { direction: 'center', index: next };
         } else {
-          // No pages in that direction, stay at center (for vertical scroll)
-          newState = currentState;
+          const targetPages = getPagesByDirection(direction);
+          if (targetPages.length > 0) {
+            newState = { direction, index: 0 };
+          } else {
+            newState = currentState;
+          }
         }
       } else {
         // Check if going back to center
